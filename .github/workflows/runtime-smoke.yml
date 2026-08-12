@@ -1,0 +1,30 @@
+name: Gemini Runtime Smoke
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - feat/mvp-foundation
+    paths:
+      - scripts/runtime-smoke.ts
+      - lib/gemini.ts
+      - lib/analysis-schema.ts
+      - .github/workflows/runtime-smoke.yml
+      - package.json
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - run: npm install
+      - name: Verify secret exists
+        run: test -n "$GEMINI_API_KEY"
+      - name: Run live Gemini YouTube analysis
+        run: npm run smoke:gemini
