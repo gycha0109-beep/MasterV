@@ -8,6 +8,7 @@
     "start": "next start",
     "typecheck": "tsc --noEmit",
     "test:observation-contract": "tsx scripts/observation-contract.ts",
+    "test:derived-metrics": "tsx scripts/derived-metrics-contract.ts",
     "smoke:gemini": "tsx scripts/runtime-smoke.ts",
     "pilot:real-products": "tsx scripts/real-product-pilot.ts"
   },
