@@ -9,6 +9,43 @@ type PilotCase = {
   url: string;
 };
 
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+function retryDelayMs(message: string): number | null {
+  if (!message.includes("429") && !message.toLowerCase().includes("quota")) {
+    return null;
+  }
+
+  const match = message.match(/retry in\s+([0-9.]+)s/i);
+  if (match) {
+    return Math.ceil(Number(match[1]) * 1000) + 2000;
+  }
+
+  return 65_000;
+}
+
+async function analyzeWithQuotaRetry(url: string, id: string) {
+  const maxAttempts = 3;
+
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    try {
+      return await analyzeYouTubeVideo(url);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      const delay = retryDelayMs(message);
+
+      if (delay === null || attempt === maxAttempts) {
+        throw error;
+      }
+
+      console.warn(`PILOT_RATE_LIMIT ${id} attempt=${attempt} retry_after_ms=${delay}`);
+      await sleep(delay);
+    }
+  }
+
+  throw new Error("unreachable");
+}
+
 async function main() {
   const fixturePath = path.join(process.cwd(), "fixtures", "real-product-pilot.json");
   const cases = JSON.parse(await readFile(fixturePath, "utf8")) as PilotCase[];
@@ -20,7 +57,7 @@ async function main() {
     console.log(`PILOT_START ${item.id} ${item.url}`);
 
     try {
-      const analysis = await analyzeYouTubeVideo(item.url);
+      const analysis = await analyzeWithQuotaRetry(item.url, item.id);
       const elapsedMs = Date.now() - startedAt;
       results.push({
         ...item,
@@ -49,7 +86,7 @@ async function main() {
     total: results.length,
     passed,
     failed,
-    note: "expected_style is user-supplied metadata for later human cross-validation and is not passed to Gemini.",
+    note: "expected_style is user-supplied metadata for later human cross-validation and is not passed to Gemini. Gemini 429 quota responses are retried using the provider-suggested delay when available.",
     results
   };
 
