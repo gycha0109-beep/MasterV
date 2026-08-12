@@ -1,0 +1,38 @@
+[
+  {
+    "id": "mold-remover-everyday",
+    "label": "곰팡이 제거제",
+    "expected_style": "일상적",
+    "url": "https://www.youtube.com/shorts/SxNmUxodRqo"
+  },
+  {
+    "id": "rice-cooker-photo-led",
+    "label": "전기 밥솥",
+    "expected_style": "상품 사진 위주",
+    "url": "https://www.youtube.com/shorts/VI_zXC_olWE"
+  },
+  {
+    "id": "robot-vacuum-demo",
+    "label": "로봇 청소기",
+    "expected_style": "시연 위주",
+    "url": "https://www.youtube.com/shorts/M7U5D3lURK8"
+  },
+  {
+    "id": "tumbler-demo",
+    "label": "텀블러",
+    "expected_style": "시연 위주",
+    "url": "https://www.youtube.com/shorts/7A7GuL6cnd8"
+  },
+  {
+    "id": "running-shoes-demo",
+    "label": "런닝화",
+    "expected_style": "시연 위주",
+    "url": "https://www.youtube.com/shorts/HB5DK-Y_ffk"
+  },
+  {
+    "id": "supplement-curation",
+    "label": "영양제",
+    "expected_style": "큐레이팅 방식",
+    "url": "https://www.youtube.com/shorts/-a2xFmspWM8"
+  }
+]
