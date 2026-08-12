@@ -1,0 +1,38 @@
+name: Real Product Shorts Pilot
+
+on:
+  push:
+    branches:
+      - feat/mvp-foundation
+    paths:
+      - fixtures/real-product-pilot.json
+      - scripts/real-product-pilot.ts
+      - lib/gemini.ts
+      - lib/analysis-schema.ts
+      - package.json
+      - .github/workflows/real-product-pilot.yml
+  workflow_dispatch:
+
+jobs:
+  pilot:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - run: npm install
+      - name: Verify secret exists
+        run: test -n "$GEMINI_API_KEY"
+      - name: Analyze six real product Shorts
+        run: npm run pilot:real-products
+      - name: Upload pilot report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: real-product-pilot-report
+          path: artifacts/real-product-pilot.json
+          if-no-files-found: error
