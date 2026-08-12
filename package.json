@@ -10,6 +10,7 @@
     "test:observation-contract": "tsx scripts/observation-contract.ts",
     "test:derived-metrics": "tsx scripts/derived-metrics-contract.ts",
     "test:reference-compare": "tsx scripts/reference-compare-contract.ts",
+    "test:evidence-rules": "tsx scripts/evidence-rules-contract.ts",
     "smoke:gemini": "tsx scripts/runtime-smoke.ts",
     "pilot:real-products": "tsx scripts/real-product-pilot.ts"
   },
