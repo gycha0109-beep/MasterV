@@ -51,7 +51,8 @@ function makeAnalysis(overrides: Partial<VideoAnalysis> = {}): VideoAnalysis {
           description: "손이 제품을 들어 보여준다",
           subjects: ["손", "제품"],
           material_types: ["직접촬영", "상품실물"],
-          presenter_presence: ["손"]
+          presenter_presence: ["손"],
+          contains_product: true
         },
         action: {
           type: "제품제시",
@@ -115,6 +116,20 @@ expectFailure(
           observable_result: "",
           result_visually_observable: true
         }
+      }
+    ]
+  })
+);
+
+expectFailure(
+  "overlapping-segments",
+  makeAnalysis({
+    observation_segments: [
+      makeAnalysis().observation_segments[0],
+      {
+        ...makeAnalysis().observation_segments[0],
+        start_seconds: 1.5,
+        end_seconds: 3
       }
     ]
   })
