@@ -1,4 +1,4 @@
-import type { VideoAnalysis } from "../lib/analysis-schema";
+import type { ObservationSegment, VideoAnalysis } from "../lib/analysis-schema";
 import { compareVideoAnalyses } from "../lib/reference-compare";
 
 function makeAnalysis(
@@ -17,14 +17,14 @@ function makeAnalysis(
   const highDemo = options.demoPercentShape !== "low";
   const firstRole = options.firstRole ?? "훅";
   const secondRole = options.secondRole ?? "제품소개";
-  const segments = [
+  const segments: ObservationSegment[] = [
     {
       start_seconds: 0,
       end_seconds: 2,
       visual: {
         description: `${id} 시작 화면`,
         subjects: ["제품"],
-        material_types: [material] as const,
+        material_types: [material],
         presenter_presence: ["손"],
         contains_product: firstProduct !== null && firstProduct <= 0
       },
@@ -34,11 +34,11 @@ function makeAnalysis(
       on_screen_text: "",
       claims: [],
       evidence: {
-        types: ["근거없음"] as const,
+        types: ["근거없음"],
         observable_result: "",
         result_visually_observable: false
       },
-      confidence: "high" as const
+      confidence: "high"
     },
     {
       start_seconds: 2,
@@ -46,7 +46,7 @@ function makeAnalysis(
       visual: {
         description: `${id} 제품 사용`,
         subjects: ["제품", "손"],
-        material_types: [material] as const,
+        material_types: [material],
         presenter_presence: ["손"],
         contains_product: firstProduct !== null
       },
@@ -56,11 +56,11 @@ function makeAnalysis(
       on_screen_text: "",
       claims: ["제품 특징을 설명한다"],
       evidence: {
-        types: ["직접시연"] as const,
+        types: ["직접시연"],
         observable_result: "",
         result_visually_observable: false
       },
-      confidence: "high" as const
+      confidence: "high"
     },
     {
       start_seconds: highDemo ? 7 : 4,
@@ -68,7 +68,7 @@ function makeAnalysis(
       visual: {
         description: `${id} 마무리`,
         subjects: ["제품"],
-        material_types: [material] as const,
+        material_types: [material],
         presenter_presence: ["손"],
         contains_product: firstProduct !== null
       },
@@ -78,11 +78,11 @@ function makeAnalysis(
       on_screen_text: "",
       claims: [],
       evidence: {
-        types: ["근거없음"] as const,
+        types: ["근거없음"],
         observable_result: "",
         result_visually_observable: false
       },
-      confidence: "high" as const
+      confidence: "high"
     }
   ];
 
