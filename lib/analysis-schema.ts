@@ -13,6 +13,52 @@ export type SceneAnalysis = {
   purpose: string;
 };
 
+export type ObservationMaterialType =
+  | "직접촬영"
+  | "상품실물"
+  | "상품사진"
+  | "상품페이지"
+  | "공식홍보자료"
+  | "외부자료"
+  | "그래픽/표"
+  | "화면녹화"
+  | "상황재연"
+  | "불명확";
+
+export type EvidenceType =
+  | "직접사용"
+  | "직접시연"
+  | "관찰가능한결과"
+  | "후기/경험진술"
+  | "외부자료"
+  | "상황재연"
+  | "근거없음";
+
+export type ObservationSegment = {
+  start_seconds: number;
+  end_seconds: number;
+  visual: {
+    description: string;
+    subjects: string[];
+    material_types: ObservationMaterialType[];
+    presenter_presence: string[];
+  };
+  action: {
+    type: string;
+    description: string;
+  };
+  message_roles: string[];
+  spoken_text: string;
+  on_screen_text: string;
+  claims: string[];
+  evidence: {
+    types: EvidenceType[];
+    observable_result: string;
+    result_visually_observable: boolean;
+  };
+  confidence: "high" | "medium" | "low";
+};
+
 export type VideoAnalysis = {
   summary: string;
   structure_label: string;
@@ -54,11 +100,41 @@ export type VideoAnalysis = {
     segments: TranscriptSegment[];
   };
   scenes: SceneAnalysis[];
+  observation_segments: ObservationSegment[];
   tags: string[];
   confidence_notes: string[];
 };
 
 const nullableNumber = { type: ["number", "null"] } as const;
+
+const materialTypeSchema = {
+  type: "string",
+  enum: [
+    "직접촬영",
+    "상품실물",
+    "상품사진",
+    "상품페이지",
+    "공식홍보자료",
+    "외부자료",
+    "그래픽/표",
+    "화면녹화",
+    "상황재연",
+    "불명확"
+  ]
+} as const;
+
+const evidenceTypeSchema = {
+  type: "string",
+  enum: [
+    "직접사용",
+    "직접시연",
+    "관찰가능한결과",
+    "후기/경험진술",
+    "외부자료",
+    "상황재연",
+    "근거없음"
+  ]
+} as const;
 
 export const videoAnalysisJsonSchema = {
   type: "object",
@@ -156,6 +232,63 @@ export const videoAnalysisJsonSchema = {
         required: ["start_seconds", "end_seconds", "visual", "spoken_text", "on_screen_text", "purpose"]
       }
     },
+    observation_segments: {
+      type: "array",
+      items: {
+        type: "object",
+        properties: {
+          start_seconds: { type: "number" },
+          end_seconds: { type: "number" },
+          visual: {
+            type: "object",
+            properties: {
+              description: { type: "string" },
+              subjects: { type: "array", items: { type: "string" } },
+              material_types: { type: "array", items: materialTypeSchema },
+              presenter_presence: { type: "array", items: { type: "string" } }
+            },
+            required: ["description", "subjects", "material_types", "presenter_presence"]
+          },
+          action: {
+            type: "object",
+            properties: {
+              type: { type: "string" },
+              description: { type: "string" }
+            },
+            required: ["type", "description"]
+          },
+          message_roles: { type: "array", items: { type: "string" } },
+          spoken_text: { type: "string" },
+          on_screen_text: { type: "string" },
+          claims: { type: "array", items: { type: "string" } },
+          evidence: {
+            type: "object",
+            properties: {
+              types: { type: "array", items: evidenceTypeSchema },
+              observable_result: { type: "string" },
+              result_visually_observable: { type: "boolean" }
+            },
+            required: ["types", "observable_result", "result_visually_observable"]
+          },
+          confidence: {
+            type: "string",
+            enum: ["high", "medium", "low"]
+          }
+        },
+        required: [
+          "start_seconds",
+          "end_seconds",
+          "visual",
+          "action",
+          "message_roles",
+          "spoken_text",
+          "on_screen_text",
+          "claims",
+          "evidence",
+          "confidence"
+        ]
+      }
+    },
     tags: { type: "array", items: { type: "string" } },
     confidence_notes: { type: "array", items: { type: "string" } }
   },
@@ -169,6 +302,7 @@ export const videoAnalysisJsonSchema = {
     "presentation",
     "transcript",
     "scenes",
+    "observation_segments",
     "tags",
     "confidence_notes"
   ]
