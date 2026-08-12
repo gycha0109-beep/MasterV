@@ -44,6 +44,14 @@
   - CTA 포함 비율과 시작 시점
   - 2~3단계 반복 제작 구조
   - 영상별 차이 표
+- Evidence Rule Compiler
+  - 비교 결과를 결정론적으로 제작 규칙 후보로 변환
+  - support / counterexample / sample size 보존
+  - low / medium / high confidence 산출
+  - candidate / recurring / dominant 상태 분리
+  - 표본 8개 미만은 high confidence 금지
+  - 지지도 50% 미만 또는 지지 영상 2개 미만은 규칙 승격 금지
+  - 규칙 반복성과 광고 성과의 인과관계를 명시적으로 분리
 - 단일 참고영상의 관찰·파생 지표를 이용한 실행용 AI 프롬프트 생성
 
 ## 분석 원칙
@@ -53,6 +61,8 @@ MasterV의 원시 분석 단위는 `영상 타입`이 아니라 `observation_seg
 각 구간에서 실제로 보이는 화면, 행동, 소재와 메시지 역할을 기록하고, 전체 영상의 특성은 이후 코드에서 집계합니다. 제품을 먹거나 바르는 장면 자체를 효과 증명으로 취급하지 않으며, 광고의 주장과 실제로 관찰 가능한 결과를 분리합니다.
 
 다중 비교도 AI에게 다시 자유형 비교를 요청하지 않습니다. 각 영상의 관찰 데이터와 파생 지표를 동일 계산식으로 집계해서 재현 가능한 비교 결과를 만듭니다.
+
+Evidence Rule Compiler 역시 AI 생성기가 아닙니다. 선택된 참고영상에서 반복된 패턴을 코드로 규칙 후보로 변환하며, `8/10에서 반복됨`을 `성과를 만든 원인`으로 승격하지 않습니다. 각 규칙에는 지지 표본, 반례, 신뢰도와 주의사항을 함께 보존합니다.
 
 ## 실행
 
@@ -80,6 +90,7 @@ npm run typecheck
 npm run test:observation-contract
 npm run test:derived-metrics
 npm run test:reference-compare
+npm run test:evidence-rules
 npm run build
 ```
 
@@ -87,8 +98,8 @@ npm run build
 
 ## 다음 단계
 
-1. 다중 레퍼런스 비교 결과를 근거 규칙으로 변환
+1. 근거 규칙을 선택 가능한 제작 입력으로 노출
 2. 근거 기반 제작안 A/B/C
-3. 여러 참고영상의 반복 근거에서 실행용 프롬프트 생성
+3. 선택 규칙과 제작안을 이용한 실행용 프롬프트 팩
 4. 비교함 영속 저장 / 보관함 구조
 5. 이후 YouTube 자동 탐색 및 TikTok / Meta 수집 경로 확장
