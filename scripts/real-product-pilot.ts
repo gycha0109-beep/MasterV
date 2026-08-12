@@ -46,9 +46,34 @@ async function analyzeWithQuotaRetry(url: string, id: string) {
   throw new Error("unreachable");
 }
 
+async function loadSelectedCases(allCases: PilotCase[]): Promise<PilotCase[]> {
+  const activePath = path.join(process.cwd(), "fixtures", "real-product-pilot-active.json");
+
+  try {
+    const activeIds = JSON.parse(await readFile(activePath, "utf8")) as string[];
+    const activeSet = new Set(activeIds);
+    const selected = allCases.filter((item) => activeSet.has(item.id));
+
+    if (selected.length === 0) {
+      throw new Error("real-product-pilot-active.json did not match any corpus ids");
+    }
+
+    console.log(`PILOT_SELECTION active=${selected.map((item) => item.id).join(",")}`);
+    return selected;
+  } catch (error) {
+    const code = (error as NodeJS.ErrnoException).code;
+    if (code === "ENOENT") {
+      console.log("PILOT_SELECTION active fixture absent; running full corpus");
+      return allCases;
+    }
+    throw error;
+  }
+}
+
 async function main() {
   const fixturePath = path.join(process.cwd(), "fixtures", "real-product-pilot.json");
-  const cases = JSON.parse(await readFile(fixturePath, "utf8")) as PilotCase[];
+  const allCases = JSON.parse(await readFile(fixturePath, "utf8")) as PilotCase[];
+  const cases = await loadSelectedCases(allCases);
 
   const results = [];
 
@@ -83,10 +108,11 @@ async function main() {
   const failed = results.length - passed;
   const report = {
     generated_at: new Date().toISOString(),
-    total: results.length,
+    corpus_total: allCases.length,
+    selected_total: results.length,
     passed,
     failed,
-    note: "expected_style is user-supplied metadata for later human cross-validation and is not passed to Gemini. Gemini 429 quota responses are retried using the provider-suggested delay when available.",
+    note: "expected_style is user-supplied metadata for later human cross-validation and is not passed to Gemini. When real-product-pilot-active.json exists, only those ids are analyzed. Gemini 429 quota responses are retried using the provider-suggested delay when available.",
     results
   };
 
@@ -98,7 +124,7 @@ async function main() {
     "utf8"
   );
 
-  console.log(`PILOT_SUMMARY total=${results.length} passed=${passed} failed=${failed}`);
+  console.log(`PILOT_SUMMARY corpus=${allCases.length} selected=${results.length} passed=${passed} failed=${failed}`);
 
   if (failed > 0) {
     process.exitCode = 1;
