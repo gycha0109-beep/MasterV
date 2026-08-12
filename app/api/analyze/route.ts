@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { analyzeYouTubeVideo } from "@/lib/gemini";
+import { deriveVideoMetrics } from "@/lib/derived-metrics";
 
 function isYouTubeUrl(value: string) {
   try {
@@ -28,13 +29,15 @@ export async function POST(request: Request) {
     }
 
     const analysis = await analyzeYouTubeVideo(url);
+    const derived_metrics = deriveVideoMetrics(analysis);
 
     return NextResponse.json({
       source: {
         platform: "youtube",
         url
       },
-      analysis
+      analysis,
+      derived_metrics
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : "영상 분석에 실패했습니다.";
