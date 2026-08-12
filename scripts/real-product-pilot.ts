@@ -1,6 +1,7 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { analyzeYouTubeVideo } from "../lib/gemini";
+import { deriveVideoMetrics } from "../lib/derived-metrics";
 
 type PilotCase = {
   id: string;
@@ -83,14 +84,18 @@ async function main() {
 
     try {
       const analysis = await analyzeWithQuotaRetry(item.url, item.id);
+      const derived_metrics = deriveVideoMetrics(analysis);
       const elapsedMs = Date.now() - startedAt;
       results.push({
         ...item,
         status: "pass",
         elapsed_ms: elapsedMs,
-        analysis
+        analysis,
+        derived_metrics
       });
-      console.log(`PILOT_PASS ${item.id} ${elapsedMs}ms ${analysis.structure_label}`);
+      console.log(
+        `PILOT_PASS ${item.id} ${elapsedMs}ms ${analysis.structure_label} demo=${derived_metrics.demonstration.combined_percent}%`
+      );
     } catch (error) {
       const elapsedMs = Date.now() - startedAt;
       const message = error instanceof Error ? error.message : String(error);
@@ -112,7 +117,7 @@ async function main() {
     selected_total: results.length,
     passed,
     failed,
-    note: "expected_style is user-supplied metadata for later human cross-validation and is not passed to Gemini. When real-product-pilot-active.json exists, only those ids are analyzed. Gemini 429 quota responses are retried using the provider-suggested delay when available.",
+    note: "expected_style is user-supplied metadata for later human cross-validation and is not passed to Gemini. When real-product-pilot-active.json exists, only those ids are analyzed. Gemini 429 quota responses are retried using the provider-suggested delay when available. derived_metrics are deterministic calculations over observation_segments and do not make an additional model call.",
     results
   };
 
