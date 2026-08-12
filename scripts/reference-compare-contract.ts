@@ -17,6 +17,11 @@ function makeAnalysis(
   const highDemo = options.demoPercentShape !== "low";
   const firstRole = options.firstRole ?? "훅";
   const secondRole = options.secondRole ?? "제품소개";
+  const secondEnd = highDemo ? 7 : 4;
+
+  const containsProductByEnd = (endSeconds: number) =>
+    firstProduct !== null && endSeconds > firstProduct;
+
   const segments: ObservationSegment[] = [
     {
       start_seconds: 0,
@@ -26,7 +31,7 @@ function makeAnalysis(
         subjects: ["제품"],
         material_types: [material],
         presenter_presence: ["손"],
-        contains_product: firstProduct !== null && firstProduct <= 0
+        contains_product: containsProductByEnd(2)
       },
       action: { type: "제품제시", description: "제품을 보여준다" },
       message_roles: [firstRole],
@@ -42,13 +47,13 @@ function makeAnalysis(
     },
     {
       start_seconds: 2,
-      end_seconds: highDemo ? 7 : 4,
+      end_seconds: secondEnd,
       visual: {
         description: `${id} 제품 사용`,
         subjects: ["제품", "손"],
         material_types: [material],
         presenter_presence: ["손"],
-        contains_product: firstProduct !== null
+        contains_product: containsProductByEnd(secondEnd)
       },
       action: { type: "사용", description: "제품을 사용한다" },
       message_roles: [secondRole, "사용시연"],
@@ -63,14 +68,14 @@ function makeAnalysis(
       confidence: "high"
     },
     {
-      start_seconds: highDemo ? 7 : 4,
+      start_seconds: secondEnd,
       end_seconds: 10,
       visual: {
         description: `${id} 마무리`,
         subjects: ["제품"],
         material_types: [material],
         presenter_presence: ["손"],
-        contains_product: firstProduct !== null
+        contains_product: containsProductByEnd(10)
       },
       action: { type: options.cta === false ? "마무리" : "링크안내", description: "마무리한다" },
       message_roles: [options.cta === false ? "요약" : "CTA"],
@@ -85,10 +90,6 @@ function makeAnalysis(
       confidence: "high"
     }
   ];
-
-  if (firstProduct !== null && firstProduct > 0 && firstProduct < 2) {
-    segments[0].visual.contains_product = true;
-  }
 
   return {
     summary: `${id} 테스트`,
