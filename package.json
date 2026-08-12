@@ -11,6 +11,8 @@
     "test:derived-metrics": "tsx scripts/derived-metrics-contract.ts",
     "test:reference-compare": "tsx scripts/reference-compare-contract.ts",
     "test:evidence-rules": "tsx scripts/evidence-rules-contract.ts",
+    "test:production-concepts": "tsx scripts/production-concepts-contract.ts",
+    "test:prompt-packs": "tsx scripts/prompt-packs-contract.ts",
     "smoke:gemini": "tsx scripts/runtime-smoke.ts",
     "pilot:real-products": "tsx scripts/real-product-pilot.ts"
   },
