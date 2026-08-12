@@ -52,7 +52,21 @@
   - 표본 8개 미만은 high confidence 금지
   - 지지도 50% 미만 또는 지지 영상 2개 미만은 규칙 승격 금지
   - 규칙 반복성과 광고 성과의 인과관계를 명시적으로 분리
-- 단일 참고영상의 관찰·파생 지표를 이용한 실행용 AI 프롬프트 생성
+- Production Concept Compiler
+  - 선택된 근거 규칙에서 제작안 A/B/C 생성
+  - A: 반복 패턴 우선
+  - B: 핵심 + 균형
+  - C: 핵심 고정 실험
+  - A/B/C 차이를 성과 예측 점수가 아니라 규칙 적용 강도로 정의
+- Prompt Pack Compiler
+  - 각 A/B/C 제작안마다 4종 실행 프롬프트 생성
+  - 대본 프롬프트
+  - 촬영 프롬프트
+  - 소재 준비 프롬프트
+  - 편집 프롬프트
+  - 확인되지 않은 효능·수치·후기·전문가 추천의 임의 생성을 금지
+- Creative Workflow
+  - 비교 결과 → 근거 규칙 → 선택 규칙 → A/B/C → 프롬프트 팩을 하나의 결정론적 체인으로 연결
 
 ## 분석 원칙
 
@@ -63,6 +77,8 @@ MasterV의 원시 분석 단위는 `영상 타입`이 아니라 `observation_seg
 다중 비교도 AI에게 다시 자유형 비교를 요청하지 않습니다. 각 영상의 관찰 데이터와 파생 지표를 동일 계산식으로 집계해서 재현 가능한 비교 결과를 만듭니다.
 
 Evidence Rule Compiler 역시 AI 생성기가 아닙니다. 선택된 참고영상에서 반복된 패턴을 코드로 규칙 후보로 변환하며, `8/10에서 반복됨`을 `성과를 만든 원인`으로 승격하지 않습니다. 각 규칙에는 지지 표본, 반례, 신뢰도와 주의사항을 함께 보존합니다.
+
+제작안 A/B/C와 실행 프롬프트도 이 근거 체인을 따라 생성합니다. 차이는 레퍼런스 규칙을 얼마나 강하게 적용할지이며, 특정 안이 더 높은 성과를 낸다고 예측하지 않습니다.
 
 ## 실행
 
@@ -91,6 +107,8 @@ npm run test:observation-contract
 npm run test:derived-metrics
 npm run test:reference-compare
 npm run test:evidence-rules
+npm run test:production-concepts
+npm run test:prompt-packs
 npm run build
 ```
 
@@ -98,8 +116,7 @@ npm run build
 
 ## 다음 단계
 
-1. 근거 규칙을 선택 가능한 제작 입력으로 노출
-2. 근거 기반 제작안 A/B/C
-3. 선택 규칙과 제작안을 이용한 실행용 프롬프트 팩
-4. 비교함 영속 저장 / 보관함 구조
-5. 이후 YouTube 자동 탐색 및 TikTok / Meta 수집 경로 확장
+1. 근거 규칙 선택 UI와 A/B/C / 프롬프트 팩을 실제 사용 플로우에 연결
+2. 실제 상품 단위 사용성 테스트 후 UI/정보 밀도 조정
+3. 비교함 영속 저장 / 보관함 구조
+4. 이후 YouTube 자동 탐색 및 TikTok / Meta 수집 경로 확장
