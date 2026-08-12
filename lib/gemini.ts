@@ -1,5 +1,6 @@
 import { GoogleGenAI } from "@google/genai";
 import { videoAnalysisJsonSchema, type VideoAnalysis } from "@/lib/analysis-schema";
+import { validateVideoAnalysis } from "@/lib/analysis-validation";
 
 const ANALYSIS_PROMPT = `
 당신은 숏폼 상품 영상 역설계 분석가다.
@@ -53,7 +54,8 @@ observation_segments 규칙:
 14. 잠든 연출, 행복해진 표정 같은 재연을 실제 효과가 확인된 결과로 처리하지 않는다.
 15. evidence.observable_result에는 화면에서 결과로 직접 관찰 가능한 변화만 적는다. 없으면 빈 문자열이다.
 16. evidence.result_visually_observable은 실제 결과 변화가 화면에서 확인될 때만 true다.
-17. 소재 출처나 빠른 화면에 확신이 없으면 confidence를 medium/low로 낮추고 추측 대신 불명확을 사용한다.
+17. evidence.types는 항상 하나 이상 기록한다. 대응 근거가 없다면 "근거없음"을 사용한다.
+18. 소재 출처나 빠른 화면에 확신이 없으면 confidence를 medium/low로 낮추고 추측 대신 불명확을 사용한다.
 `;
 
 function getClient() {
@@ -93,5 +95,6 @@ export async function analyzeYouTubeVideo(url: string): Promise<VideoAnalysis> {
     throw new Error("Gemini가 분석 결과를 반환하지 않았습니다.");
   }
 
-  return JSON.parse(raw) as VideoAnalysis;
+  const analysis = JSON.parse(raw) as VideoAnalysis;
+  return validateVideoAnalysis(analysis);
 }
