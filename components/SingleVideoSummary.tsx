@@ -78,11 +78,12 @@ export function SingleVideoSummary({
   const takeaways = buildTakeaways(analysis, metrics);
   const timeline = analysis.observation_segments.slice(0, 8);
   const hiddenCount = Math.max(0, analysis.observation_segments.length - timeline.length);
+  const duration = analysis.duration_seconds ?? metrics.basis_duration_seconds;
   const badges = [
     topMaterial,
     topPresenter ? `${topPresenter} 중심` : null,
     demoLabel(metrics.demonstration.combined_percent),
-    `${Math.round(analysis.duration_seconds)}초`
+    `${Math.round(duration)}초`
   ].filter((item): item is string => Boolean(item));
 
   return (
