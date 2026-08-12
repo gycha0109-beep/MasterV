@@ -34,5 +34,41 @@
     "label": "영양제",
     "expected_style": "큐레이팅 방식",
     "url": "https://www.youtube.com/shorts/-a2xFmspWM8"
+  },
+  {
+    "id": "meal-kit-food-led",
+    "label": "밀키트",
+    "expected_style": "식사 영상",
+    "url": "https://www.youtube.com/shorts/T9Kc4GT8vGA"
+  },
+  {
+    "id": "keyboard-curation-light-demo",
+    "label": "키보드",
+    "expected_style": "큐레이팅 + 약간의 시연",
+    "url": "https://www.youtube.com/shorts/1u3GloCO2ts"
+  },
+  {
+    "id": "frying-pan-photo-montage",
+    "label": "후라이팬",
+    "expected_style": "상품 사진 짜집기",
+    "url": "https://www.youtube.com/shorts/XbyV5n3msIM"
+  },
+  {
+    "id": "stretching-tools-curation-light-demo",
+    "label": "스트레칭 용품 2개",
+    "expected_style": "큐레이팅 + 약간의 시연",
+    "url": "https://www.youtube.com/shorts/3IGFZUSVJys"
+  },
+  {
+    "id": "beauty-health-multi-curation-demo",
+    "label": "인공눈물·페이스 타올·마스크 팩·폼클렌징",
+    "expected_style": "큐레이팅 + 시연 혼합",
+    "url": "https://www.youtube.com/shorts/bpsLhG4MYxU"
+  },
+  {
+    "id": "sunscreen-hands-only-demo",
+    "label": "선크림",
+    "expected_style": "손만 나오는 시연",
+    "url": "https://www.youtube.com/shorts/WrCPsbxtHDA"
   }
 ]
