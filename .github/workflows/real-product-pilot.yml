@@ -27,7 +27,7 @@ jobs:
       - run: npm install
       - name: Verify secret exists
         run: test -n "$GEMINI_API_KEY"
-      - name: Analyze six real product Shorts
+      - name: Analyze real product Shorts corpus
         run: npm run pilot:real-products
       - name: Upload pilot report
         if: always()
