@@ -42,6 +42,7 @@ export type ObservationSegment = {
     subjects: string[];
     material_types: ObservationMaterialType[];
     presenter_presence: string[];
+    contains_product: boolean;
   };
   action: {
     type: string;
@@ -245,9 +246,16 @@ export const videoAnalysisJsonSchema = {
               description: { type: "string" },
               subjects: { type: "array", items: { type: "string" } },
               material_types: { type: "array", items: materialTypeSchema },
-              presenter_presence: { type: "array", items: { type: "string" } }
+              presenter_presence: { type: "array", items: { type: "string" } },
+              contains_product: { type: "boolean" }
             },
-            required: ["description", "subjects", "material_types", "presenter_presence"]
+            required: [
+              "description",
+              "subjects",
+              "material_types",
+              "presenter_presence",
+              "contains_product"
+            ]
           },
           action: {
             type: "object",
