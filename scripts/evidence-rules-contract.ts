@@ -121,7 +121,7 @@ const sequence = rules.rules.find(
   (rule) => rule.title === "제품소개 → 사용시연 → 결과제시"
 );
 assert(sequence, "70% repeated sequence should be promoted");
-assert(sequence?.confidence === "medium", "70% sequence should be medium at sample 10 only if below high threshold?" === "never");
+assert(sequence?.confidence === "medium", "70% support at n=10 should be medium confidence");
 
 const demo = rules.rules.find((rule) => rule.id === "demonstration-include-use-or-demo");
 assert(demo?.confidence === "high", "90% demo support at n=10 should be high confidence");
