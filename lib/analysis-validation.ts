@@ -8,6 +8,7 @@ export function validateVideoAnalysis(analysis: VideoAnalysis): VideoAnalysis {
   }
 
   let previousStart = -1;
+  let previousEnd = -1;
 
   segments.forEach((segment, index) => {
     const prefix = `observation_segments[${index}]`;
@@ -24,7 +25,12 @@ export function validateVideoAnalysis(analysis: VideoAnalysis): VideoAnalysis {
       throw new Error(`${prefix}의 시작 시간이 앞 구간보다 이전입니다.`);
     }
 
+    if (previousEnd >= 0 && segment.start_seconds < previousEnd - 0.01) {
+      throw new Error(`${prefix}가 앞 관찰 구간과 겹칩니다.`);
+    }
+
     previousStart = segment.start_seconds;
+    previousEnd = segment.end_seconds;
 
     if (!segment.visual.description.trim()) {
       throw new Error(`${prefix}.visual.description이 비어 있습니다.`);
@@ -32,6 +38,10 @@ export function validateVideoAnalysis(analysis: VideoAnalysis): VideoAnalysis {
 
     if (segment.visual.material_types.length === 0) {
       throw new Error(`${prefix}.visual.material_types가 비어 있습니다.`);
+    }
+
+    if (typeof segment.visual.contains_product !== "boolean") {
+      throw new Error(`${prefix}.visual.contains_product가 boolean이 아닙니다.`);
     }
 
     if (!segment.action.type.trim()) {
