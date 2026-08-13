@@ -1,10 +1,15 @@
 "use client";
 
 import { useState } from "react";
-import type { SingleVideoProductionGuide as Guide, SingleVideoPromptKind } from "@/lib/single-video-production";
+import type {
+  ProductTruthInput,
+  SingleVideoProductionGuide as Guide,
+  SingleVideoPromptKind
+} from "@/lib/single-video-production";
 
 type Props = {
   guide: Guide;
+  onProductTruthChange: (next: ProductTruthInput) => void;
 };
 
 const promptActions: Array<{
@@ -18,7 +23,7 @@ const promptActions: Array<{
   { kind: "editing", label: "편집 지시", icon: "✂" }
 ];
 
-export function SingleVideoProductionGuide({ guide }: Props) {
+export function SingleVideoProductionGuide({ guide, onProductTruthChange }: Props) {
   const [copiedKind, setCopiedKind] = useState<SingleVideoPromptKind | "raw" | null>(null);
   const [rawOpen, setRawOpen] = useState(false);
   const [assetsOpen, setAssetsOpen] = useState(false);
@@ -30,7 +35,17 @@ export function SingleVideoProductionGuide({ guide }: Props) {
     window.setTimeout(() => setCopiedKind(null), 1400);
   }
 
+  function updateProductTruth<K extends keyof ProductTruthInput>(key: K, value: ProductTruthInput[K]) {
+    onProductTruthChange({ ...guide.product_truth, [key]: value });
+  }
+
   const visibleWarnings = warningsOpen ? guide.critical_warnings : guide.critical_warnings.slice(0, 2);
+  const hasProductTruth = Boolean(
+    guide.product_truth.product_name.trim() ||
+    guide.product_truth.verified_facts.trim() ||
+    guide.product_truth.target_customer.trim() ||
+    guide.product_truth.price_offer.trim()
+  );
 
   return (
     <section className="production-guide compact-production-guide" id="single-video-production-guide">
@@ -105,6 +120,57 @@ export function SingleVideoProductionGuide({ guide }: Props) {
           </ul>
         </article>
       )}
+
+      <article className="product-truth-section">
+        <div className="compact-section-heading product-truth-heading">
+          <div>
+            <span className="guide-label">내 상품 정보</span>
+            <strong>실제로 판매할 상품의 확인된 정보만 넣으세요.</strong>
+          </div>
+          <span className={`product-truth-status ${hasProductTruth ? "ready" : "empty"}`}>
+            {hasProductTruth ? "프롬프트에 반영 중" : "아직 입력 전"}
+          </span>
+        </div>
+
+        <div className="product-truth-grid">
+          <label>
+            <span>상품명</span>
+            <input
+              value={guide.product_truth.product_name}
+              onChange={(event) => updateProductTruth("product_name", event.target.value)}
+              placeholder="예: 초경량 완전자동 우산"
+            />
+          </label>
+          <label>
+            <span>타깃</span>
+            <input
+              value={guide.product_truth.target_customer}
+              onChange={(event) => updateProductTruth("target_customer", event.target.value)}
+              placeholder="예: 출퇴근 직장인"
+            />
+          </label>
+          <label>
+            <span>가격 / 혜택</span>
+            <input
+              value={guide.product_truth.price_offer}
+              onChange={(event) => updateProductTruth("price_offer", event.target.value)}
+              placeholder="예: 29,900원 / 무료배송"
+            />
+          </label>
+          <label className="product-truth-facts">
+            <span>확인된 특징 / 스펙</span>
+            <textarea
+              rows={4}
+              value={guide.product_truth.verified_facts}
+              onChange={(event) => updateProductTruth("verified_facts", event.target.value)}
+              placeholder={"한 줄에 하나씩 입력\n예: 원터치 자동 개폐\n예: 실측 무게 310g\n예: UPF50+ 시험성적서 보유"}
+            />
+          </label>
+        </div>
+        <p className="product-truth-note">
+          참고영상의 스펙·효능·가격은 자동으로 여기 들어오지 않습니다. 입력한 내용만 내 상품 사실로 사용합니다.
+        </p>
+      </article>
 
       <article className="compact-prompt-actions">
         <div className="compact-section-heading inline-heading">
