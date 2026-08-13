@@ -21,6 +21,7 @@
     "test:source-identity": "tsx scripts/analysis-runtime-contract.ts",
     "test:analysis-cache": "tsx scripts/analysis-cache-contract.ts",
     "test:analysis-budget": "tsx scripts/analysis-budget-contract.ts",
+    "test:youtube-discovery": "tsx scripts/youtube-discovery-contract.ts",
     "smoke:gemini": "tsx scripts/runtime-smoke.ts",
     "pilot:real-products": "tsx scripts/real-product-pilot.ts",
     "calibrate:coarse-bundles": "tsx scripts/coarse-bundle-calibration.ts",
