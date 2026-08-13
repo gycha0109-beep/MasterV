@@ -1,62 +1,53 @@
 import { NextResponse } from "next/server";
-import { analyzeYouTubeVideo } from "@/lib/gemini";
+import { AnalysisExecutionBlockedError } from "@/lib/analysis-budget";
+import { analyzeYouTubeDeepManaged } from "@/lib/analysis-service";
 import { deriveVideoMetrics } from "@/lib/derived-metrics";
 import { normalizeGeminiError } from "@/lib/gemini-error";
-
-function isYouTubeUrl(value: string) {
-  try {
-    const url = new URL(value);
-    const host = url.hostname.replace(/^www\./, "");
-    return host === "youtube.com" || host === "youtu.be" || host === "m.youtube.com";
-  } catch {
-    return false;
-  }
-}
+import { isSupportedYouTubeUrl } from "@/lib/source-identity";
 
 export async function POST(request: Request) {
   try {
     const body = (await request.json()) as { url?: string };
     const url = body.url?.trim();
 
-    if (!url) {
-      return NextResponse.json({ error: "영상 URL을 입력해주세요." }, { status: 400 });
+    if (!url) return NextResponse.json({ error: "영상 URL을 입력해주세요." }, { status: 400 });
+    if (!isSupportedYouTubeUrl(url)) {
+      return NextResponse.json({ error: "현재 1차 구현은 공개 YouTube 영상 URL만 지원합니다." }, { status: 400 });
     }
 
-    if (!isYouTubeUrl(url)) {
-      return NextResponse.json(
-        { error: "현재 1차 구현은 공개 YouTube 영상 URL만 지원합니다." },
-        { status: 400 }
-      );
-    }
-
-    const analysis = await analyzeYouTubeVideo(url);
-    const derived_metrics = deriveVideoMetrics(analysis);
+    const managed = await analyzeYouTubeDeepManaged(url);
+    const derived_metrics = deriveVideoMetrics(managed.analysis);
 
     return NextResponse.json({
       source: {
-        platform: "youtube",
-        url
+        platform: managed.source.platform,
+        source_id: managed.source.source_id,
+        url: managed.source.canonical_url,
+        requested_url: url
       },
-      analysis,
-      derived_metrics
+      analysis: managed.analysis,
+      derived_metrics,
+      execution: managed.execution
     });
   } catch (error) {
-    const normalized = normalizeGeminiError(error);
-
-    if (normalized.is_rate_limit) {
-      return NextResponse.json(
-        {
-          error: normalized.message,
-          code: "GEMINI_RATE_LIMIT",
-          rate_limit: normalized.diagnostic
-        },
-        { status: 429 }
-      );
+    if (error instanceof AnalysisExecutionBlockedError) {
+      return NextResponse.json({
+        error: error.message,
+        code: "ANALYSIS_QUEUE_BLOCKED",
+        queue_status: error.status,
+        model: error.model
+      }, { status: 429 });
     }
 
-    return NextResponse.json(
-      { error: normalized.message },
-      { status: 500 }
-    );
+    const normalized = normalizeGeminiError(error);
+    if (normalized.is_rate_limit) {
+      return NextResponse.json({
+        error: normalized.message,
+        code: "GEMINI_RATE_LIMIT",
+        rate_limit: normalized.diagnostic
+      }, { status: 429 });
+    }
+
+    return NextResponse.json({ error: normalized.message }, { status: 500 });
   }
 }
