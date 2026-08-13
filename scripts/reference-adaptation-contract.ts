@@ -1,6 +1,7 @@
-import type { VideoAnalysis, ObservationSegment } from "../lib/analysis-schema";
+import type { ObservationSegment, VideoAnalysis } from "../lib/analysis-schema";
 import { deriveVideoMetrics } from "../lib/derived-metrics";
 import { compileSingleVideoProductionGuide } from "../lib/single-video-production";
+import type { ProductTruthInterpretation } from "../lib/product-truth-interpretation";
 
 function assert(condition: unknown, message: string) {
   if (!condition) throw new Error(message);
@@ -11,29 +12,27 @@ function segment(
   end: number,
   scenePurpose: string,
   actionType: string,
-  actionDescription: string,
   roles: string[],
-  claims: string[] = [],
-  scope: ObservationSegment["evidence"]["scope"] = "판매제품직접",
-  subjectRole: ObservationSegment["visual"]["subject_role"] = "판매제품"
+  subjectRole: ObservationSegment["visual"]["subject_role"] = "판매제품",
+  scope: ObservationSegment["evidence"]["scope"] = "판매제품직접"
 ): ObservationSegment {
   return {
     start_seconds: start,
     end_seconds: end,
     visual: {
       description: scenePurpose,
-      subjects: [subjectRole === "판매제품" ? "판매 우산" : "일반 우산"],
+      subjects: [subjectRole === "판매제품" ? "판매 제품" : "일반 사례"],
       material_types: subjectRole === "판매제품" ? ["직접촬영", "상품실물"] : ["외부자료"],
       presenter_presence: ["손"],
       subject_role: subjectRole,
       contains_product: subjectRole === "판매제품"
     },
-    action: { type: actionType, description: actionDescription },
+    action: { type: actionType, description: scenePurpose },
     scene_purpose: scenePurpose,
     message_roles: roles,
     spoken_text: "",
     on_screen_text: "",
-    claims,
+    claims: [],
     evidence: {
       types: scope === "판매제품직접" ? ["직접시연"] : ["외부자료"],
       scope,
@@ -46,8 +45,8 @@ function segment(
 }
 
 const analysis: VideoAnalysis = {
-  summary: "우산 기능을 여러 장면으로 직접 시연하는 상품 숏폼",
-  structure_label: "문제 → 기능 시연 → CTA",
+  summary: "문제 뒤 여러 기능을 보여주는 상품 숏폼",
+  structure_label: "문제 → 시연 → CTA",
   duration_seconds: 25,
   hook: { type: "문제제기", text: "", visual: "", duration_seconds: 2 },
   product_presentation: {
@@ -60,8 +59,8 @@ const analysis: VideoAnalysis = {
     hand_present: true
   },
   persuasion: {
-    problem: "기존 우산 불편",
-    solution: "판매 우산",
+    problem: "",
+    solution: "",
     benefit: "",
     proof: "",
     social_proof: "",
@@ -69,55 +68,71 @@ const analysis: VideoAnalysis = {
     cta: "상세보기",
     emotional_trigger: ""
   },
-  presentation: {
-    format: "",
-    presenter_type: "",
-    caption_style: "",
-    visual_style: "",
-    music_role: ""
-  },
+  presentation: { format: "", presenter_type: "", caption_style: "", visual_style: "", music_role: "" },
   transcript: { full: "", segments: [] },
   scenes: [],
   observation_segments: [
-    segment(0, 2, "기존 작은 우산 사용 불편 제시", "문제제시", "비 오는 날 바지가 젖는 문제를 보여준다", ["문제제기", "훅"], [], "비교/일반예시", "일반예시"),
-    segment(2, 5, "완전 자동 개폐 기능 직접 시연", "자동개폐", "버튼으로 우산을 자동으로 펼치고 접는다", ["제품소개", "사용시연", "기능설명"], ["완전 자동 우산이다"]),
-    segment(5, 8, "3중 유리섬유 살대 내구성 시연", "내구시연", "살대를 반대로 구부려 탄성을 보여준다", ["사용시연", "기능설명"], ["3중 유리섬유 살대다"]),
-    segment(8, 12, "방수·발수 성능 직접 시연", "발수시연", "우산에 물을 뿌리고 털어낸다", ["사용시연", "기능설명", "결과제시"], ["방수 가능하다"]),
-    segment(12, 15, "자외선 차단 기능 설명", "UV설명", "햇빛 B-roll과 자외선 차단 설명을 보여준다", ["기능설명"], ["자외선 차단 기능이 있다"], "연출/보조", "제품없음"),
-    segment(15, 19, "버클형 고리 휴대성 시연", "휴대시연", "버클 고리를 가방에 체결한다", ["사용시연", "기능설명"], ["버클형 고리로 휴대할 수 있다"]),
-    segment(19, 25, "구매 상세보기 CTA", "CTA", "상품 상세보기를 안내한다", ["CTA"], [])
+    segment(0, 2, "기존 제품 사용 불편 제시", "문제제시", ["문제제기", "훅"], "일반예시", "비교/일반예시"),
+    segment(2, 5, "버튼으로 자동 개폐 기능 직접 시연", "자동개폐", ["제품소개", "사용시연", "기능설명"]),
+    segment(5, 8, "살대를 크게 구부려 내구성 시연", "내구시연", ["사용시연", "기능설명"]),
+    segment(8, 12, "원단에 물을 뿌려 발수 성능 시연", "발수시연", ["사용시연", "기능설명", "결과제시"]),
+    segment(12, 15, "햇빛 B-roll로 자외선 차단 기능 설명", "UV설명", ["기능설명"], "제품없음", "연출/보조"),
+    segment(15, 19, "가방에 제품을 연결해 휴대성 시연", "휴대시연", ["사용시연", "기능설명"]),
+    segment(19, 25, "구매 상세보기 CTA", "CTA", ["CTA"])
   ],
   tags: [],
   confidence_notes: []
 };
 
 const metrics = deriveVideoMetrics(analysis);
+const rawFacts = ["물 존나 잘튕김", "200그람", "가방에 걍 쏙"];
+const interpretation: ProductTruthInterpretation = {
+  version: "v1",
+  source_facts: rawFacts,
+  mechanism_matches: [
+    { mechanism_id: "m1", status: "matched", matched_facts: [], application_mode: "support_only", confidence: "high", rationale: "구조 메커니즘" },
+    { mechanism_id: "m2", status: "unmatched", matched_facts: [], application_mode: "not_applicable", confidence: "high", rationale: "자동 개폐 사실 없음" },
+    { mechanism_id: "m3", status: "unmatched", matched_facts: [], application_mode: "not_applicable", confidence: "high", rationale: "내구 사실 없음" },
+    { mechanism_id: "m4", status: "matched", matched_facts: ["물 존나 잘튕김"], application_mode: "direct_demo", confidence: "medium", rationale: "물 관련 사실을 직접 보여줄 수 있음" },
+    { mechanism_id: "m5", status: "unmatched", matched_facts: [], application_mode: "not_applicable", confidence: "high", rationale: "자외선 관련 사실 없음" },
+    { mechanism_id: "m6", status: "matched", matched_facts: ["200그람", "가방에 걍 쏙"], application_mode: "direct_demo", confidence: "medium", rationale: "휴대성을 직접 보여줄 수 있음" },
+    { mechanism_id: "m7", status: "matched", matched_facts: [], application_mode: "information", confidence: "high", rationale: "구조 메커니즘" }
+  ]
+};
+
 const guide = compileSingleVideoProductionGuide(analysis, metrics, {
   product_name: "자동 단우산",
-  verified_facts: "무게 200g\n방수 가능\n자외선 차단\n휴대용 주머니 있음",
+  verified_facts: rawFacts.join("\n"),
   target_customer: "모르겠음",
-  price_offer: "8900원 / 로켓배송"
+  price_offer: "8900/로켓배송",
+  interpretation
 });
 
 const flow = guide.production_steps.map((step) => `${step.title} ${step.detail}`).join("\n");
-const scriptPrompt = guide.prompts.script;
+const prompt = guide.prompts.script;
 
-assert(guide.production_steps.some((step) => step.title === "방수·발수 시연"), "verified water fact should adapt into a water demonstration mechanism");
-assert(guide.production_steps.some((step) => step.title === "UV 정보"), "verified UV fact should adapt into an informational mechanism");
-assert(guide.production_steps.some((step) => step.title === "휴대성 시연"), "verified portability fact should adapt into a portability mechanism");
-assert(guide.production_steps.some((step) => step.title === "CTA"), "CTA must survive target adaptation");
-assert(!flow.includes("완전 자동"), "reference automation feature must not survive when Product Truth has no automation fact");
-assert(!flow.includes("3중 유리섬유"), "reference durability material must not survive when Product Truth has no durability fact");
-assert(!flow.includes("버클"), "reference-specific buckle feature must be replaced by the target product portability fact");
-assert(flow.includes("휴대용 주머니 있음"), "target portability fact should replace the reference-specific portability implementation");
-assert(guide.excluded_reference_mechanisms.some((item) => item.mechanism === "automation_demo"), "unmatched automation mechanism should be tracked as excluded");
-assert(guide.excluded_reference_mechanisms.some((item) => item.mechanism === "durability_demo"), "unmatched durability mechanism should be tracked as excluded");
-assert(scriptPrompt.includes("[추천 제작 흐름 — Product Truth 적용 완료]"), "final prompt must explicitly state that target adaptation has already been applied");
-assert(scriptPrompt.includes("[내 상품에 없어 제외된 참고 메커니즘]"), "final prompt must expose exclusions so downstream AI cannot silently restore them");
-assert(!scriptPrompt.includes("3중 유리섬유 살대로"), "final prompt must not reintroduce excluded reference durability claims as target-product instructions");
-assert(!scriptPrompt.includes("버클형 고리로"), "final prompt must not reintroduce excluded reference portability implementation");
-assert(scriptPrompt.includes("방수 가능"), "verified target-product fact must remain available in final prompt");
-assert(scriptPrompt.includes("자외선 차단"), "verified target-product UV fact must remain available in final prompt");
-assert(scriptPrompt.includes("휴대용 주머니 있음"), "verified target-product portability fact must remain available in final prompt");
+assert(guide.interpretation_ready, "semantic interpretation should be accepted when source facts exactly match current raw facts");
+assert(flow.includes("물 존나 잘튕김"), "free-form water wording must survive exactly as user authority");
+assert(flow.includes("200그람"), "free-form weight wording must survive exactly as user authority");
+assert(flow.includes("가방에 걍 쏙"), "free-form portability wording must survive exactly as user authority");
+assert(flow.includes("모르겠음"), "target text must be preserved as user input rather than hard-coded to null");
+assert(!flow.includes("자동 개폐"), "unmatched reference automation feature must not survive target adaptation");
+assert(!flow.includes("내구성 시연"), "unmatched durability mechanism must not survive target adaptation");
+assert(!flow.includes("자외선 차단"), "unmatched UV reference feature must not survive target adaptation");
+assert(prompt.includes("상품명 원문: 자동 단우산"), "product name raw input must be preserved in prompt");
+assert(prompt.includes("타깃 원문: 모르겠음"), "target raw input must be preserved in prompt");
+assert(prompt.includes("물 존나 잘튕김"), "prompt must keep exact free-form Product Truth wording");
+assert(!prompt.includes("IPX8"), "semantic interpretation must not strengthen user wording into invented certification/specs");
+assert(guide.excluded_reference_mechanisms.length >= 3, "unmatched/unsupported reference mechanisms should be explicitly excluded");
+
+const staleGuide = compileSingleVideoProductionGuide(analysis, metrics, {
+  product_name: "자동 단우산",
+  verified_facts: `${rawFacts.join("\n")}\n새로 추가한 아무 표현`,
+  target_customer: "모르겠음",
+  price_offer: "8900/로켓배송",
+  interpretation
+});
+assert(!staleGuide.interpretation_ready, "editing raw facts must invalidate the previous semantic interpretation");
+assert(staleGuide.critical_warnings.some((item) => item.includes("의미 해석 전")), "stale interpretation must surface a visible warning");
 
 console.log("REFERENCE_ADAPTATION_CONTRACT_PASS");
