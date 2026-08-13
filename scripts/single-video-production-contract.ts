@@ -133,6 +133,8 @@ assert(guide.production_steps.some((step) => step.title === "CTA"), "CTA should 
 assert(guide.asset_groups.length === 4, "default production UI should expose exactly four asset groups");
 assert(guide.asset_groups.some((group) => group.title === "제품 실물" && group.items.includes("판매할 상품 실물")), "selling product asset should be required");
 assert(guide.asset_groups.some((group) => group.title === "비교·보조 자료" && group.items.length > 0), "comparison/support assets should remain available behind details");
+assert(guide.asset_groups.some((group) => group.title === "상품 정보" && group.items.every((item) => !item.includes("기능이 작동한다"))), "reference claims must never be promoted into product information");
+assert(guide.reference_claims.includes("기능이 작동한다"), "reference claims should be preserved in a separate unverified layer");
 assert(guide.critical_warnings.some((item) => item.includes("일반 사례")), "comparison/example warning should be generated");
 assert(!guide.critical_warnings.some((item) => item.includes("그대로 복사")), "global guardrails should not clutter the visible warning list");
 assert(guide.prompts.script.includes("[작업: 대본]"), "script prompt must be task-specific");
@@ -140,7 +142,39 @@ assert(guide.prompts.shooting.includes("[작업: 촬영]"), "shooting prompt mus
 assert(guide.prompts.assets.includes("[작업: 소재 준비]"), "asset prompt must be task-specific");
 assert(guide.prompts.editing.includes("[작업: 편집]"), "editing prompt must be task-specific");
 assert(guide.prompts.script.includes("그대로 복사하지"), "hidden system guardrails must still be embedded in prompts");
+assert(guide.prompts.script.includes("[참고영상 주장 — 상품 사실 아님]"), "prompt must explicitly separate reference claims from product truth");
+assert(guide.prompts.script.includes("기능이 작동한다 [참고영상 주장 / 내 상품 적용 전 확인 필요]"), "reference claim must be labeled as unverified for the target product");
+assert(guide.prompts.script.includes("[내 상품 정보]\n- 아직 입력되지 않음"), "missing target product truth must remain explicit");
 assert(guide.raw_prompt.includes("대본, 촬영 구성, 준비 소재, 편집 지시"), "raw prompt should remain available as an advanced combined request");
 assert(guide.prompts.script !== guide.prompts.editing, "prompt packs must not collapse into one identical prompt");
+
+const demoSegment = analysis.observation_segments[1];
+const ctaSegment = analysis.observation_segments[2];
+const crowdedAnalysis: VideoAnalysis = {
+  ...analysis,
+  duration_seconds: 18,
+  observation_segments: [
+    ...Array.from({ length: 8 }, (_, index) => ({
+      ...demoSegment,
+      start_seconds: index * 2,
+      end_seconds: index * 2 + 2,
+      action: {
+        type: `기능시연${index + 1}`,
+        description: `기능 ${index + 1}을 직접 시연한다`
+      },
+      scene_purpose: `기능 ${index + 1} 설명`,
+      claims: [`기능 주장 ${index + 1}`]
+    })),
+    {
+      ...ctaSegment,
+      start_seconds: 16,
+      end_seconds: 18
+    }
+  ]
+};
+
+const crowdedGuide = compileSingleVideoProductionGuide(crowdedAnalysis, deriveVideoMetrics(crowdedAnalysis));
+assert(crowdedGuide.production_steps.length === 9, "compact flow may expand by one slot to preserve a late CTA");
+assert(crowdedGuide.production_steps.at(-1)?.title === "CTA", "late CTA must never be dropped by the compact step limit");
 
 console.log("SINGLE_VIDEO_PRODUCTION_CONTRACT_PASS");
