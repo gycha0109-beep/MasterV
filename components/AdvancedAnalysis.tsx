@@ -43,14 +43,14 @@ export function AdvancedAnalysis({ analysis, metrics }: { analysis: VideoAnalysi
       </div>
 
       <section className="stat-grid metric-stat-grid">
-        <article className="stat-card emphasis-card"><span>상품 첫 등장</span><strong>{formatSeconds(metrics.product.first_seen_seconds)}</strong><small>관찰 구간 기준</small></article>
+        <article className="stat-card emphasis-card"><span>상품 첫 등장</span><strong>{formatSeconds(metrics.product.first_seen_seconds)}</strong><small>판매 제품 관찰 구간 기준</small></article>
         <article className="stat-card"><span>상품 노출</span><strong>{formatPercent(metrics.product.visible_percent)}</strong><small>{metrics.product.visible_seconds}초 · {metrics.product.segment_count}구간</small></article>
         <article className="stat-card"><span>사용 / 시연</span><strong>{formatPercent(metrics.demonstration.combined_percent)}</strong><small>{metrics.demonstration.combined_seconds}초 · {metrics.demonstration.combined_segment_count}구간</small></article>
         <article className="stat-card"><span>CTA 시작</span><strong>{formatSeconds(metrics.cta.first_seen_seconds)}</strong><small>{metrics.cta.segment_count}구간</small></article>
       </section>
 
       <section className="first-three-panel panel">
-        <div className="panel-heading"><div><span className="section-kicker">첫 3초</span><h3>시작을 무엇으로 만들었나</h3></div><span>제품 {metrics.first_three_seconds.product_visible ? "등장" : "미등장"}</span></div>
+        <div className="panel-heading"><div><span className="section-kicker">첫 3초</span><h3>시작을 무엇으로 만들었나</h3></div><span>판매 제품 {metrics.first_three_seconds.product_visible ? "등장" : "미등장"}</span></div>
         <div className="first-three-grid">
           <div className="first-three-main">
             <div className="big-signal"><span>첫 행동</span><strong>{metrics.first_three_seconds.actions.join(" · ") || "확인 불가"}</strong></div>
@@ -69,8 +69,15 @@ export function AdvancedAnalysis({ analysis, metrics }: { analysis: VideoAnalysi
       <section className="three-column">
         <article className="panel compact-metric-panel"><span className="section-kicker">제품 사용</span><strong>{metrics.demonstration.direct_use_segment_count}회</strong><p>{metrics.demonstration.direct_use_seconds}초 동안 실제 사용·섭취·착용</p></article>
         <article className="panel compact-metric-panel"><span className="section-kicker">기능 시연</span><strong>{metrics.demonstration.direct_demo_segment_count}회</strong><p>{metrics.demonstration.direct_demo_seconds}초 동안 기능·작동을 직접 보여줌</p></article>
-        <article className="panel compact-metric-panel"><span className="section-kicker">관찰 가능한 결과</span><strong>{metrics.demonstration.visually_observable_result_segment_count}회</strong><p>{metrics.demonstration.visually_observable_result_seconds}초 동안 결과 변화가 화면에서 확인됨</p></article>
+        <article className="panel compact-metric-panel"><span className="section-kicker">판매 제품 결과</span><strong>{metrics.demonstration.visually_observable_result_segment_count}회</strong><p>{metrics.demonstration.visually_observable_result_seconds}초 동안 판매 제품에서 직접 확인되는 결과</p></article>
       </section>
+
+      {metrics.demonstration.contextual_or_comparison_result_segment_count > 0 && (
+        <section className="confidence-box">
+          <strong>비교·예시 결과 별도 집계</strong>
+          <span>• 판매 제품 성능으로 합산하지 않은 결과 장면 {metrics.demonstration.contextual_or_comparison_result_segment_count}개 · {metrics.demonstration.contextual_or_comparison_result_seconds}초</span>
+        </section>
+      )}
 
       <section className="two-column analysis-columns">
         <article className="panel"><div className="panel-heading compact-heading"><div><span className="section-kicker">메시지 역할</span><h3>무슨 일을 하는 구간이 많나</h3></div></div><CoverageBars items={metrics.message_roles} emptyText="메시지 역할을 집계하지 못했습니다." /></article>
@@ -80,9 +87,13 @@ export function AdvancedAnalysis({ analysis, metrics }: { analysis: VideoAnalysi
             <div><span>주장</span><strong>{metrics.claims_and_evidence.claim_count}개</strong></div>
             <div><span>주장 포함 구간</span><strong>{metrics.claims_and_evidence.claim_segment_count}</strong></div>
             <div className={metrics.claims_and_evidence.claim_segments_with_no_evidence > 0 ? "warning-number" : ""}><span>화면상 근거 없음</span><strong>{metrics.claims_and_evidence.claim_segments_with_no_evidence}</strong></div>
-            <div><span>결과 직접 확인</span><strong>{metrics.claims_and_evidence.claim_segments_with_visually_observable_result}</strong></div>
+            <div><span>판매 제품 결과 직접 확인</span><strong>{metrics.claims_and_evidence.claim_segments_with_visually_observable_result}</strong></div>
           </div>
           <CoverageBars items={metrics.claims_and_evidence.evidence_types} emptyText="근거 유형을 집계하지 못했습니다." />
+          <div style={{ marginTop: 20 }}>
+            <span className="mini-title">근거 적용 범위</span>
+            <CoverageBars items={metrics.claims_and_evidence.evidence_scopes} emptyText="근거 범위를 집계하지 못했습니다." />
+          </div>
         </article>
       </section>
 
@@ -93,15 +104,16 @@ export function AdvancedAnalysis({ analysis, metrics }: { analysis: VideoAnalysi
             <article className="observation-row" key={`${segment.start_seconds}-${index}`}>
               <div className="observation-time"><strong>{segment.start_seconds}–{segment.end_seconds}</strong><span>초</span></div>
               <div className="observation-body">
-                <div className="observation-title-row"><strong>{segment.action.type}</strong><span className={`confidence-pill confidence-${segment.confidence}`}>{segment.confidence}</span></div>
+                <div className="observation-title-row"><strong>{segment.scene_purpose}</strong><span className={`confidence-pill confidence-${segment.confidence}`}>{segment.confidence}</span></div>
                 <p>{segment.visual.description}</p>
-                <div className="chip-group soft-chips">{segment.visual.material_types.map((item) => <span key={item}>{item}</span>)}{segment.message_roles.map((item) => <span key={item}>{item}</span>)}</div>
-                {segment.action.description && <small>{segment.action.description}</small>}
+                <div className="chip-group soft-chips"><span>{segment.visual.subject_role}</span>{segment.visual.material_types.map((item) => <span key={item}>{item}</span>)}{segment.message_roles.map((item) => <span key={item}>{item}</span>)}</div>
+                {segment.action.description && <small>{segment.action.type}: {segment.action.description}</small>}
               </div>
               <div className="observation-evidence">
                 <span className="mini-title">주장 / 근거</span>
                 {segment.claims.length > 0 ? <ul>{segment.claims.map((claim) => <li key={claim}>{claim}</li>)}</ul> : <p className="muted-copy">명시적 주장 없음</p>}
-                <div className="chip-group evidence-chips">{segment.evidence.types.map((type) => <span key={type}>{type}</span>)}</div>
+                <div className="chip-group evidence-chips"><span>{segment.evidence.scope}</span>{segment.evidence.types.map((type) => <span key={type}>{type}</span>)}</div>
+                <small>판매 제품 주장 근거: {segment.evidence.supports_selling_product_claim ? "예" : "아니오"}</small>
                 {segment.evidence.observable_result && <small>관찰 결과: {segment.evidence.observable_result}</small>}
               </div>
             </article>
