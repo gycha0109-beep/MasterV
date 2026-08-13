@@ -1,7 +1,12 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { analyzeYouTubeVideo } from "../lib/gemini";
+import { writeAnalysisReplayFixture, type AnalysisReplayFixtureEntry } from "../lib/analysis-cache";
+import { DEEP_MEDIA_RESOLUTION, DEEP_PROMPT_VERSION, DEEP_SCHEMA_VERSION } from "../lib/analysis-versions";
 import { deriveVideoMetrics } from "../lib/derived-metrics";
+import { normalizeGeminiError } from "../lib/gemini-error";
+import { analyzeYouTubeVideo } from "../lib/gemini";
+import { canonicalizeYouTubeSource } from "../lib/source-identity";
+import { buildAnalysisCacheKey } from "../lib/tiered-analysis";
 
 type PilotCase = {
   id: string;
@@ -12,17 +17,12 @@ type PilotCase = {
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
-function retryDelayMs(message: string): number | null {
-  if (!message.includes("429") && !message.toLowerCase().includes("quota")) {
-    return null;
-  }
-
-  const match = message.match(/retry in\s+([0-9.]+)s/i);
-  if (match) {
-    return Math.ceil(Number(match[1]) * 1000) + 2000;
-  }
-
-  return 65_000;
+function retryDelayMs(error: unknown): number | null {
+  const normalized = normalizeGeminiError(error);
+  if (!normalized.is_rate_limit || !normalized.diagnostic) return null;
+  if (normalized.diagnostic.kind === "RPD" || normalized.diagnostic.kind === "UNKNOWN") return null;
+  if (normalized.diagnostic.retry_after_seconds === null) return null;
+  return normalized.diagnostic.retry_after_seconds * 1000 + 2000;
 }
 
 async function analyzeWithQuotaRetry(url: string, id: string) {
@@ -32,13 +32,8 @@ async function analyzeWithQuotaRetry(url: string, id: string) {
     try {
       return await analyzeYouTubeVideo(url);
     } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      const delay = retryDelayMs(message);
-
-      if (delay === null || attempt === maxAttempts) {
-        throw error;
-      }
-
+      const delay = retryDelayMs(error);
+      if (delay === null || attempt === maxAttempts) throw error;
       console.warn(`PILOT_RATE_LIMIT ${id} attempt=${attempt} retry_after_ms=${delay}`);
       await sleep(delay);
     }
@@ -75,8 +70,9 @@ async function main() {
   const fixturePath = path.join(process.cwd(), "fixtures", "real-product-pilot.json");
   const allCases = JSON.parse(await readFile(fixturePath, "utf8")) as PilotCase[];
   const cases = await loadSelectedCases(allCases);
-
+  const model = process.env.GEMINI_MODEL || "gemini-3.6-flash";
   const results = [];
+  const replayEntries: AnalysisReplayFixtureEntry[] = [];
 
   for (const item of cases) {
     const startedAt = Date.now();
@@ -86,6 +82,27 @@ async function main() {
       const analysis = await analyzeWithQuotaRetry(item.url, item.id);
       const derived_metrics = deriveVideoMetrics(analysis);
       const elapsedMs = Date.now() - startedAt;
+      const source = canonicalizeYouTubeSource(item.url);
+      const cacheKey = buildAnalysisCacheKey({
+        provider: "youtube",
+        source_id: source.source_id,
+        analyzer_tier: "deep",
+        schema_version: DEEP_SCHEMA_VERSION,
+        prompt_version: DEEP_PROMPT_VERSION,
+        model,
+        media_resolution: DEEP_MEDIA_RESOLUTION
+      });
+
+      replayEntries.push({
+        cache_key: cacheKey,
+        source_id: source.source_id,
+        analyzer_tier: "deep",
+        schema_version: DEEP_SCHEMA_VERSION,
+        prompt_version: DEEP_PROMPT_VERSION,
+        model,
+        media_resolution: DEEP_MEDIA_RESOLUTION,
+        value: analysis
+      });
       results.push({
         ...item,
         status: "pass",
@@ -98,42 +115,50 @@ async function main() {
       );
     } catch (error) {
       const elapsedMs = Date.now() - startedAt;
-      const message = error instanceof Error ? error.message : String(error);
+      const normalized = normalizeGeminiError(error);
+      const message = normalized.message;
       results.push({
         ...item,
         status: "fail",
         elapsed_ms: elapsedMs,
-        error: message
+        error: message,
+        rate_limit: normalized.diagnostic
       });
       console.error(`PILOT_FAIL ${item.id} ${elapsedMs}ms ${message}`);
+
+      if (normalized.is_rate_limit && ["RPD", "UNKNOWN"].includes(normalized.diagnostic?.kind ?? "")) {
+        console.error(`PILOT_STOP_RATE_LIMIT kind=${normalized.diagnostic?.kind ?? "UNKNOWN"}`);
+        break;
+      }
     }
   }
 
   const passed = results.filter((item) => item.status === "pass").length;
   const failed = results.length - passed;
+  const generatedAt = new Date().toISOString();
   const report = {
-    generated_at: new Date().toISOString(),
+    generated_at: generatedAt,
     corpus_total: allCases.length,
     selected_total: results.length,
     passed,
     failed,
-    note: "expected_style is user-supplied metadata for later human cross-validation and is not passed to Gemini. When real-product-pilot-active.json exists, only those ids are analyzed. Gemini 429 quota responses are retried using the provider-suggested delay when available. derived_metrics are deterministic calculations over observation_segments and do not make an additional model call.",
+    note: "expected_style is user-supplied metadata and is not passed to Gemini. Only explicit RPM/TPM retry hints may be retried. UNKNOWN/RPD rate limits stop the pilot without automatic hammering. Successful Deep outputs are also emitted as an analysis-replay-v1 fixture with the exact runtime cache key.",
     results
   };
 
   const outDir = path.join(process.cwd(), "artifacts");
   await mkdir(outDir, { recursive: true });
-  await writeFile(
-    path.join(outDir, "real-product-pilot.json"),
-    JSON.stringify(report, null, 2),
-    "utf8"
-  );
+  await writeFile(path.join(outDir, "real-product-pilot.json"), JSON.stringify(report, null, 2), "utf8");
+  await writeAnalysisReplayFixture(path.join(outDir, "analysis-replay-deep.json"), {
+    version: "analysis-replay-v1",
+    generated_at: generatedAt,
+    entries: replayEntries
+  });
 
+  console.log(`PILOT_REPLAY entries=${replayEntries.length}`);
   console.log(`PILOT_SUMMARY corpus=${allCases.length} selected=${results.length} passed=${passed} failed=${failed}`);
 
-  if (failed > 0) {
-    process.exitCode = 1;
-  }
+  if (failed > 0) process.exitCode = 1;
 }
 
 main().catch((error) => {
