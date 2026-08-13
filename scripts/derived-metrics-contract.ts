@@ -48,15 +48,19 @@ const analysis: VideoAnalysis = {
         subjects: ["손", "제품"],
         material_types: ["직접촬영", "상품실물"],
         presenter_presence: ["손"],
+        subject_role: "판매제품",
         contains_product: true
       },
       action: { type: "제품제시", description: "제품을 들어 보여준다" },
+      scene_purpose: "판매 제품 소개",
       message_roles: ["훅", "제품소개"],
       spoken_text: "",
       on_screen_text: "",
       claims: [],
       evidence: {
         types: ["근거없음"],
+        scope: "해당없음",
+        supports_selling_product_claim: false,
         observable_result: "",
         result_visually_observable: false
       },
@@ -70,15 +74,19 @@ const analysis: VideoAnalysis = {
         subjects: ["손", "제품"],
         material_types: ["직접촬영", "상품실물"],
         presenter_presence: ["손"],
+        subject_role: "판매제품",
         contains_product: true
       },
       action: { type: "도포", description: "제품을 손에 바른다" },
+      scene_purpose: "사용 방법 시연",
       message_roles: ["사용시연"],
       spoken_text: "",
       on_screen_text: "",
       claims: [],
       evidence: {
         types: ["직접사용"],
+        scope: "판매제품직접",
+        supports_selling_product_claim: false,
         observable_result: "",
         result_visually_observable: false
       },
@@ -92,15 +100,19 @@ const analysis: VideoAnalysis = {
         subjects: ["제품", "결과"],
         material_types: ["직접촬영", "상품실물"],
         presenter_presence: ["손"],
+        subject_role: "판매제품",
         contains_product: true
       },
       action: { type: "기능시연", description: "제품 작동과 결과를 보여준다" },
+      scene_purpose: "판매 제품 기능과 결과 직접 시연",
       message_roles: ["사용시연", "결과제시"],
       spoken_text: "",
       on_screen_text: "",
       claims: ["이 기능이 작동한다"],
       evidence: {
         types: ["직접시연", "관찰가능한결과"],
+        scope: "판매제품직접",
+        supports_selling_product_claim: true,
         observable_result: "작동 전후 변화가 화면에서 이어서 보인다",
         result_visually_observable: true
       },
@@ -114,15 +126,19 @@ const analysis: VideoAnalysis = {
         subjects: ["상품페이지"],
         material_types: ["상품페이지"],
         presenter_presence: ["없음"],
+        subject_role: "판매제품",
         contains_product: true
       },
       action: { type: "링크안내", description: "구매 링크를 안내한다" },
+      scene_purpose: "구매 행동 유도",
       message_roles: ["CTA", "가격/혜택"],
       spoken_text: "",
       on_screen_text: "링크 확인",
       claims: ["지금 할인 중이다"],
       evidence: {
         types: ["근거없음"],
+        scope: "주장만",
+        supports_selling_product_claim: false,
         observable_result: "",
         result_visually_observable: false
       },
@@ -151,6 +167,7 @@ assertEqual("demo-percent", metrics.demonstration.combined_percent, 60);
 assertEqual("direct-use-seconds", metrics.demonstration.direct_use_seconds, 3);
 assertEqual("direct-demo-seconds", metrics.demonstration.direct_demo_seconds, 3);
 assertEqual("visible-result-segments", metrics.demonstration.visually_observable_result_segment_count, 1);
+assertEqual("contextual-result-segments", metrics.demonstration.contextual_or_comparison_result_segment_count, 0);
 assertEqual("claim-count", metrics.claims_and_evidence.claim_count, 2);
 assertEqual("claim-segments-no-evidence", metrics.claims_and_evidence.claim_segments_with_no_evidence, 1);
 assertEqual("cta-first-seen", metrics.cta.first_seen_seconds, 8);
