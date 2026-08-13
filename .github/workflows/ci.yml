@@ -28,4 +28,7 @@ jobs:
       - run: npm run test:reference-adaptation
       - run: npm run test:gemini-rate-limit
       - run: npm run test:tiered-analysis
+      - run: npm run test:source-identity
+      - run: npm run test:analysis-cache
+      - run: npm run test:analysis-budget
       - run: npm run build
