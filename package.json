@@ -8,6 +8,7 @@
     "start": "next start",
     "typecheck": "tsc --noEmit",
     "test:observation-contract": "tsx scripts/observation-contract.ts",
+    "test:subject-attribution": "tsx scripts/subject-attribution-contract.ts",
     "test:derived-metrics": "tsx scripts/derived-metrics-contract.ts",
     "test:reference-compare": "tsx scripts/reference-compare-contract.ts",
     "test:evidence-rules": "tsx scripts/evidence-rules-contract.ts",
@@ -25,7 +26,7 @@
   "devDependencies": {
     "@types/node": "^24.10.0",
     "@types/react": "^19.2.2",
-    "@types/react-dom": "^19.2.2",
+    "@types/react-dom": "^19.2.8",
     "tsx": "^4.20.6",
     "typescript": "^7.0.2"
   }
