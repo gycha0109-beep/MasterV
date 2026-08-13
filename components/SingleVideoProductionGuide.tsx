@@ -34,10 +34,7 @@ const promptActions: Array<{
 
 function interpretationErrorMessage(data: InterpretationApiResponse, status: number) {
   if (status === 429 || data.code === "GEMINI_RATE_LIMIT") {
-    const seconds = data.rate_limit?.retry_after_seconds;
-    return seconds
-      ? `상품 정보 의미 해석 요청이 잠시 제한되었습니다. 약 ${seconds}초 후 다시 시도해주세요.`
-      : "상품 정보 의미 해석 요청이 잠시 제한되었습니다. 잠시 후 다시 시도해주세요.";
+    return data.error || "Gemini 요청 한도에 도달했습니다. 제한 정보를 확인해주세요.";
   }
   return data.error || "상품 정보 의미 해석에 실패했습니다.";
 }
