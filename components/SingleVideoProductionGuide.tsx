@@ -7,36 +7,22 @@ type Props = {
   guide: Guide;
 };
 
-const promptCards: Array<{
+const promptActions: Array<{
   kind: SingleVideoPromptKind;
-  title: string;
-  description: string;
+  label: string;
+  icon: string;
 }> = [
-  {
-    kind: "script",
-    title: "대본 프롬프트",
-    description: "시간대별 화면·행동·내레이션·자막을 새로 구성합니다."
-  },
-  {
-    kind: "shooting",
-    title: "촬영 프롬프트",
-    description: "실제로 찍어야 할 쇼트와 구도·행동·소품을 정리합니다."
-  },
-  {
-    kind: "assets",
-    title: "소재 프롬프트",
-    description: "촬영·편집 전에 준비해야 할 상품·이미지·자료를 체크합니다."
-  },
-  {
-    kind: "editing",
-    title: "편집 프롬프트",
-    description: "컷 구성·자막·제품 노출·CTA까지 편집 지시서로 바꿉니다."
-  }
+  { kind: "script", label: "대본 만들기", icon: "✍" },
+  { kind: "shooting", label: "촬영 계획", icon: "🎥" },
+  { kind: "assets", label: "소재 목록", icon: "📦" },
+  { kind: "editing", label: "편집 지시", icon: "✂" }
 ];
 
 export function SingleVideoProductionGuide({ guide }: Props) {
   const [copiedKind, setCopiedKind] = useState<SingleVideoPromptKind | "raw" | null>(null);
   const [rawOpen, setRawOpen] = useState(false);
+  const [assetsOpen, setAssetsOpen] = useState(false);
+  const [warningsOpen, setWarningsOpen] = useState(false);
 
   async function copy(text: string, kind: SingleVideoPromptKind | "raw") {
     await navigator.clipboard.writeText(text);
@@ -44,84 +30,110 @@ export function SingleVideoProductionGuide({ guide }: Props) {
     window.setTimeout(() => setCopiedKind(null), 1400);
   }
 
-  return (
-    <section className="production-guide" id="single-video-production-guide">
-      <div className="production-guide-heading">
-        <div>
-          <span className="section-kicker">제작 가이드</span>
-          <h3>이 영상을 참고해 만들려면</h3>
-          <p>먼저 사람이 볼 제작 방향을 확인하고, 필요한 AI 작업만 복사하세요.</p>
-        </div>
-      </div>
+  const visibleWarnings = warningsOpen ? guide.critical_warnings : guide.critical_warnings.slice(0, 2);
 
-      <div className="production-guide-grid">
-        <article className="production-guide-card structure-guide-card">
-          <span className="guide-label">추천 구성</span>
-          <div className="guide-flow">
-            {guide.structure_steps.map((step, index) => (
-              <div className="guide-flow-step" key={`${step}-${index}`}>
-                <span>{index + 1}</span>
-                <strong>{step}</strong>
+  return (
+    <section className="production-guide compact-production-guide" id="single-video-production-guide">
+      <header className="production-guide-heading compact-production-heading">
+        <span className="section-kicker">제작 가이드</span>
+        <h3>이 영상을 참고해 만들려면</h3>
+        <p className="production-direction">{guide.direction_summary}</p>
+      </header>
+
+      <article className="production-flow-section">
+        <div className="compact-section-heading">
+          <div>
+            <span className="guide-label">추천 제작 흐름</span>
+            <strong>이 순서만 먼저 보세요.</strong>
+          </div>
+        </div>
+        <div className="production-step-list">
+          {guide.production_steps.map((step, index) => (
+            <div className="production-step-row" key={`${step.title}-${index}`}>
+              <span className="production-step-number">{index + 1}</span>
+              <strong>{step.title}</strong>
+              <p>{step.detail}</p>
+            </div>
+          ))}
+        </div>
+      </article>
+
+      <article className="asset-summary-section">
+        <div className="compact-section-heading inline-heading">
+          <div>
+            <span className="guide-label">준비할 것</span>
+            <strong>필요한 준비물은 네 종류로 묶었습니다.</strong>
+          </div>
+          <button className="text-toggle" onClick={() => setAssetsOpen((value) => !value)}>
+            {assetsOpen ? "체크리스트 접기" : "세부 체크리스트"}
+          </button>
+        </div>
+        <div className="asset-summary-grid">
+          {guide.asset_groups.map((group) => (
+            <div className="asset-summary-chip" key={group.title}>
+              <span>{group.icon}</span>
+              <strong>{group.title}</strong>
+            </div>
+          ))}
+        </div>
+        {assetsOpen && (
+          <div className="asset-detail-grid">
+            {guide.asset_groups.map((group) => (
+              <div className="asset-detail-group" key={group.title}>
+                <strong>{group.icon} {group.title}</strong>
+                <ul>
+                  {group.items.map((item) => <li key={item}>{item}</li>)}
+                </ul>
               </div>
             ))}
           </div>
-        </article>
+        )}
+      </article>
 
-        <article className="production-guide-card">
-          <span className="guide-label">촬영할 장면</span>
-          <ul className="guide-check-list">
-            {guide.shooting_scenes.map((scene) => <li key={scene}>{scene}</li>)}
-          </ul>
-        </article>
-
-        <article className="production-guide-card">
-          <span className="guide-label">준비할 소재</span>
-          <ul className="guide-check-list compact-check-list">
-            {guide.asset_checklist.map((asset) => <li key={asset}>{asset}</li>)}
-          </ul>
-        </article>
-
-        <article className="production-guide-card warning-guide-card">
-          <span className="guide-label">주의할 점</span>
-          <ul className="guide-warning-list">
-            {guide.warnings.map((warning) => <li key={warning}>{warning}</li>)}
-          </ul>
-        </article>
-      </div>
-
-      <div className="prompt-action-section">
-        <div className="prompt-action-heading">
-          <div>
-            <span className="section-kicker">AI에 맡길 작업</span>
-            <h4>필요한 것만 복사</h4>
+      {guide.critical_warnings.length > 0 && (
+        <article className="compact-warning-section">
+          <div className="warning-summary-heading">
+            <strong>⚠ 제작 전 확인할 것 {guide.critical_warnings.length}건</strong>
+            {guide.critical_warnings.length > 2 && (
+              <button className="text-toggle" onClick={() => setWarningsOpen((value) => !value)}>
+                {warningsOpen ? "접기" : "자세히"}
+              </button>
+            )}
           </div>
-          <small>프롬프트 전문을 읽을 필요 없습니다.</small>
+          <ul>
+            {visibleWarnings.map((warning) => <li key={warning}>{warning}</li>)}
+          </ul>
+        </article>
+      )}
+
+      <article className="compact-prompt-actions">
+        <div className="compact-section-heading inline-heading">
+          <div>
+            <span className="guide-label">AI에게 맡기기</span>
+            <strong>필요한 작업만 복사하세요.</strong>
+          </div>
+          <button className="text-toggle" onClick={() => setRawOpen((value) => !value)}>
+            {rawOpen ? "전체 프롬프트 접기" : "전체 프롬프트 보기"}
+          </button>
         </div>
 
-        <div className="prompt-action-grid">
-          {promptCards.map((card) => (
-            <article className="prompt-action-card" key={card.kind}>
-              <div>
-                <strong>{card.title}</strong>
-                <p>{card.description}</p>
-              </div>
-              <button onClick={() => copy(guide.prompts[card.kind], card.kind)}>
-                {copiedKind === card.kind ? "복사됨" : "복사"}
-              </button>
-            </article>
+        <div className="compact-prompt-button-row">
+          {promptActions.map((action) => (
+            <button
+              className="compact-prompt-button"
+              key={action.kind}
+              onClick={() => copy(guide.prompts[action.kind], action.kind)}
+            >
+              <span>{action.icon}</span>
+              <strong>{copiedKind === action.kind ? "복사됨" : action.label}</strong>
+            </button>
           ))}
         </div>
-      </div>
 
-      <div className="raw-prompt-disclosure">
-        <button className="raw-prompt-toggle" onClick={() => setRawOpen((value) => !value)}>
-          <span>AI용 전체 프롬프트</span>
-          <b>{rawOpen ? "접기" : "보기"}</b>
-        </button>
         {rawOpen && (
-          <div className="raw-prompt-body">
+          <div className="raw-prompt-body compact-raw-prompt">
             <div className="raw-prompt-toolbar">
-              <p>대본·촬영·소재·편집을 한 번에 요청할 때 사용하는 전체 프롬프트입니다.</p>
+              <p>대본·촬영·소재·편집을 한 번에 요청하는 고급용 프롬프트입니다.</p>
               <button onClick={() => copy(guide.raw_prompt, "raw")}>
                 {copiedKind === "raw" ? "복사됨" : "전체 복사"}
               </button>
@@ -129,7 +141,7 @@ export function SingleVideoProductionGuide({ guide }: Props) {
             <pre>{guide.raw_prompt}</pre>
           </div>
         )}
-      </div>
+      </article>
     </section>
   );
 }
