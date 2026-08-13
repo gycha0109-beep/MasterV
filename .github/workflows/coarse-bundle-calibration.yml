@@ -47,3 +47,5 @@ jobs:
           name: coarse-bundle-calibration-report
           path: artifacts/coarse-bundle-calibration.json
           if-no-files-found: error
+
+# Bootstrap push trigger retained only for the staged MV-ARCH-1C run.
