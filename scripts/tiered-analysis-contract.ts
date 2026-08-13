@@ -84,7 +84,9 @@ const outputs = [
 assert(validateCoarseInput(inputs).length === 2, "valid coarse input must pass preflight validation");
 
 const schema = buildCoarseAnalysisJsonSchema(inputs.map((item) => item.source_id));
-const schemaSourceIds = schema.properties.videos.items.properties.source_id.enum;
+const schemaVideos = schema.properties.videos;
+const schemaSourceIds = schemaVideos.items.properties.source_id.enum;
+assert(schemaVideos.minItems === 2 && schemaVideos.maxItems === 2, "coarse response schema must require exactly one result per input video");
 assert(schemaSourceIds.length === 2, "coarse response schema must enumerate every expected source_id");
 assert(schemaSourceIds[0] === "yt:A" && schemaSourceIds[1] === "yt:B", "coarse response schema must constrain source_id to exact input IDs");
 assert(!schemaSourceIds.includes("yt:A00:00"), "timestamp-mutated source_id must be impossible in response schema");
