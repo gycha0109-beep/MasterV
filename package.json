@@ -20,7 +20,8 @@
     "test:tiered-analysis": "tsx scripts/tiered-analysis-contract.ts",
     "smoke:gemini": "tsx scripts/runtime-smoke.ts",
     "pilot:real-products": "tsx scripts/real-product-pilot.ts",
-    "calibrate:coarse-bundles": "tsx scripts/coarse-bundle-calibration.ts"
+    "calibrate:coarse-bundles": "tsx scripts/coarse-bundle-calibration.ts",
+    "evaluate:coarse-bundles": "tsx scripts/evaluate-coarse-bundle-calibration.ts"
   },
   "dependencies": {
     "@google/genai": "^2.14.0",
