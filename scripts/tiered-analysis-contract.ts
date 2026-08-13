@@ -1,5 +1,10 @@
 import { buildAnalysisCacheKey, createInitialQueueState, type SearchCandidate } from "../lib/tiered-analysis";
-import { validateCoarseBundle } from "../lib/coarse-analysis";
+import {
+  buildCoarseAnalysisJsonSchema,
+  COARSE_SCHEMA_VERSION,
+  validateCoarseBundle,
+  validateCoarseInput
+} from "../lib/coarse-analysis";
 
 function assert(condition: unknown, message: string) {
   if (!condition) throw new Error(message);
@@ -19,7 +24,7 @@ const keyA = buildAnalysisCacheKey({
   provider: "youtube",
   source_id: candidate.source_id,
   analyzer_tier: "coarse",
-  schema_version: "coarse-v1",
+  schema_version: COARSE_SCHEMA_VERSION,
   prompt_version: "coarse-prompt-v1",
   model: "gemini-3.6-flash",
   media_resolution: "low"
@@ -34,7 +39,7 @@ const keyB = buildAnalysisCacheKey({
   media_resolution: "default"
 });
 assert(keyA !== keyB, "coarse and deep cache keys must never collide");
-assert(keyA.includes("coarse-v1"), "schema version must participate in cache key");
+assert(keyA.includes("coarse-v2"), "current coarse schema version must participate in cache key");
 assert(keyA.includes("coarse-prompt-v1"), "prompt version must participate in cache key");
 
 const queue = createInitialQueueState("2026-08-13-Pacific");
@@ -75,7 +80,24 @@ const outputs = [
     confidence: "medium" as const
   }
 ];
+
+assert(validateCoarseInput(inputs).length === 2, "valid coarse input must pass preflight validation");
+
+const schema = buildCoarseAnalysisJsonSchema(inputs.map((item) => item.source_id));
+const schemaSourceIds = schema.properties.videos.items.properties.source_id.enum;
+assert(schemaSourceIds.length === 2, "coarse response schema must enumerate every expected source_id");
+assert(schemaSourceIds[0] === "yt:A" && schemaSourceIds[1] === "yt:B", "coarse response schema must constrain source_id to exact input IDs");
+assert(!schemaSourceIds.includes("yt:A00:00"), "timestamp-mutated source_id must be impossible in response schema");
+
 assert(validateCoarseBundle(inputs, outputs).length === 2, "valid coarse bundle must pass");
+
+let duplicateInputRejected = false;
+try {
+  validateCoarseInput([inputs[0], { ...inputs[1], source_id: "yt:A" }]);
+} catch {
+  duplicateInputRejected = true;
+}
+assert(duplicateInputRejected, "duplicate input source_id must reject before live API call");
 
 let missingRejected = false;
 try {
@@ -92,6 +114,14 @@ try {
   unknownRejected = true;
 }
 assert(unknownRejected, "unknown source output must reject entire bundle");
+
+let timestampMutationRejected = false;
+try {
+  validateCoarseBundle(inputs, [{ ...outputs[0], source_id: "yt:A00:00" }, outputs[1]]);
+} catch {
+  timestampMutationRejected = true;
+}
+assert(timestampMutationRejected, "timestamp-mutated source output must reject entire bundle");
 
 let duplicateRejected = false;
 try {
