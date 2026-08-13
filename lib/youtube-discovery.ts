@@ -12,14 +12,6 @@ type FetchLike = (input: string | URL | Request, init?: RequestInit) => Promise<
 
 type YouTubeSearchItem = {
   id?: { videoId?: string };
-  snippet?: {
-    title?: string;
-    channelTitle?: string;
-    channelId?: string;
-    description?: string;
-    publishedAt?: string;
-    thumbnails?: Record<string, { url?: string }>;
-  };
 };
 
 type YouTubeVideoItem = {
@@ -49,16 +41,13 @@ type YouTubeVideoItem = {
   };
   status?: {
     embeddable?: boolean;
-    madeForKids?: boolean;
     privacyStatus?: string;
+    selfDeclaredMadeForKids?: boolean;
   };
 };
 
 type YouTubeSearchResponse = {
   items?: YouTubeSearchItem[];
-  nextPageToken?: string;
-  regionCode?: string;
-  pageInfo?: { totalResults?: number; resultsPerPage?: number };
   error?: { message?: string; errors?: Array<{ reason?: string; message?: string }> };
 };
 
@@ -198,7 +187,7 @@ export class YouTubeDiscoveryProvider implements DiscoveryProvider {
           default_audio_language: snippet.defaultAudioLanguage ?? null,
           live_broadcast_content: snippet.liveBroadcastContent ?? null,
           embeddable: video.status?.embeddable ?? null,
-          made_for_kids: video.status?.madeForKids ?? null,
+          self_declared_made_for_kids: video.status?.selfDeclaredMadeForKids ?? null,
           privacy_status: video.status?.privacyStatus ?? null
         }
       }];
@@ -222,7 +211,13 @@ export async function discoverYouTubeCandidates(
   dependencies: { api_key?: string; fetcher?: FetchLike } = {}
 ): Promise<YouTubeDiscoveryResult> {
   const apiKey = dependencies.api_key ?? process.env.YOUTUBE_DATA_API_KEY ?? "";
-  const provider = new YouTubeDiscoveryProvider(apiKey, dependencies.fetcher);
+  const baseFetcher = dependencies.fetcher ?? fetch;
+  let youtubeApiRequests = 0;
+  const countingFetcher: FetchLike = async (input, init) => {
+    youtubeApiRequests += 1;
+    return baseFetcher(input, init);
+  };
+  const provider = new YouTubeDiscoveryProvider(apiKey, countingFetcher);
   const discovered = await provider.search(query, options);
   const prepared = prepareDiscoveryCandidates(discovered, options);
 
@@ -232,7 +227,7 @@ export async function discoverYouTubeCandidates(
     candidates: prepared.candidates,
     diagnostics: {
       ...prepared.diagnostics,
-      youtube_api_requests: discovered.length === 0 ? 1 : 2,
+      youtube_api_requests: youtubeApiRequests,
       gemini_requests: 0
     }
   };
