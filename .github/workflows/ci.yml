@@ -25,5 +25,6 @@ jobs:
       - run: npm run test:production-concepts
       - run: npm run test:prompt-packs
       - run: npm run test:single-video-production
+      - run: npm run test:reference-adaptation
       - run: npm run test:gemini-rate-limit
       - run: npm run build
