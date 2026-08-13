@@ -1,16 +1,6 @@
 name: Real Product Shorts Pilot
 
 on:
-  push:
-    branches:
-      - feat/mvp-foundation
-    paths:
-      - fixtures/real-product-pilot.json
-      - scripts/real-product-pilot.ts
-      - lib/gemini.ts
-      - lib/analysis-schema.ts
-      - package.json
-      - .github/workflows/real-product-pilot.yml
   workflow_dispatch:
 
 jobs:
@@ -29,10 +19,12 @@ jobs:
         run: test -n "$GEMINI_API_KEY"
       - name: Analyze real product Shorts corpus
         run: npm run pilot:real-products
-      - name: Upload pilot report
+      - name: Upload pilot artifacts
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: real-product-pilot-report
-          path: artifacts/real-product-pilot.json
+          path: |
+            artifacts/real-product-pilot.json
+            artifacts/analysis-replay-deep.json
           if-no-files-found: error
