@@ -14,6 +14,7 @@
     "test:evidence-rules": "tsx scripts/evidence-rules-contract.ts",
     "test:production-concepts": "tsx scripts/production-concepts-contract.ts",
     "test:prompt-packs": "tsx scripts/prompt-packs-contract.ts",
+    "test:single-video-production": "tsx scripts/single-video-production-contract.ts",
     "smoke:gemini": "tsx scripts/runtime-smoke.ts",
     "pilot:real-products": "tsx scripts/real-product-pilot.ts"
   },
