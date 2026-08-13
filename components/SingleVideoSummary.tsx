@@ -45,7 +45,7 @@ function buildTakeaways(analysis: VideoAnalysis, metrics: DerivedVideoMetrics) {
     positive.push("상품 페이지보다 직접 촬영한 화면을 중심 소재로 사용합니다.");
   }
   if (metrics.demonstration.visually_observable_result_segment_count >= 2) {
-    positive.push("말로만 설명하지 않고 화면에서 직접 확인되는 결과 장면을 여러 번 배치합니다.");
+    positive.push("말로만 설명하지 않고 판매 제품에서 직접 확인되는 결과 장면을 여러 번 배치합니다.");
   }
 
   if (positive.length < 3) {
@@ -110,18 +110,15 @@ export function SingleVideoSummary({
             <small>{analysis.observation_segments.length}개 관찰 구간</small>
           </div>
           <div className="recipe-list">
-            {timeline.map((segment, index) => {
-              const role = segment.message_roles[0] || segment.action.type;
-              return (
-                <div className="recipe-row" key={`${segment.start_seconds}-${index}`}>
-                  <span className="recipe-time">{segment.start_seconds}–{segment.end_seconds}초</span>
-                  <div>
-                    <strong>{role}</strong>
-                    <p>{segment.visual.description}</p>
-                  </div>
+            {timeline.map((segment, index) => (
+              <div className="recipe-row" key={`${segment.start_seconds}-${index}`}>
+                <span className="recipe-time">{segment.start_seconds}–{segment.end_seconds}초</span>
+                <div>
+                  <strong>{segment.scene_purpose}</strong>
+                  <p>{segment.visual.description}</p>
                 </div>
-              );
-            })}
+              </div>
+            ))}
           </div>
           {hiddenCount > 0 && <p className="detail-hint">상세 분석에서 {hiddenCount}개 구간을 더 볼 수 있습니다.</p>}
         </article>
