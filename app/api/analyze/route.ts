@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { analyzeYouTubeVideo } from "@/lib/gemini";
 import { deriveVideoMetrics } from "@/lib/derived-metrics";
+import { normalizeGeminiError } from "@/lib/gemini-error";
 
 function isYouTubeUrl(value: string) {
   try {
@@ -40,8 +41,22 @@ export async function POST(request: Request) {
       derived_metrics
     });
   } catch (error) {
-    const message = error instanceof Error ? error.message : "영상 분석에 실패했습니다.";
+    const normalized = normalizeGeminiError(error);
 
-    return NextResponse.json({ error: message }, { status: 500 });
+    if (normalized.is_rate_limit) {
+      return NextResponse.json(
+        {
+          error: normalized.message,
+          code: "GEMINI_RATE_LIMIT",
+          rate_limit: normalized.diagnostic
+        },
+        { status: 429 }
+      );
+    }
+
+    return NextResponse.json(
+      { error: normalized.message },
+      { status: 500 }
+    );
   }
 }
