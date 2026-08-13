@@ -1,6 +1,7 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import { analyzeYouTubeCoarseBundle } from "../lib/coarse-analysis";
+import { canonicalizeYouTubeSource } from "../lib/source-identity";
 
 type Fixture = {
   id: string;
@@ -34,15 +35,6 @@ type CalibrationReport = {
   stop_bundle_index?: number;
   runs: CalibrationRun[];
 };
-
-function sourceIdFromUrl(url: string) {
-  const parsed = new URL(url);
-  const watchId = parsed.searchParams.get("v");
-  const pathId = parsed.pathname.split("/").filter(Boolean).at(-1);
-  const videoId = watchId || pathId;
-  if (!videoId) throw new Error(`YouTube source_id를 만들 수 없는 URL입니다: ${url}`);
-  return `yt:${videoId}`;
-}
 
 function isRateLimitError(message: string) {
   return /429|quota|rate.?limit|resource_exhausted/i.test(message);
@@ -99,7 +91,8 @@ async function main() {
       const group = fixtures.slice(index, index + bundleSize);
       if (group.length === 0) continue;
 
-      const sourceIds = group.map((item) => sourceIdFromUrl(item.url));
+      const sources = group.map((item) => canonicalizeYouTubeSource(item.url));
+      const sourceIds = sources.map((source) => source.source_id);
       const bundleIndex = Math.floor(index / bundleSize);
       const started = Date.now();
       console.log(`CALIBRATION_START size=${bundleSize} bundle=${bundleIndex} sources=${sourceIds.join(",")}`);
@@ -107,7 +100,7 @@ async function main() {
       try {
         const analyses = await analyzeYouTubeCoarseBundle(group.map((item, itemIndex) => ({
           source_id: sourceIds[itemIndex],
-          url: item.url
+          url: sources[itemIndex].canonical_url
         })));
         report.runs.push({
           bundle_size: bundleSize,
