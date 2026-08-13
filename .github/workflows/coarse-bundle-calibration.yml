@@ -15,11 +15,6 @@ on:
         description: Number of fixtures to calibrate
         required: false
         default: "8"
-  push:
-    branches:
-      - feat/mvp-foundation
-    paths:
-      - .github/workflows/coarse-bundle-calibration.yml
 
 jobs:
   calibration:
@@ -47,5 +42,3 @@ jobs:
           name: coarse-bundle-calibration-report
           path: artifacts/coarse-bundle-calibration.json
           if-no-files-found: error
-
-# Bootstrap push trigger retained only for the staged MV-ARCH-1C run.
