@@ -22,24 +22,33 @@ function makeAnalysis(
   const containsProductByEnd = (endSeconds: number) =>
     firstProduct !== null && endSeconds > firstProduct;
 
+  const segmentVisual = (description: string, endSeconds: number) => {
+    const containsProduct = containsProductByEnd(endSeconds);
+    return {
+      description,
+      subjects: ["제품"],
+      material_types: [material],
+      presenter_presence: ["손"],
+      subject_role: containsProduct ? "판매제품" as const : "제품없음" as const,
+      contains_product: containsProduct
+    };
+  };
+
   const segments: ObservationSegment[] = [
     {
       start_seconds: 0,
       end_seconds: 2,
-      visual: {
-        description: `${id} 시작 화면`,
-        subjects: ["제품"],
-        material_types: [material],
-        presenter_presence: ["손"],
-        contains_product: containsProductByEnd(2)
-      },
+      visual: segmentVisual(`${id} 시작 화면`, 2),
       action: { type: "제품제시", description: "제품을 보여준다" },
+      scene_purpose: "초반 훅 구성",
       message_roles: [firstRole],
       spoken_text: "",
       on_screen_text: "",
       claims: [],
       evidence: {
         types: ["근거없음"],
+        scope: "해당없음",
+        supports_selling_product_claim: false,
         observable_result: "",
         result_visually_observable: false
       },
@@ -48,20 +57,17 @@ function makeAnalysis(
     {
       start_seconds: 2,
       end_seconds: secondEnd,
-      visual: {
-        description: `${id} 제품 사용`,
-        subjects: ["제품", "손"],
-        material_types: [material],
-        presenter_presence: ["손"],
-        contains_product: containsProductByEnd(secondEnd)
-      },
+      visual: segmentVisual(`${id} 제품 사용`, secondEnd),
       action: { type: "사용", description: "제품을 사용한다" },
+      scene_purpose: "제품 사용 방식 시연",
       message_roles: [secondRole, "사용시연"],
       spoken_text: "",
       on_screen_text: "",
       claims: ["제품 특징을 설명한다"],
       evidence: {
         types: ["직접시연"],
+        scope: containsProductByEnd(secondEnd) ? "판매제품직접" : "해당없음",
+        supports_selling_product_claim: containsProductByEnd(secondEnd),
         observable_result: "",
         result_visually_observable: false
       },
@@ -70,20 +76,17 @@ function makeAnalysis(
     {
       start_seconds: secondEnd,
       end_seconds: 10,
-      visual: {
-        description: `${id} 마무리`,
-        subjects: ["제품"],
-        material_types: [material],
-        presenter_presence: ["손"],
-        contains_product: containsProductByEnd(10)
-      },
+      visual: segmentVisual(`${id} 마무리`, 10),
       action: { type: options.cta === false ? "마무리" : "링크안내", description: "마무리한다" },
+      scene_purpose: options.cta === false ? "영상 마무리" : "구매 행동 유도",
       message_roles: [options.cta === false ? "요약" : "CTA"],
       spoken_text: "",
       on_screen_text: "",
       claims: [],
       evidence: {
         types: ["근거없음"],
+        scope: "해당없음",
+        supports_selling_product_claim: false,
         observable_result: "",
         result_visually_observable: false
       },
