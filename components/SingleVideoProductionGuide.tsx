@@ -1,6 +1,8 @@
 "use client";
 
 import { useState } from "react";
+import type { GeminiRateLimitDiagnostic } from "@/lib/gemini-error";
+import type { ProductTruthInterpretation } from "@/lib/product-truth-interpretation";
 import type {
   ProductTruthInput,
   SingleVideoProductionGuide as Guide,
@@ -10,6 +12,13 @@ import type {
 type Props = {
   guide: Guide;
   onProductTruthChange: (next: ProductTruthInput) => void;
+};
+
+type InterpretationApiResponse = {
+  interpretation?: ProductTruthInterpretation;
+  error?: string;
+  code?: string;
+  rate_limit?: GeminiRateLimitDiagnostic | null;
 };
 
 const promptActions: Array<{
@@ -23,29 +32,90 @@ const promptActions: Array<{
   { kind: "editing", label: "편집 지시", icon: "✂" }
 ];
 
+function interpretationErrorMessage(data: InterpretationApiResponse, status: number) {
+  if (status === 429 || data.code === "GEMINI_RATE_LIMIT") {
+    const seconds = data.rate_limit?.retry_after_seconds;
+    return seconds
+      ? `상품 정보 의미 해석 요청이 잠시 제한되었습니다. 약 ${seconds}초 후 다시 시도해주세요.`
+      : "상품 정보 의미 해석 요청이 잠시 제한되었습니다. 잠시 후 다시 시도해주세요.";
+  }
+  return data.error || "상품 정보 의미 해석에 실패했습니다.";
+}
+
 export function SingleVideoProductionGuide({ guide, onProductTruthChange }: Props) {
   const [copiedKind, setCopiedKind] = useState<SingleVideoPromptKind | "raw" | null>(null);
   const [rawOpen, setRawOpen] = useState(false);
   const [assetsOpen, setAssetsOpen] = useState(false);
   const [warningsOpen, setWarningsOpen] = useState(false);
+  const [interpreting, setInterpreting] = useState(false);
+  const [interpretationError, setInterpretationError] = useState("");
 
-  async function copy(text: string, kind: SingleVideoPromptKind | "raw") {
-    await navigator.clipboard.writeText(text);
-    setCopiedKind(kind);
-    window.setTimeout(() => setCopiedKind(null), 1400);
-  }
-
-  function updateProductTruth<K extends keyof ProductTruthInput>(key: K, value: ProductTruthInput[K]) {
-    onProductTruthChange({ ...guide.product_truth, [key]: value });
-  }
-
-  const visibleWarnings = warningsOpen ? guide.critical_warnings : guide.critical_warnings.slice(0, 2);
-  const hasProductTruth = Boolean(
+  const promptBlocked = guide.interpretation_required && !guide.interpretation_ready;
+  const hasAnyProductInput = Boolean(
     guide.product_truth.product_name.trim() ||
     guide.product_truth.verified_facts.trim() ||
     guide.product_truth.target_customer.trim() ||
     guide.product_truth.price_offer.trim()
   );
+
+  async function copy(text: string, kind: SingleVideoPromptKind | "raw") {
+    if (promptBlocked) return;
+    await navigator.clipboard.writeText(text);
+    setCopiedKind(kind);
+    window.setTimeout(() => setCopiedKind(null), 1400);
+  }
+
+  function updateProductTruth<K extends keyof Omit<ProductTruthInput, "interpretation">>(
+    key: K,
+    value: ProductTruthInput[K]
+  ) {
+    const next: ProductTruthInput = { ...guide.product_truth, [key]: value };
+    if (key === "verified_facts") next.interpretation = undefined;
+    setInterpretationError("");
+    onProductTruthChange(next);
+  }
+
+  async function applyProductTruth() {
+    if (!guide.interpretation_required || interpreting) return;
+    setInterpreting(true);
+    setInterpretationError("");
+
+    try {
+      const response = await fetch("/api/interpret-product-truth", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          verified_facts: guide.product_truth.verified_facts,
+          reference_mechanisms: guide.reference_mechanisms
+        })
+      });
+      const data = (await response.json()) as InterpretationApiResponse;
+      if (!response.ok || !data.interpretation) {
+        setInterpretationError(interpretationErrorMessage(data, response.status));
+        return;
+      }
+
+      onProductTruthChange({
+        ...guide.product_truth,
+        interpretation: data.interpretation
+      });
+    } catch (error) {
+      setInterpretationError(error instanceof Error ? error.message : "상품 정보 의미 해석에 실패했습니다.");
+    } finally {
+      setInterpreting(false);
+    }
+  }
+
+  const visibleWarnings = warningsOpen ? guide.critical_warnings : guide.critical_warnings.slice(0, 2);
+  const statusLabel = interpreting
+    ? "의미 해석 중"
+    : guide.interpretation_ready
+      ? "의미 매칭 완료"
+      : guide.interpretation_required
+        ? "의미 해석 필요"
+        : hasAnyProductInput
+          ? "기본 정보 입력됨"
+          : "아직 입력 전";
 
   return (
     <section className="production-guide compact-production-guide" id="single-video-production-guide">
@@ -59,12 +129,12 @@ export function SingleVideoProductionGuide({ guide, onProductTruthChange }: Prop
         <div className="compact-section-heading">
           <div>
             <span className="guide-label">추천 제작 흐름</span>
-            <strong>이 순서만 먼저 보세요.</strong>
+            <strong>{promptBlocked ? "상품 정보 의미 해석 전의 조건부 흐름입니다." : "이 순서만 먼저 보세요."}</strong>
           </div>
         </div>
         <div className="production-step-list">
           {guide.production_steps.map((step, index) => (
-            <div className="production-step-row" key={`${step.title}-${index}`}>
+            <div className="production-step-row" key={`${step.mechanism}-${index}`}>
               <span className="production-step-number">{index + 1}</span>
               <strong>{step.title}</strong>
               <p>{step.detail}</p>
@@ -125,10 +195,10 @@ export function SingleVideoProductionGuide({ guide, onProductTruthChange }: Prop
         <div className="compact-section-heading product-truth-heading">
           <div>
             <span className="guide-label">내 상품 정보</span>
-            <strong>실제로 판매할 상품의 확인된 정보만 넣으세요.</strong>
+            <strong>자유롭게 입력하세요. 원문은 수정하지 않고 의미 연결만 합니다.</strong>
           </div>
-          <span className={`product-truth-status ${hasProductTruth ? "ready" : "empty"}`}>
-            {hasProductTruth ? "프롬프트에 반영 중" : "아직 입력 전"}
+          <span className={`product-truth-status ${guide.interpretation_ready ? "ready" : "empty"}`}>
+            {statusLabel}
           </span>
         </div>
 
@@ -138,7 +208,7 @@ export function SingleVideoProductionGuide({ guide, onProductTruthChange }: Prop
             <input
               value={guide.product_truth.product_name}
               onChange={(event) => updateProductTruth("product_name", event.target.value)}
-              placeholder="예: 초경량 완전자동 우산"
+              placeholder="예: 자동 단우산"
             />
           </label>
           <label>
@@ -146,7 +216,7 @@ export function SingleVideoProductionGuide({ guide, onProductTruthChange }: Prop
             <input
               value={guide.product_truth.target_customer}
               onChange={(event) => updateProductTruth("target_customer", event.target.value)}
-              placeholder="예: 출퇴근 직장인"
+              placeholder="자유 입력"
             />
           </label>
           <label>
@@ -154,7 +224,7 @@ export function SingleVideoProductionGuide({ guide, onProductTruthChange }: Prop
             <input
               value={guide.product_truth.price_offer}
               onChange={(event) => updateProductTruth("price_offer", event.target.value)}
-              placeholder="예: 29,900원 / 무료배송"
+              placeholder="예: 8,900원 / 로켓배송"
             />
           </label>
           <label className="product-truth-facts">
@@ -163,22 +233,36 @@ export function SingleVideoProductionGuide({ guide, onProductTruthChange }: Prop
               rows={4}
               value={guide.product_truth.verified_facts}
               onChange={(event) => updateProductTruth("verified_facts", event.target.value)}
-              placeholder={"한 줄에 하나씩 입력\n예: 원터치 자동 개폐\n예: 실측 무게 310g\n예: UPF50+ 시험성적서 보유"}
+              placeholder={"한 줄에 하나씩 자유롭게 입력\n예: 물 존나 잘튕김\n예: 200그람\n예: 가방에 걍 쏙"}
             />
           </label>
         </div>
-        <p className="product-truth-note">
-          참고영상의 스펙·효능·가격은 자동으로 여기 들어오지 않습니다. 입력한 내용만 내 상품 사실로 사용합니다.
-        </p>
+
+        <div className="product-truth-apply-row">
+          <p className="product-truth-note">
+            사용자가 쓴 문장은 그대로 Product Truth로 보존합니다. 의미 해석은 참고영상 제작 메커니즘과 연결하는 용도로만 사용합니다.
+          </p>
+          {guide.interpretation_required && (
+            <button
+              className="product-truth-apply-button"
+              disabled={interpreting || guide.interpretation_ready}
+              onClick={applyProductTruth}
+            >
+              {interpreting ? "해석 중..." : guide.interpretation_ready ? "반영 완료" : "제작안에 반영"}
+            </button>
+          )}
+        </div>
+
+        {interpretationError && <p className="product-truth-interpretation-error">{interpretationError}</p>}
       </article>
 
       <article className="compact-prompt-actions">
         <div className="compact-section-heading inline-heading">
           <div>
             <span className="guide-label">AI에게 맡기기</span>
-            <strong>필요한 작업만 복사하세요.</strong>
+            <strong>{promptBlocked ? "상품 정보를 제작안에 반영한 뒤 사용할 수 있습니다." : "필요한 작업만 복사하세요."}</strong>
           </div>
-          <button className="text-toggle" onClick={() => setRawOpen((value) => !value)}>
+          <button className="text-toggle" disabled={promptBlocked} onClick={() => setRawOpen((value) => !value)}>
             {rawOpen ? "전체 프롬프트 접기" : "전체 프롬프트 보기"}
           </button>
         </div>
@@ -188,6 +272,7 @@ export function SingleVideoProductionGuide({ guide, onProductTruthChange }: Prop
             <button
               className="compact-prompt-button"
               key={action.kind}
+              disabled={promptBlocked}
               onClick={() => copy(guide.prompts[action.kind], action.kind)}
             >
               <span>{action.icon}</span>
@@ -196,7 +281,7 @@ export function SingleVideoProductionGuide({ guide, onProductTruthChange }: Prop
           ))}
         </div>
 
-        {rawOpen && (
+        {rawOpen && !promptBlocked && (
           <div className="raw-prompt-body compact-raw-prompt">
             <div className="raw-prompt-toolbar">
               <p>대본·촬영·소재·편집을 한 번에 요청하는 고급용 프롬프트입니다.</p>
