@@ -1,6 +1,6 @@
 .production-guide {
   display: grid;
-  gap: 18px;
+  gap: 16px;
   padding: 26px;
   border: 1px solid #dcd8ee;
   border-radius: 22px;
@@ -8,185 +8,171 @@
   box-shadow: var(--shadow);
 }
 
-.production-guide-heading h3 {
+.compact-production-heading h3 {
   margin: 0 0 7px;
   font-size: 24px;
   letter-spacing: -.025em;
 }
-.production-guide-heading p {
+.production-direction {
   margin: 0;
-  color: var(--muted);
-  font-size: 13px;
+  color: #353948;
+  font-size: 15px;
+  font-weight: 700;
+  line-height: 1.55;
 }
 
-.production-guide-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 14px;
+.guide-label {
+  display: block;
+  margin-bottom: 5px;
+  color: #5f39d4;
+  font-size: 12px;
+  font-weight: 900;
 }
-.production-guide-card {
-  min-width: 0;
+
+.production-flow-section,
+.asset-summary-section,
+.compact-prompt-actions {
   padding: 20px;
   border: 1px solid var(--line);
   border-radius: 17px;
   background: #fbfbfd;
 }
-.structure-guide-card {
-  grid-column: 1 / -1;
-  background: #f8f6ff;
-  border-color: #ddd6ff;
-}
-.warning-guide-card {
-  background: #fffaf7;
-  border-color: #f1dfd7;
-}
-.guide-label {
-  display: block;
+.production-flow-section { background: #f9f7ff; border-color: #e2dcff; }
+
+.compact-section-heading {
   margin-bottom: 14px;
-  color: #5f39d4;
+}
+.compact-section-heading > div { display: grid; gap: 2px; }
+.compact-section-heading strong { font-size: 14px; }
+.inline-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+.text-toggle {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--purple);
   font-size: 12px;
   font-weight: 900;
 }
-.guide-flow {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
+
+.production-step-list { display: grid; }
+.production-step-row {
+  display: grid;
+  grid-template-columns: 28px 118px minmax(0, 1fr);
+  gap: 12px;
+  align-items: start;
+  padding: 11px 0;
+  border-top: 1px solid #e7e2f7;
 }
-.guide-flow-step {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  max-width: 100%;
-  padding: 10px 12px;
-  border-radius: 12px;
-  background: #fff;
-  border: 1px solid #e5e0fa;
-}
-.guide-flow-step span {
+.production-step-row:first-child { border-top: 0; padding-top: 2px; }
+.production-step-number {
   display: grid;
   place-items: center;
-  flex: 0 0 22px;
-  width: 22px;
-  height: 22px;
+  width: 24px;
+  height: 24px;
   border-radius: 50%;
   background: var(--purple);
   color: #fff;
   font-size: 10px;
   font-weight: 900;
 }
-.guide-flow-step strong {
+.production-step-row > strong { padding-top: 3px; font-size: 13px; }
+.production-step-row p {
+  margin: 2px 0 0;
+  color: #606574;
   font-size: 13px;
-  line-height: 1.4;
+  line-height: 1.45;
 }
-.guide-check-list,
-.guide-warning-list {
-  display: grid;
-  gap: 10px;
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-.guide-check-list li,
-.guide-warning-list li {
-  position: relative;
-  padding-left: 23px;
-  font-size: 13px;
-  line-height: 1.55;
-}
-.guide-check-list li::before {
-  content: "✓";
-  position: absolute;
-  left: 0;
-  top: 0;
-  color: #23804b;
-  font-weight: 900;
-}
-.guide-warning-list li::before {
-  content: "!";
-  position: absolute;
-  left: 0;
-  top: 0;
-  color: #b54708;
-  font-weight: 900;
-}
-.compact-check-list { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 
-.prompt-action-section {
-  padding-top: 4px;
-}
-.prompt-action-heading {
-  display: flex;
-  align-items: end;
-  justify-content: space-between;
-  gap: 16px;
-  margin-bottom: 12px;
-}
-.prompt-action-heading h4 {
-  margin: 0;
-  font-size: 19px;
-}
-.prompt-action-heading small { color: var(--muted); }
-.prompt-action-grid {
+.asset-summary-grid {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 10px;
+  gap: 9px;
 }
-.prompt-action-card {
-  display: grid;
-  align-content: space-between;
-  gap: 16px;
-  min-height: 170px;
-  padding: 17px;
-  border: 1px solid var(--line);
-  border-radius: 15px;
+.asset-summary-chip {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 48px;
+  padding: 11px 13px;
+  border: 1px solid #e2e4ec;
+  border-radius: 13px;
   background: #fff;
 }
-.prompt-action-card strong {
-  display: block;
-  margin-bottom: 7px;
-  font-size: 14px;
+.asset-summary-chip span { font-size: 16px; }
+.asset-summary-chip strong { font-size: 12px; }
+.asset-detail-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: 12px;
 }
-.prompt-action-card p {
-  margin: 0;
-  color: var(--muted);
+.asset-detail-group {
+  padding: 13px;
+  border-radius: 12px;
+  background: #f3f4f8;
+}
+.asset-detail-group > strong { font-size: 12px; }
+.asset-detail-group ul {
+  margin: 8px 0 0;
+  padding-left: 17px;
+  color: #606574;
   font-size: 12px;
   line-height: 1.55;
 }
-.prompt-action-card button,
-.raw-prompt-toolbar button {
-  min-height: 40px;
-  border: 0;
-  border-radius: 11px;
-  background: var(--purple);
-  color: #fff;
-  font-weight: 900;
-}
 
-.raw-prompt-disclosure {
-  overflow: hidden;
-  border: 1px solid var(--line);
+.compact-warning-section {
+  padding: 15px 17px;
+  border: 1px solid #f0d8cf;
   border-radius: 15px;
-  background: #f8f9fc;
+  background: #fff9f6;
 }
-.raw-prompt-toggle {
-  width: 100%;
-  min-height: 48px;
-  padding: 0 16px;
-  border: 0;
-  background: transparent;
+.warning-summary-heading {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  color: #505564;
-  font-weight: 800;
+  gap: 14px;
 }
-.raw-prompt-toggle b {
-  color: var(--purple);
+.warning-summary-heading strong { color: #8d3c20; font-size: 13px; }
+.compact-warning-section ul {
+  display: grid;
+  gap: 5px;
+  margin: 9px 0 0;
+  padding-left: 18px;
+  color: #704537;
   font-size: 12px;
+  line-height: 1.5;
 }
-.raw-prompt-body {
+
+.compact-prompt-button-row {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 9px;
+}
+.compact-prompt-button {
+  min-height: 48px;
+  padding: 0 13px;
+  border: 1px solid #ddd7fa;
+  border-radius: 13px;
+  background: #fff;
+  color: #332565;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+}
+.compact-prompt-button:hover { border-color: #b9aafc; background: #f8f6ff; }
+.compact-prompt-button span { font-size: 15px; }
+.compact-prompt-button strong { font-size: 12px; }
+
+.compact-raw-prompt {
+  margin-top: 12px;
   padding: 16px;
-  border-top: 1px solid var(--line);
+  border-radius: 14px;
   background: #151722;
   color: #fff;
 }
@@ -202,31 +188,42 @@
   color: #aeb3c4;
   font-size: 12px;
 }
-.raw-prompt-toolbar button { padding: 0 15px; white-space: nowrap; }
-.raw-prompt-body pre {
+.raw-prompt-toolbar button {
+  min-height: 38px;
+  padding: 0 14px;
+  border: 0;
+  border-radius: 10px;
+  background: var(--purple);
+  color: #fff;
+  font-weight: 900;
+}
+.compact-raw-prompt pre {
   margin: 0;
-  padding: 18px;
-  border-radius: 12px;
+  padding: 16px;
+  border-radius: 11px;
   background: #0e1019;
   color: #f1f2f6;
   white-space: pre-wrap;
   word-break: keep-all;
   font-family: inherit;
-  font-size: 13px;
-  line-height: 1.7;
+  font-size: 12px;
+  line-height: 1.65;
 }
 
-@media (max-width: 1100px) {
-  .prompt-action-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+@media (max-width: 900px) {
+  .asset-summary-grid,
+  .compact-prompt-button-row { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .production-step-row { grid-template-columns: 28px 96px minmax(0, 1fr); }
 }
 
-@media (max-width: 760px) {
+@media (max-width: 650px) {
   .production-guide { padding: 18px; }
-  .production-guide-grid,
-  .prompt-action-grid,
-  .compact-check-list { grid-template-columns: 1fr; }
-  .structure-guide-card { grid-column: auto; }
-  .prompt-action-heading,
+  .inline-heading,
+  .warning-summary-heading,
   .raw-prompt-toolbar { align-items: flex-start; flex-direction: column; }
-  .prompt-action-card { min-height: auto; }
+  .asset-summary-grid,
+  .compact-prompt-button-row,
+  .asset-detail-grid { grid-template-columns: 1fr; }
+  .production-step-row { grid-template-columns: 28px minmax(0, 1fr); }
+  .production-step-row p { grid-column: 2; }
 }
