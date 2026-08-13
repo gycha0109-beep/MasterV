@@ -17,8 +17,10 @@
     "test:single-video-production": "tsx scripts/single-video-production-contract.ts",
     "test:reference-adaptation": "tsx scripts/reference-adaptation-contract.ts",
     "test:gemini-rate-limit": "tsx scripts/gemini-rate-limit-contract.ts",
+    "test:tiered-analysis": "tsx scripts/tiered-analysis-contract.ts",
     "smoke:gemini": "tsx scripts/runtime-smoke.ts",
-    "pilot:real-products": "tsx scripts/real-product-pilot.ts"
+    "pilot:real-products": "tsx scripts/real-product-pilot.ts",
+    "calibrate:coarse-bundles": "tsx scripts/coarse-bundle-calibration.ts"
   },
   "dependencies": {
     "@google/genai": "^2.14.0",
