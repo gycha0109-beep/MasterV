@@ -7,7 +7,7 @@ import { isSupportedYouTubeUrl } from "@/lib/source-identity";
 
 export async function POST(request: Request) {
   try {
-    const body = (await request.json()) as { url?: string };
+    const body = (await request.json()) as { url?: string; force_refresh?: boolean };
     const url = body.url?.trim();
 
     if (!url) return NextResponse.json({ error: "영상 URL을 입력해주세요." }, { status: 400 });
@@ -15,7 +15,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "현재 1차 구현은 공개 YouTube 영상 URL만 지원합니다." }, { status: 400 });
     }
 
-    const managed = await analyzeYouTubeDeepManaged(url);
+    const managed = await analyzeYouTubeDeepManaged(url, { force_refresh: body.force_refresh === true });
     const derived_metrics = deriveVideoMetrics(managed.analysis);
 
     return NextResponse.json({
