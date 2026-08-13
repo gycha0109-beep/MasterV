@@ -4,7 +4,11 @@ import { FormEvent, useMemo, useState } from "react";
 import type { VideoAnalysis } from "@/lib/analysis-schema";
 import type { DerivedVideoMetrics } from "@/lib/derived-metrics";
 import { compareVideoAnalyses } from "@/lib/reference-compare";
-import { compileSingleVideoProductionGuide } from "@/lib/single-video-production";
+import {
+  compileSingleVideoProductionGuide,
+  EMPTY_PRODUCT_TRUTH,
+  type ProductTruthInput
+} from "@/lib/single-video-production";
 import { AdvancedAnalysis } from "@/components/AdvancedAnalysis";
 import { ComparisonDashboard } from "@/components/ComparisonDashboard";
 import { SingleVideoSummary } from "@/components/SingleVideoSummary";
@@ -59,10 +63,11 @@ export default function Home() {
   const [savedReferences, setSavedReferences] = useState<SavedReference[]>([]);
   const [promptOpen, setPromptOpen] = useState(false);
   const [detailsOpen, setDetailsOpen] = useState(false);
+  const [productTruth, setProductTruth] = useState<ProductTruthInput>({ ...EMPTY_PRODUCT_TRUTH });
 
   const productionGuide = useMemo(
-    () => (analysis && metrics ? compileSingleVideoProductionGuide(analysis, metrics) : null),
-    [analysis, metrics]
+    () => (analysis && metrics ? compileSingleVideoProductionGuide(analysis, metrics, productTruth) : null),
+    [analysis, metrics, productTruth]
   );
 
   const comparison = useMemo(() => {
@@ -221,7 +226,10 @@ export default function Home() {
             />
 
             {promptOpen && productionGuide && (
-              <SingleVideoProductionGuide guide={productionGuide} />
+              <SingleVideoProductionGuide
+                guide={productionGuide}
+                onProductTruthChange={setProductTruth}
+              />
             )}
 
             {detailsOpen && <AdvancedAnalysis analysis={analysis} metrics={metrics} />}
