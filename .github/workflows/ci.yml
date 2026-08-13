@@ -31,4 +31,5 @@ jobs:
       - run: npm run test:source-identity
       - run: npm run test:analysis-cache
       - run: npm run test:analysis-budget
+      - run: npm run test:youtube-discovery
       - run: npm run build
