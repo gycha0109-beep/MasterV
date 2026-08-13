@@ -18,6 +18,7 @@ jobs:
       - run: npm install
       - run: npm run typecheck
       - run: npm run test:observation-contract
+      - run: npm run test:subject-attribution
       - run: npm run test:derived-metrics
       - run: npm run test:reference-compare
       - run: npm run test:evidence-rules
