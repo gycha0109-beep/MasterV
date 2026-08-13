@@ -3,6 +3,7 @@
 import { FormEvent, useMemo, useState } from "react";
 import type { VideoAnalysis } from "@/lib/analysis-schema";
 import type { DerivedVideoMetrics } from "@/lib/derived-metrics";
+import type { GeminiRateLimitDiagnostic } from "@/lib/gemini-error";
 import { compareVideoAnalyses } from "@/lib/reference-compare";
 import {
   compileSingleVideoProductionGuide,
@@ -19,6 +20,8 @@ type ApiResponse = {
   analysis?: VideoAnalysis;
   derived_metrics?: DerivedVideoMetrics;
   error?: string;
+  code?: string;
+  rate_limit?: GeminiRateLimitDiagnostic | null;
 };
 
 type SavedReference = {
@@ -48,9 +51,16 @@ function friendlyApiError(message: string) {
     const seconds = match ? Math.ceil(Number(match[1])) : null;
     return seconds
       ? `AI 분석 요청이 잠시 제한되었습니다. 약 ${seconds}초 후 다시 시도해주세요.`
-      : "AI 분석 요청 한도에 잠시 도달했습니다. 잠시 후 다시 시도해주세요.";
+      : "AI 분석 요청 한도에 도달했습니다. 제한 상세를 확인해주세요.";
   }
   return message;
+}
+
+function rateLimitKindLabel(kind: GeminiRateLimitDiagnostic["kind"]) {
+  if (kind === "RPM") return "RPM · 분당 요청 수";
+  if (kind === "TPM") return "TPM · 분당 토큰 수";
+  if (kind === "RPD") return "RPD · 일일 요청 수";
+  return "UNKNOWN · 응답만으로 분류 불가";
 }
 
 export default function Home() {
@@ -58,6 +68,7 @@ export default function Home() {
   const [analysisUrl, setAnalysisUrl] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [rateLimitDiagnostic, setRateLimitDiagnostic] = useState<GeminiRateLimitDiagnostic | null>(null);
   const [analysis, setAnalysis] = useState<VideoAnalysis | null>(null);
   const [metrics, setMetrics] = useState<DerivedVideoMetrics | null>(null);
   const [savedReferences, setSavedReferences] = useState<SavedReference[]>([]);
@@ -91,6 +102,7 @@ export default function Home() {
     const requestedUrl = url.trim();
     setLoading(true);
     setError("");
+    setRateLimitDiagnostic(null);
     setPromptOpen(false);
     setDetailsOpen(false);
 
@@ -103,7 +115,12 @@ export default function Home() {
       const data = (await response.json()) as ApiResponse;
 
       if (!response.ok || !data.analysis || !data.derived_metrics) {
-        throw new Error(friendlyApiError(data.error || "분석에 실패했습니다."));
+        setAnalysis(null);
+        setMetrics(null);
+        setAnalysisUrl("");
+        setError(friendlyApiError(data.error || "분석에 실패했습니다."));
+        setRateLimitDiagnostic(data.code === "GEMINI_RATE_LIMIT" ? data.rate_limit ?? null : null);
+        return;
       }
 
       setAnalysis(data.analysis);
@@ -113,6 +130,7 @@ export default function Home() {
       setAnalysis(null);
       setMetrics(null);
       setAnalysisUrl("");
+      setRateLimitDiagnostic(null);
       const message = caught instanceof Error ? caught.message : "분석에 실패했습니다.";
       setError(friendlyApiError(message));
     } finally {
@@ -171,7 +189,25 @@ export default function Home() {
             <input aria-label="YouTube URL" value={url} onChange={(event) => setUrl(event.target.value)} placeholder="https://www.youtube.com/shorts/..." />
             <button disabled={loading || !url.trim()}>{loading ? "분석 중..." : "영상 분석"}</button>
           </form>
-          {error && <p className="error-box">{error}</p>}
+          {error && (
+            <div className="error-box rate-limit-error">
+              <p>{error}</p>
+              {rateLimitDiagnostic && (
+                <details className="rate-limit-details">
+                  <summary>제한 상세</summary>
+                  <dl>
+                    <div><dt>제한 종류</dt><dd>{rateLimitKindLabel(rateLimitDiagnostic.kind)}</dd></div>
+                    <div><dt>Quota metric</dt><dd>{rateLimitDiagnostic.metric ?? "응답에 없음"}</dd></div>
+                    <div><dt>Quota ID</dt><dd>{rateLimitDiagnostic.quota_id ?? "응답에 없음"}</dd></div>
+                    <div><dt>Limit</dt><dd>{rateLimitDiagnostic.limit ?? "응답에 없음"}</dd></div>
+                    <div><dt>Retry after</dt><dd>{rateLimitDiagnostic.retry_after_seconds === null ? "응답에 없음" : `${rateLimitDiagnostic.retry_after_seconds}초`}</dd></div>
+                    <div><dt>Model</dt><dd>{rateLimitDiagnostic.model ?? "응답에 없음"}</dd></div>
+                    <div><dt>Upstream HTTP</dt><dd>{rateLimitDiagnostic.upstream_status ?? "응답에 없음"}</dd></div>
+                  </dl>
+                </details>
+              )}
+            </div>
+          )}
         </section>
 
         <section className="reference-tray">
