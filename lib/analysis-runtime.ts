@@ -20,6 +20,12 @@ export type AnalysisExecutionItem = {
 export type AnalysisExecutionResult<T> = {
   values: Record<string, T>;
   provenance: Record<string, AnalysisExecutionProvenance>;
+  requested_count: number;
+  cache_hit_count: number;
+  cache_miss_count: number;
+  cache_bypass_count: number;
+  replay_hit_count: number;
+  live_source_count: number;
   live_request_count: number;
 };
 
@@ -61,6 +67,7 @@ export async function executeAnalysis<T>(options: {
   budget: AnalysisBudgetStore;
   mode?: AnalysisRunMode;
   replay?: AnalysisReplayStore;
+  force_refresh?: boolean;
   live: (sourceIds: string[]) => Promise<Record<string, T>>;
   now?: Date;
 }): Promise<AnalysisExecutionResult<T>> {
@@ -71,19 +78,44 @@ export async function executeAnalysis<T>(options: {
   const values: Record<string, T> = {};
   const provenance: Record<string, AnalysisExecutionProvenance> = {};
   const unresolved: AnalysisExecutionItem[] = [];
+  let cacheHitCount = 0;
+  let cacheMissCount = 0;
+  let cacheBypassCount = 0;
 
   for (const item of options.items) {
+    if (options.force_refresh) {
+      cacheBypassCount += 1;
+      unresolved.push(item);
+      continue;
+    }
+
     const cached = await options.cache.get<T>(item.cache_key);
     if (cached) {
+      cacheHitCount += 1;
       values[item.source_id] = cached.value;
       provenance[item.source_id] = "cache";
     } else {
+      cacheMissCount += 1;
       unresolved.push(item);
     }
   }
 
+  const baseMetrics = {
+    requested_count: options.items.length,
+    cache_hit_count: cacheHitCount,
+    cache_miss_count: cacheMissCount,
+    cache_bypass_count: cacheBypassCount
+  };
+
   if (unresolved.length === 0) {
-    return { values, provenance, live_request_count: 0 };
+    return {
+      values,
+      provenance,
+      ...baseMetrics,
+      replay_hit_count: 0,
+      live_source_count: 0,
+      live_request_count: 0
+    };
   }
 
   if (mode === "replay") {
@@ -105,7 +137,14 @@ export async function executeAnalysis<T>(options: {
       await options.cache.set(item.cache_key, replayed, now.toISOString());
     }
 
-    return { values, provenance, live_request_count: 0 };
+    return {
+      values,
+      provenance,
+      ...baseMetrics,
+      replay_hit_count: unresolved.length,
+      live_source_count: 0,
+      live_request_count: 0
+    };
   }
 
   const sourceIds = unresolved.map((item) => item.source_id);
@@ -130,7 +169,14 @@ export async function executeAnalysis<T>(options: {
       markAnalysisRequestSucceeded(runningBudget, sourceIds)
     );
 
-    return { values, provenance, live_request_count: 1 };
+    return {
+      values,
+      provenance,
+      ...baseMetrics,
+      replay_hit_count: 0,
+      live_source_count: sourceIds.length,
+      live_request_count: 1
+    };
   } catch (error) {
     const normalized = normalizeGeminiError(error);
     if (normalized.is_rate_limit && normalized.diagnostic) {
