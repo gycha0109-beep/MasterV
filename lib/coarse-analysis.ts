@@ -1,7 +1,7 @@
 import { GoogleGenAI } from "@google/genai";
 import type { CoarseVideoAnalysis } from "@/lib/tiered-analysis";
 
-export const COARSE_SCHEMA_VERSION = "coarse-v1";
+export const COARSE_SCHEMA_VERSION = "coarse-v2";
 export const COARSE_PROMPT_VERSION = "coarse-prompt-v1";
 
 export const coarseAnalysisJsonSchema = {
@@ -80,14 +80,49 @@ function getClient() {
   return new GoogleGenAI({ apiKey });
 }
 
+export function validateCoarseInput(input: CoarseInputVideo[]) {
+  if (input.length === 0) throw new Error("coarse 입력 영상이 없습니다.");
+  if (input.length > 10) throw new Error("coarse bundle은 최대 10개 영상만 허용합니다.");
+
+  const inputIds = input.map((item) => item.source_id);
+  if (inputIds.some((id) => !id.trim())) throw new Error("coarse 입력 source_id가 비어 있습니다.");
+  if (new Set(inputIds).size !== inputIds.length) throw new Error("coarse 입력 source_id가 중복되었습니다.");
+
+  return input;
+}
+
+export function buildCoarseAnalysisJsonSchema(sourceIds: string[]) {
+  if (sourceIds.length === 0) throw new Error("coarse schema에 source_id가 없습니다.");
+  if (new Set(sourceIds).size !== sourceIds.length) throw new Error("coarse schema source_id가 중복되었습니다.");
+
+  return {
+    ...coarseAnalysisJsonSchema,
+    properties: {
+      ...coarseAnalysisJsonSchema.properties,
+      videos: {
+        ...coarseAnalysisJsonSchema.properties.videos,
+        items: {
+          ...coarseAnalysisJsonSchema.properties.videos.items,
+          properties: {
+            ...coarseAnalysisJsonSchema.properties.videos.items.properties,
+            source_id: {
+              type: "string",
+              enum: [...sourceIds]
+            }
+          }
+        }
+      }
+    }
+  };
+}
+
 export function validateCoarseBundle(input: CoarseInputVideo[], output: CoarseVideoAnalysis[]) {
+  validateCoarseInput(input);
+
   const inputIds = input.map((item) => item.source_id);
   const outputIds = output.map((item) => item.source_id);
   const expected = new Set(inputIds);
 
-  if (inputIds.length === 0) throw new Error("coarse 입력 영상이 없습니다.");
-  if (inputIds.length > 10) throw new Error("coarse bundle은 최대 10개 영상만 허용합니다.");
-  if (new Set(inputIds).size !== inputIds.length) throw new Error("coarse 입력 source_id가 중복되었습니다.");
   if (new Set(outputIds).size !== outputIds.length) throw new Error("coarse 출력 source_id가 중복되었습니다.");
   if (output.length !== input.length) throw new Error(`coarse 출력 개수 불일치: input=${input.length}, output=${output.length}`);
 
@@ -102,13 +137,12 @@ export function validateCoarseBundle(input: CoarseInputVideo[], output: CoarseVi
 }
 
 export async function analyzeYouTubeCoarseBundle(videos: CoarseInputVideo[]): Promise<CoarseVideoAnalysis[]> {
-  if (videos.length < 1 || videos.length > 10) {
-    throw new Error("coarse bundle 크기는 1~10이어야 합니다.");
-  }
+  validateCoarseInput(videos);
 
   const ai = getClient();
   const model = process.env.GEMINI_COARSE_MODEL || process.env.GEMINI_MODEL || "gemini-3.6-flash";
   const input: Array<Record<string, unknown>> = [];
+  const sourceIds = videos.map((video) => video.source_id);
 
   for (const video of videos) {
     input.push({ type: "text", text: `SOURCE_ID: ${video.source_id}` });
@@ -122,7 +156,7 @@ export async function analyzeYouTubeCoarseBundle(videos: CoarseInputVideo[]): Pr
     response_format: {
       type: "text",
       mime_type: "application/json",
-      schema: coarseAnalysisJsonSchema
+      schema: buildCoarseAnalysisJsonSchema(sourceIds)
     }
   });
 
