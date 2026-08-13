@@ -130,7 +130,7 @@ The contract is part of normal CI together with all pre-existing regression test
 3. YouTube relevance ordering remains the platform-native search signal. MasterV does not invent a cross-platform performance score.
 4. No coarse/deep analysis is triggered by discovery.
 5. No Search UX is activated here.
-6. No live YouTube API key was available through the current repository execution path, so this checkpoint is not `RUNTIME_VERIFIED`.
+6. No live YouTube Data API smoke was executed in this checkpoint; runtime key availability is not asserted. Therefore this checkpoint is not `RUNTIME_VERIFIED`.
 
 ## 6. Runtime activation gate
 
