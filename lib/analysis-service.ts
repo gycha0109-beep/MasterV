@@ -1,10 +1,15 @@
+import path from "node:path";
 import type { VideoAnalysis } from "@/lib/analysis-schema";
 import {
+  FileAnalysisCacheStore,
+  FileAnalysisReplayStore,
   InMemoryAnalysisCacheStore,
   type AnalysisCacheStore,
-  type AnalysisReplayStore
+  type AnalysisReplayStore,
+  type InvalidatableAnalysisCacheStore
 } from "@/lib/analysis-cache";
 import {
+  FileAnalysisBudgetStore,
   InMemoryAnalysisBudgetStore,
   type AnalysisBudgetStore
 } from "@/lib/analysis-budget";
@@ -23,23 +28,38 @@ import {
   type CoarseVideoAnalysis
 } from "@/lib/tiered-analysis";
 
-const sharedCache = new InMemoryAnalysisCacheStore();
-const sharedBudget = new InMemoryAnalysisBudgetStore();
+const runtimeStateDir = process.env.ANALYSIS_RUNTIME_STATE_DIR?.trim();
+const sharedCache: AnalysisCacheStore = runtimeStateDir
+  ? new FileAnalysisCacheStore(path.join(runtimeStateDir, "analysis-cache.json"))
+  : new InMemoryAnalysisCacheStore();
+const sharedBudget: AnalysisBudgetStore = runtimeStateDir
+  ? new FileAnalysisBudgetStore(path.join(runtimeStateDir, "analysis-budget.json"))
+  : new InMemoryAnalysisBudgetStore();
+const replayFile = process.env.ANALYSIS_REPLAY_FILE?.trim();
+const sharedReplay: AnalysisReplayStore | undefined = replayFile
+  ? new FileAnalysisReplayStore(replayFile)
+  : undefined;
 
-type RuntimeDependencies = {
+export type RuntimeDependencies = {
   cache?: AnalysisCacheStore;
   budget?: AnalysisBudgetStore;
   replay?: AnalysisReplayStore;
   mode?: AnalysisRunMode;
+  force_refresh?: boolean;
   now?: Date;
 };
+
+function configuredRunMode(): AnalysisRunMode {
+  return process.env.ANALYSIS_RUN_MODE?.trim().toLowerCase() === "replay" ? "replay" : "live";
+}
 
 function runtimeDependencies(dependencies: RuntimeDependencies) {
   return {
     cache: dependencies.cache ?? sharedCache,
     budget: dependencies.budget ?? sharedBudget,
-    replay: dependencies.replay,
-    mode: dependencies.mode ?? "live" as const,
+    replay: dependencies.replay ?? sharedReplay,
+    mode: dependencies.mode ?? configuredRunMode(),
+    force_refresh: dependencies.force_refresh ?? false,
     now: dependencies.now
   };
 }
@@ -52,10 +72,9 @@ function coarseModel() {
   return process.env.GEMINI_COARSE_MODEL || process.env.GEMINI_MODEL || "gemini-3.6-flash";
 }
 
-export async function analyzeYouTubeDeepManaged(rawUrl: string, dependencies: RuntimeDependencies = {}) {
+export function buildYouTubeDeepCacheKey(rawUrl: string, model = deepModel()) {
   const source = canonicalizeYouTubeSource(rawUrl);
-  const model = deepModel();
-  const cacheKey = buildAnalysisCacheKey({
+  return buildAnalysisCacheKey({
     provider: "youtube",
     source_id: source.source_id,
     analyzer_tier: "deep",
@@ -64,6 +83,24 @@ export async function analyzeYouTubeDeepManaged(rawUrl: string, dependencies: Ru
     model,
     media_resolution: DEEP_MEDIA_RESOLUTION
   });
+}
+
+function executionMetrics<T>(execution: Awaited<ReturnType<typeof executeAnalysis<T>>>) {
+  return {
+    requested_count: execution.requested_count,
+    cache_hit_count: execution.cache_hit_count,
+    cache_miss_count: execution.cache_miss_count,
+    cache_bypass_count: execution.cache_bypass_count,
+    replay_hit_count: execution.replay_hit_count,
+    live_source_count: execution.live_source_count,
+    live_request_count: execution.live_request_count
+  };
+}
+
+export async function analyzeYouTubeDeepManaged(rawUrl: string, dependencies: RuntimeDependencies = {}) {
+  const source = canonicalizeYouTubeSource(rawUrl);
+  const model = deepModel();
+  const cacheKey = buildYouTubeDeepCacheKey(source.canonical_url, model);
   const runtime = runtimeDependencies(dependencies);
 
   const execution = await executeAnalysis<VideoAnalysis>({
@@ -73,6 +110,7 @@ export async function analyzeYouTubeDeepManaged(rawUrl: string, dependencies: Ru
     budget: runtime.budget,
     replay: runtime.replay,
     mode: runtime.mode,
+    force_refresh: runtime.force_refresh,
     now: runtime.now,
     live: async () => ({
       [source.source_id]: await analyzeYouTubeVideo(source.canonical_url)
@@ -85,9 +123,19 @@ export async function analyzeYouTubeDeepManaged(rawUrl: string, dependencies: Ru
     execution: {
       cache_key: cacheKey,
       provenance: execution.provenance[source.source_id],
-      live_request_count: execution.live_request_count
+      ...executionMetrics(execution)
     }
   };
+}
+
+export async function invalidateYouTubeDeepCache(
+  rawUrl: string,
+  cache: AnalysisCacheStore = sharedCache
+) {
+  if (!("delete" in cache) || typeof (cache as InvalidatableAnalysisCacheStore).delete !== "function") {
+    throw new Error("현재 analysis cache adapter는 explicit invalidation을 지원하지 않습니다.");
+  }
+  return (cache as InvalidatableAnalysisCacheStore).delete(buildYouTubeDeepCacheKey(rawUrl));
 }
 
 export async function analyzeYouTubeCoarseManaged(
@@ -127,6 +175,7 @@ export async function analyzeYouTubeCoarseManaged(
     budget: runtime.budget,
     replay: runtime.replay,
     mode: runtime.mode,
+    force_refresh: runtime.force_refresh,
     now: runtime.now,
     live: async (sourceIds) => {
       const liveInputs = sourceIds.map((sourceId) => byId.get(sourceId) as CoarseInputVideo);
@@ -140,7 +189,7 @@ export async function analyzeYouTubeCoarseManaged(
     execution: {
       cache_keys: Object.fromEntries(cacheKeys),
       provenance: execution.provenance,
-      live_request_count: execution.live_request_count
+      ...executionMetrics(execution)
     }
   };
 }
