@@ -1,3 +1,5 @@
+import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
+import path from "node:path";
 import type { GeminiRateLimitDiagnostic } from "@/lib/gemini-error";
 import {
   createInitialQueueState,
@@ -164,5 +166,60 @@ export class InMemoryAnalysisBudgetStore implements AnalysisBudgetStore {
 
   clear() {
     this.states.clear();
+  }
+}
+
+type BudgetFileEnvelope = {
+  version: "analysis-budget-v1";
+  states: Record<string, AnalysisQueueState>;
+};
+
+const budgetFileQueues = new Map<string, Promise<void>>();
+
+async function readBudgetFile(filePath: string): Promise<BudgetFileEnvelope> {
+  try {
+    return JSON.parse(await readFile(filePath, "utf8")) as BudgetFileEnvelope;
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+      return { version: "analysis-budget-v1", states: {} };
+    }
+    throw error;
+  }
+}
+
+async function writeBudgetFile(filePath: string, value: BudgetFileEnvelope) {
+  await mkdir(path.dirname(filePath), { recursive: true });
+  const temporary = `${filePath}.${process.pid}.${Date.now()}.tmp`;
+  await writeFile(temporary, JSON.stringify(value, null, 2), "utf8");
+  await rename(temporary, filePath);
+}
+
+function withBudgetFileQueue<T>(filePath: string, operation: () => Promise<T>) {
+  const previous = budgetFileQueues.get(filePath) ?? Promise.resolve();
+  const next = previous.then(operation, operation);
+  budgetFileQueues.set(filePath, next.then(() => undefined, () => undefined));
+  return next;
+}
+
+export class FileAnalysisBudgetStore implements AnalysisBudgetStore {
+  constructor(public readonly filePath: string) {}
+
+  async get(model: string, now = new Date()) {
+    await (budgetFileQueues.get(this.filePath) ?? Promise.resolve());
+    const envelope = await readBudgetFile(this.filePath);
+    const existing = envelope.states[model] ?? createInitialQueueState(getPacificBudgetWindow(now));
+    const current = resetBudgetWindowIfNeeded(existing, now);
+    if (current !== existing) await this.set(model, current);
+    return current;
+  }
+
+  async set(model: string, state: AnalysisQueueState) {
+    await withBudgetFileQueue(this.filePath, async () => {
+      const envelope = await readBudgetFile(this.filePath);
+      await writeBudgetFile(this.filePath, {
+        version: "analysis-budget-v1",
+        states: { ...envelope.states, [model]: state }
+      });
+    });
   }
 }
