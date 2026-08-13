@@ -101,6 +101,8 @@ export function buildCoarseAnalysisJsonSchema(sourceIds: string[]) {
       ...coarseAnalysisJsonSchema.properties,
       videos: {
         ...coarseAnalysisJsonSchema.properties.videos,
+        minItems: sourceIds.length,
+        maxItems: sourceIds.length,
         items: {
           ...coarseAnalysisJsonSchema.properties.videos.items,
           properties: {
