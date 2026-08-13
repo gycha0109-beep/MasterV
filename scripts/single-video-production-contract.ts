@@ -128,7 +128,7 @@ function assert(condition: unknown, message: string) {
 
 assert(guide.direction_summary.length > 0, "production direction summary is required");
 assert(guide.production_steps.length >= 3, "production flow should expose multiple steps");
-assert(guide.production_steps.some((step) => step.title === "문제 제시"), "problem opening should be simplified into a readable step title");
+assert(guide.production_steps.some((step) => step.title === "문제 사례"), "opening general-example problem should be labeled as a problem example rather than selling-product fact");
 assert(guide.production_steps.some((step) => step.title === "CTA"), "CTA should remain visible in the compact flow");
 assert(guide.asset_groups.length === 4, "default production UI should expose exactly four asset groups");
 assert(guide.asset_groups.some((group) => group.title === "제품 실물" && group.items.includes("판매할 상품 실물")), "selling product asset should be required");
@@ -144,12 +144,49 @@ assert(guide.prompts.editing.includes("[작업: 편집]"), "editing prompt must 
 assert(guide.prompts.script.includes("그대로 복사하지"), "hidden system guardrails must still be embedded in prompts");
 assert(guide.prompts.script.includes("[참고영상 주장 — 상품 사실 아님]"), "prompt must explicitly separate reference claims from product truth");
 assert(guide.prompts.script.includes("기능이 작동한다 [참고영상 주장 / 내 상품 적용 전 확인 필요]"), "reference claim must be labeled as unverified for the target product");
-assert(guide.prompts.script.includes("[내 상품 정보]\n- 아직 입력되지 않음"), "missing target product truth must remain explicit");
+assert(guide.prompts.script.includes("[내 상품 정보 — 사용자 입력 Product Truth]\n- 아직 입력되지 않음"), "missing target product truth must remain explicit");
 assert(guide.raw_prompt.includes("대본, 촬영 구성, 준비 소재, 편집 지시"), "raw prompt should remain available as an advanced combined request");
 assert(guide.prompts.script !== guide.prompts.editing, "prompt packs must not collapse into one identical prompt");
 
+const productGuide = compileSingleVideoProductionGuide(analysis, metrics, {
+  product_name: "초경량 자동 우산",
+  verified_facts: "원터치 자동 개폐\n실측 무게 310g",
+  target_customer: "출퇴근 직장인",
+  price_offer: "29,900원 / 무료배송"
+});
+const productTruthBlock = productGuide.prompts.script
+  .split("[내 상품 정보 — 사용자 입력 Product Truth]")[1]
+  ?.split("[참고영상 주장 — 상품 사실 아님]")[0] ?? "";
+assert(productTruthBlock.includes("상품명: 초경량 자동 우산"), "user product name must be injected into Product Truth");
+assert(productTruthBlock.includes("원터치 자동 개폐"), "verified user-entered product fact must be injected into Product Truth");
+assert(productTruthBlock.includes("실측 무게 310g"), "multiple verified facts must be preserved line by line");
+assert(productTruthBlock.includes("출퇴근 직장인"), "target customer input must reach the prompt");
+assert(productTruthBlock.includes("29,900원 / 무료배송"), "price/offer input must reach the prompt");
+assert(!productTruthBlock.includes("기능이 작동한다"), "reference-video claims must never leak into Product Truth");
+assert(productGuide.reference_claims.includes("기능이 작동한다"), "reference claim remains separately available after Product Truth input");
+
 const demoSegment = analysis.observation_segments[1];
+const generalExample = analysis.observation_segments[0];
 const ctaSegment = analysis.observation_segments[2];
+const comparisonAnalysis: VideoAnalysis = {
+  ...analysis,
+  duration_seconds: 12,
+  observation_segments: [
+    { ...demoSegment, start_seconds: 0, end_seconds: 6 },
+    {
+      ...generalExample,
+      start_seconds: 6,
+      end_seconds: 8,
+      scene_purpose: "일반 우산 강풍 실패 사례",
+      action: { type: "비교사례", description: "일반 우산이 강풍에 뒤집히는 모습을 보여준다" },
+      message_roles: ["문제제기", "비교"]
+    },
+    { ...ctaSegment, start_seconds: 8, end_seconds: 12 }
+  ]
+};
+const comparisonGuide = compileSingleVideoProductionGuide(comparisonAnalysis, deriveVideoMetrics(comparisonAnalysis));
+assert(comparisonGuide.production_steps[1]?.title === "비교 사례", "later general/comparison example must be labeled as comparison evidence, not generic problem presentation");
+
 const crowdedAnalysis: VideoAnalysis = {
   ...analysis,
   duration_seconds: 18,
