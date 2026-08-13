@@ -143,7 +143,7 @@ export function SingleVideoSummary({
           {currentSaved ? "비교함에 저장됨" : "비교함에 저장"}
         </button>
         <button className="plain-action" onClick={onTogglePrompt}>
-          {promptOpen ? "제작 프롬프트 닫기" : "이 영상만 참고해 제작 프롬프트"}
+          {promptOpen ? "제작 가이드 닫기" : "이 영상만 참고해 제작안 보기"}
         </button>
         <button className="plain-action detail-action" onClick={onToggleDetails}>
           {detailsOpen ? "상세 분석 닫기" : "상세 분석 보기"}
