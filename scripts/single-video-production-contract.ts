@@ -1,0 +1,140 @@
+import type { VideoAnalysis } from "../lib/analysis-schema";
+import { deriveVideoMetrics } from "../lib/derived-metrics";
+import { compileSingleVideoProductionGuide } from "../lib/single-video-production";
+
+const analysis: VideoAnalysis = {
+  summary: "문제 상황 뒤 판매 제품 기능을 직접 시연하는 영상",
+  structure_label: "문제 → 제품 → 시연 → CTA",
+  duration_seconds: 12,
+  hook: { type: "문제제기", text: "", visual: "", duration_seconds: 2 },
+  product_presentation: {
+    first_seen_seconds: 2,
+    demonstration_present: true,
+    before_after_present: false,
+    comparison_present: true,
+    result_visual_present: true,
+    face_present: false,
+    hand_present: true
+  },
+  persuasion: {
+    problem: "일반 제품의 불편",
+    solution: "판매 제품 기능",
+    benefit: "",
+    proof: "",
+    social_proof: "",
+    offer: "",
+    cta: "구매 링크",
+    emotional_trigger: ""
+  },
+  presentation: {
+    format: "",
+    presenter_type: "",
+    caption_style: "",
+    visual_style: "",
+    music_role: ""
+  },
+  transcript: { full: "", segments: [] },
+  scenes: [],
+  observation_segments: [
+    {
+      start_seconds: 0,
+      end_seconds: 2,
+      visual: {
+        description: "일반 제품이 불편하게 사용되는 장면",
+        subjects: ["일반 제품"],
+        material_types: ["외부자료"],
+        presenter_presence: ["손"],
+        subject_role: "일반예시",
+        contains_product: false
+      },
+      action: { type: "문제사례제시", description: "일반적인 불편을 보여준다" },
+      scene_purpose: "기존 제품의 불편함 제시",
+      message_roles: ["문제제기", "훅"],
+      spoken_text: "",
+      on_screen_text: "",
+      claims: ["기존 제품은 불편할 수 있다"],
+      evidence: {
+        types: ["외부자료"],
+        scope: "비교/일반예시",
+        supports_selling_product_claim: false,
+        observable_result: "",
+        result_visually_observable: false
+      },
+      confidence: "high"
+    },
+    {
+      start_seconds: 2,
+      end_seconds: 8,
+      visual: {
+        description: "손으로 판매 제품을 작동시켜 기능과 결과를 보여준다",
+        subjects: ["판매 제품", "손"],
+        material_types: ["직접촬영", "상품실물"],
+        presenter_presence: ["손"],
+        subject_role: "판매제품",
+        contains_product: true
+      },
+      action: { type: "기능시연", description: "제품 기능을 직접 작동한다" },
+      scene_purpose: "판매 제품 핵심 기능 직접 시연",
+      message_roles: ["제품소개", "사용시연", "결과제시"],
+      spoken_text: "",
+      on_screen_text: "",
+      claims: ["기능이 작동한다"],
+      evidence: {
+        types: ["직접시연", "관찰가능한결과"],
+        scope: "판매제품직접",
+        supports_selling_product_claim: true,
+        observable_result: "제품 작동 결과가 화면에 보인다",
+        result_visually_observable: true
+      },
+      confidence: "high"
+    },
+    {
+      start_seconds: 8,
+      end_seconds: 12,
+      visual: {
+        description: "상품과 링크 안내를 보여준다",
+        subjects: ["판매 제품"],
+        material_types: ["직접촬영", "상품실물"],
+        presenter_presence: ["손"],
+        subject_role: "판매제품",
+        contains_product: true
+      },
+      action: { type: "CTA", description: "구매 행동을 유도한다" },
+      scene_purpose: "구매 CTA",
+      message_roles: ["CTA"],
+      spoken_text: "",
+      on_screen_text: "링크 확인",
+      claims: [],
+      evidence: {
+        types: ["근거없음"],
+        scope: "해당없음",
+        supports_selling_product_claim: false,
+        observable_result: "",
+        result_visually_observable: false
+      },
+      confidence: "high"
+    }
+  ],
+  tags: [],
+  confidence_notes: []
+};
+
+const metrics = deriveVideoMetrics(analysis);
+const guide = compileSingleVideoProductionGuide(analysis, metrics);
+
+function assert(condition: unknown, message: string) {
+  if (!condition) throw new Error(message);
+}
+
+assert(guide.structure_steps.length >= 3, "production structure should expose multiple steps");
+assert(guide.shooting_scenes.some((item) => item.includes("핵심 기능")), "selling-product demo should be included in shooting scenes");
+assert(guide.asset_checklist.includes("판매할 상품 실물"), "selling product asset should be required");
+assert(guide.warnings.some((item) => item.includes("일반 사례")), "comparison/example warning should be generated");
+assert(guide.prompts.script.includes("[작업: 대본]"), "script prompt must be task-specific");
+assert(guide.prompts.shooting.includes("[작업: 촬영]"), "shooting prompt must be task-specific");
+assert(guide.prompts.assets.includes("[작업: 소재 준비]"), "asset prompt must be task-specific");
+assert(guide.prompts.editing.includes("[작업: 편집]"), "editing prompt must be task-specific");
+assert(guide.raw_prompt.includes("대본, 촬영 구성, 준비 소재, 편집 지시"), "raw prompt should remain available as an advanced combined request");
+assert(guide.prompts.script !== guide.prompts.editing, "prompt packs must not collapse into one identical prompt");
+
+console.log("SINGLE_VIDEO_PRODUCTION_CONTRACT_PASS");
