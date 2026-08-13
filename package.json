@@ -15,6 +15,7 @@
     "test:production-concepts": "tsx scripts/production-concepts-contract.ts",
     "test:prompt-packs": "tsx scripts/prompt-packs-contract.ts",
     "test:single-video-production": "tsx scripts/single-video-production-contract.ts",
+    "test:reference-adaptation": "tsx scripts/reference-adaptation-contract.ts",
     "test:gemini-rate-limit": "tsx scripts/gemini-rate-limit-contract.ts",
     "smoke:gemini": "tsx scripts/runtime-smoke.ts",
     "pilot:real-products": "tsx scripts/real-product-pilot.ts"
