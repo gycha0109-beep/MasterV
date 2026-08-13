@@ -126,14 +126,20 @@ function assert(condition: unknown, message: string) {
   if (!condition) throw new Error(message);
 }
 
-assert(guide.structure_steps.length >= 3, "production structure should expose multiple steps");
-assert(guide.shooting_scenes.some((item) => item.includes("핵심 기능")), "selling-product demo should be included in shooting scenes");
-assert(guide.asset_checklist.includes("판매할 상품 실물"), "selling product asset should be required");
-assert(guide.warnings.some((item) => item.includes("일반 사례")), "comparison/example warning should be generated");
+assert(guide.direction_summary.length > 0, "production direction summary is required");
+assert(guide.production_steps.length >= 3, "production flow should expose multiple steps");
+assert(guide.production_steps.some((step) => step.title === "문제 제시"), "problem opening should be simplified into a readable step title");
+assert(guide.production_steps.some((step) => step.title === "CTA"), "CTA should remain visible in the compact flow");
+assert(guide.asset_groups.length === 4, "default production UI should expose exactly four asset groups");
+assert(guide.asset_groups.some((group) => group.title === "제품 실물" && group.items.includes("판매할 상품 실물")), "selling product asset should be required");
+assert(guide.asset_groups.some((group) => group.title === "비교·보조 자료" && group.items.length > 0), "comparison/support assets should remain available behind details");
+assert(guide.critical_warnings.some((item) => item.includes("일반 사례")), "comparison/example warning should be generated");
+assert(!guide.critical_warnings.some((item) => item.includes("그대로 복사")), "global guardrails should not clutter the visible warning list");
 assert(guide.prompts.script.includes("[작업: 대본]"), "script prompt must be task-specific");
 assert(guide.prompts.shooting.includes("[작업: 촬영]"), "shooting prompt must be task-specific");
 assert(guide.prompts.assets.includes("[작업: 소재 준비]"), "asset prompt must be task-specific");
 assert(guide.prompts.editing.includes("[작업: 편집]"), "editing prompt must be task-specific");
+assert(guide.prompts.script.includes("그대로 복사하지"), "hidden system guardrails must still be embedded in prompts");
 assert(guide.raw_prompt.includes("대본, 촬영 구성, 준비 소재, 편집 지시"), "raw prompt should remain available as an advanced combined request");
 assert(guide.prompts.script !== guide.prompts.editing, "prompt packs must not collapse into one identical prompt");
 
