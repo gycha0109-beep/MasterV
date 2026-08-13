@@ -24,4 +24,5 @@ jobs:
       - run: npm run test:evidence-rules
       - run: npm run test:production-concepts
       - run: npm run test:prompt-packs
+      - run: npm run test:single-video-production
       - run: npm run build
