@@ -27,4 +27,5 @@ jobs:
       - run: npm run test:single-video-production
       - run: npm run test:reference-adaptation
       - run: npm run test:gemini-rate-limit
+      - run: npm run test:tiered-analysis
       - run: npm run build
