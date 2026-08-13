@@ -4,9 +4,11 @@ import { FormEvent, useMemo, useState } from "react";
 import type { VideoAnalysis } from "@/lib/analysis-schema";
 import type { DerivedVideoMetrics } from "@/lib/derived-metrics";
 import { compareVideoAnalyses } from "@/lib/reference-compare";
+import { compileSingleVideoProductionGuide } from "@/lib/single-video-production";
 import { AdvancedAnalysis } from "@/components/AdvancedAnalysis";
 import { ComparisonDashboard } from "@/components/ComparisonDashboard";
 import { SingleVideoSummary } from "@/components/SingleVideoSummary";
+import { SingleVideoProductionGuide } from "@/components/SingleVideoProductionGuide";
 
 type ApiResponse = {
   source?: { platform: string; url: string };
@@ -23,10 +25,6 @@ type SavedReference = {
 };
 
 const navItems = ["홈", "참고영상", "비교 분석", "제작안", "프롬프트"];
-
-function formatPercent(value: number) {
-  return `${value.toFixed(value % 1 === 0 ? 0 : 1)}%`;
-}
 
 function videoIdFromUrl(url: string) {
   try {
@@ -51,20 +49,6 @@ function friendlyApiError(message: string) {
   return message;
 }
 
-function buildScriptPrompt(analysis: VideoAnalysis, metrics: DerivedVideoMetrics) {
-  const firstThreeMaterials = metrics.first_three_seconds.materials.slice(0, 3)
-    .map((item) => `${item.name} ${formatPercent(item.percent)}`)
-    .join(", ") || "뚜렷한 소재 분류 없음";
-  const topMaterials = metrics.materials.slice(0, 4)
-    .map((item) => `${item.name} ${formatPercent(item.percent)}`)
-    .join(", ");
-  const topRoles = metrics.message_roles.slice(0, 5)
-    .map((item) => item.name)
-    .join(" → ");
-
-  return `상품 숏폼 광고 대본과 촬영 구성을 새로 작성하라.\n\n아래 내용은 실제 참고영상에서 관찰한 화면과 행동을 집계한 결과다. 특정 문장이나 장면을 그대로 복사하지 말고, 제작 구조만 참고하라.\n\n- 전체 내용 구조: ${analysis.structure_label}\n- 첫 3초 화면 소재: ${firstThreeMaterials}\n- 첫 3초 행동: ${metrics.first_three_seconds.actions.join(", ") || "확인 불가"}\n- 첫 3초 메시지 역할: ${metrics.first_three_seconds.message_roles.map((item) => item.name).join(", ") || "확인 불가"}\n- 제품 첫 등장: ${metrics.product.first_seen_seconds ?? "확인 불가"}초\n- 제품 화면 노출: ${formatPercent(metrics.product.visible_percent)}\n- 주요 화면 소재: ${topMaterials || "확인 불가"}\n- 사용/시연 구간: ${metrics.demonstration.combined_segment_count}개, 총 ${metrics.demonstration.combined_seconds}초 (${formatPercent(metrics.demonstration.combined_percent)})\n- 화면으로 결과가 직접 확인되는 구간: ${metrics.demonstration.visually_observable_result_segment_count}개\n- 주요 메시지 역할: ${topRoles || "확인 불가"}\n- CTA 시작: ${metrics.cta.first_seen_seconds ?? "확인 불가"}초\n\n요구사항:\n1. 세로형 숏폼 기준으로 시간대별 화면, 행동, 음성, 자막, 장면 목적을 작성한다.\n2. 첫 3초는 위 참고영상의 시작 구조를 참고하되 문구와 장면을 복제하지 않는다.\n3. 설명만 늘어놓지 말고 실제 상품 사용이나 기능 시연이 필요한 구간을 명시한다.\n4. 상품 사진, 상품페이지, 직접 촬영 등 어떤 소재가 필요한지 각 구간마다 표시한다.\n5. 광고 문구의 주장과 화면에서 실제 확인 가능한 결과를 구분한다.\n6. 확인되지 않은 효능, 수치, 후기, 성능을 만들어내지 않는다.\n7. 마지막에 필요한 촬영 소재 체크리스트를 붙인다.`;
-}
-
 export default function Home() {
   const [url, setUrl] = useState("");
   const [analysisUrl, setAnalysisUrl] = useState("");
@@ -75,10 +59,9 @@ export default function Home() {
   const [savedReferences, setSavedReferences] = useState<SavedReference[]>([]);
   const [promptOpen, setPromptOpen] = useState(false);
   const [detailsOpen, setDetailsOpen] = useState(false);
-  const [copied, setCopied] = useState(false);
 
-  const generatedPrompt = useMemo(
-    () => (analysis && metrics ? buildScriptPrompt(analysis, metrics) : ""),
+  const productionGuide = useMemo(
+    () => (analysis && metrics ? compileSingleVideoProductionGuide(analysis, metrics) : null),
     [analysis, metrics]
   );
 
@@ -142,12 +125,6 @@ export default function Home() {
 
   function removeReference(id: string) {
     setSavedReferences((current) => current.filter((reference) => reference.id !== id));
-  }
-
-  async function copyPrompt() {
-    await navigator.clipboard.writeText(generatedPrompt);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 1400);
   }
 
   return (
@@ -243,12 +220,8 @@ export default function Home() {
               onToggleDetails={() => setDetailsOpen((value) => !value)}
             />
 
-            {promptOpen && (
-              <section className="prompt-panel">
-                <div className="panel-heading"><div><span className="section-kicker">실행용 프롬프트</span><h3>이 영상의 제작 구조만 참고하기</h3></div><button onClick={copyPrompt}>{copied ? "복사됨" : "전체 복사"}</button></div>
-                <pre>{generatedPrompt}</pre>
-                <p>특정 문구나 장면을 복제하지 않고 관찰된 제작 구조만 전달합니다.</p>
-              </section>
+            {promptOpen && productionGuide && (
+              <SingleVideoProductionGuide guide={productionGuide} />
             )}
 
             {detailsOpen && <AdvancedAnalysis analysis={analysis} metrics={metrics} />}
