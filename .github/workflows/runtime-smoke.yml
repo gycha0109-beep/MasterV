@@ -2,15 +2,6 @@ name: Gemini Runtime Smoke
 
 on:
   workflow_dispatch:
-  push:
-    branches:
-      - feat/mvp-foundation
-    paths:
-      - scripts/runtime-smoke.ts
-      - lib/gemini.ts
-      - lib/analysis-schema.ts
-      - .github/workflows/runtime-smoke.yml
-      - package.json
 
 jobs:
   smoke:
