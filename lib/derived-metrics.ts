@@ -44,6 +44,8 @@ export type DerivedVideoMetrics = {
     direct_demo_seconds: number;
     visually_observable_result_segment_count: number;
     visually_observable_result_seconds: number;
+    contextual_or_comparison_result_segment_count: number;
+    contextual_or_comparison_result_seconds: number;
   };
   claims_and_evidence: {
     claim_count: number;
@@ -51,6 +53,7 @@ export type DerivedVideoMetrics = {
     claim_segments_with_no_evidence: number;
     claim_segments_with_visually_observable_result: number;
     evidence_types: CoverageMetric[];
+    evidence_scopes: CoverageMetric[];
   };
   cta: {
     first_seen_seconds: number | null;
@@ -164,20 +167,25 @@ export function deriveVideoMetrics(analysis: VideoAnalysis): DerivedVideoMetrics
   const directDemoPredicate = (segment: ObservationSegment) => hasEvidence(segment, "직접시연");
   const combinedDemoPredicate = (segment: ObservationSegment) =>
     directUsePredicate(segment) || directDemoPredicate(segment);
-  const visualResultPredicate = (segment: ObservationSegment) =>
+  const anyVisualResultPredicate = (segment: ObservationSegment) =>
     segment.evidence.result_visually_observable || hasEvidence(segment, "관찰가능한결과");
+  const productVisualResultPredicate = (segment: ObservationSegment) =>
+    anyVisualResultPredicate(segment) && segment.evidence.supports_selling_product_claim;
+  const contextualVisualResultPredicate = (segment: ObservationSegment) =>
+    anyVisualResultPredicate(segment) && !segment.evidence.supports_selling_product_claim;
 
   const directUseSeconds = sumMatchingSeconds(segments, directUsePredicate, basis);
   const directDemoSeconds = sumMatchingSeconds(segments, directDemoPredicate, basis);
   const combinedDemoSeconds = sumMatchingSeconds(segments, combinedDemoPredicate, basis);
-  const visualResultSeconds = sumMatchingSeconds(segments, visualResultPredicate, basis);
+  const productVisualResultSeconds = sumMatchingSeconds(segments, productVisualResultPredicate, basis);
+  const contextualVisualResultSeconds = sumMatchingSeconds(segments, contextualVisualResultPredicate, basis);
 
   const claimSegments = segments.filter((segment) => segment.claims.length > 0);
   const claimSegmentsWithNoEvidence = claimSegments.filter((segment) => {
     const substantiveEvidence = segment.evidence.types.filter((type) => type !== "근거없음");
     return substantiveEvidence.length === 0;
   });
-  const claimSegmentsWithVisibleResult = claimSegments.filter(visualResultPredicate);
+  const claimSegmentsWithVisibleResult = claimSegments.filter(productVisualResultPredicate);
 
   const ctaPredicate = (segment: ObservationSegment) => segment.message_roles.some(isCtaRole);
   const ctaSeconds = sumMatchingSeconds(segments, ctaPredicate, basis);
@@ -246,8 +254,10 @@ export function deriveVideoMetrics(analysis: VideoAnalysis): DerivedVideoMetrics
       direct_use_seconds: directUseSeconds,
       direct_demo_segment_count: segments.filter(directDemoPredicate).length,
       direct_demo_seconds: directDemoSeconds,
-      visually_observable_result_segment_count: segments.filter(visualResultPredicate).length,
-      visually_observable_result_seconds: visualResultSeconds
+      visually_observable_result_segment_count: segments.filter(productVisualResultPredicate).length,
+      visually_observable_result_seconds: productVisualResultSeconds,
+      contextual_or_comparison_result_segment_count: segments.filter(contextualVisualResultPredicate).length,
+      contextual_or_comparison_result_seconds: contextualVisualResultSeconds
     },
     claims_and_evidence: {
       claim_count: claimSegments.reduce((sum, segment) => sum + segment.claims.length, 0),
@@ -257,6 +267,11 @@ export function deriveVideoMetrics(analysis: VideoAnalysis): DerivedVideoMetrics
       evidence_types: coverageBy(
         segments,
         (segment) => segment.evidence.types,
+        basis
+      ),
+      evidence_scopes: coverageBy(
+        segments,
+        (segment) => [segment.evidence.scope],
         basis
       )
     },
