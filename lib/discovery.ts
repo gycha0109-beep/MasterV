@@ -1,5 +1,13 @@
 import type { SearchCandidate } from "@/lib/tiered-analysis";
 
+export const DISCOVERY_DEFAULTS = {
+  max_results: 50,
+  shortlist_limit: 12,
+  min_duration_seconds: 1,
+  max_duration_seconds: 180,
+  max_per_creator: 2
+} as const;
+
 export type SearchOptions = {
   max_results?: number;
   shortlist_limit?: number;
@@ -32,11 +40,11 @@ export function normalizeSearchOptions(options: SearchOptions = {}): Required<Pi
   SearchOptions,
   "max_results" | "shortlist_limit" | "min_duration_seconds" | "max_duration_seconds" | "max_per_creator"
 >> & Omit<SearchOptions, "max_results" | "shortlist_limit" | "min_duration_seconds" | "max_duration_seconds" | "max_per_creator"> {
-  const maxResults = finiteInteger(options.max_results, 50, 1, 50);
-  const shortlistLimit = finiteInteger(options.shortlist_limit, 20, 1, maxResults);
-  const minDuration = finiteInteger(options.min_duration_seconds, 1, 0, 14_400);
-  const maxDuration = finiteInteger(options.max_duration_seconds, 180, minDuration, 14_400);
-  const maxPerCreator = finiteInteger(options.max_per_creator, 2, 1, shortlistLimit);
+  const maxResults = finiteInteger(options.max_results, DISCOVERY_DEFAULTS.max_results, 1, 50);
+  const shortlistLimit = finiteInteger(options.shortlist_limit, DISCOVERY_DEFAULTS.shortlist_limit, 1, maxResults);
+  const minDuration = finiteInteger(options.min_duration_seconds, DISCOVERY_DEFAULTS.min_duration_seconds, 0, 14_400);
+  const maxDuration = finiteInteger(options.max_duration_seconds, DISCOVERY_DEFAULTS.max_duration_seconds, minDuration, 14_400);
+  const maxPerCreator = finiteInteger(options.max_per_creator, DISCOVERY_DEFAULTS.max_per_creator, 1, shortlistLimit);
 
   return {
     ...options,
