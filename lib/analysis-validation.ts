@@ -44,8 +44,18 @@ export function validateVideoAnalysis(analysis: VideoAnalysis): VideoAnalysis {
       throw new Error(`${prefix}.visual.contains_product가 boolean이 아닙니다.`);
     }
 
+    if (segment.visual.contains_product !== (segment.visual.subject_role === "판매제품")) {
+      throw new Error(
+        `${prefix}의 contains_product와 subject_role이 충돌합니다. 판매제품일 때만 contains_product=true여야 합니다.`
+      );
+    }
+
     if (!segment.action.type.trim()) {
       throw new Error(`${prefix}.action.type이 비어 있습니다.`);
+    }
+
+    if (!segment.scene_purpose.trim()) {
+      throw new Error(`${prefix}.scene_purpose가 비어 있습니다.`);
     }
 
     if (segment.evidence.types.length === 0) {
@@ -58,6 +68,24 @@ export function validateVideoAnalysis(analysis: VideoAnalysis): VideoAnalysis {
     ) {
       throw new Error(
         `${prefix}는 result_visually_observable=true지만 observable_result가 비어 있습니다.`
+      );
+    }
+
+    if (
+      segment.evidence.supports_selling_product_claim &&
+      !["판매제품직접", "외부자료"].includes(segment.evidence.scope)
+    ) {
+      throw new Error(
+        `${prefix}는 판매제품 주장 근거로 표시됐지만 evidence.scope가 직접 제품/외부자료가 아닙니다.`
+      );
+    }
+
+    if (
+      ["비교/일반예시", "연출/보조", "주장만", "해당없음"].includes(segment.evidence.scope) &&
+      segment.evidence.supports_selling_product_claim
+    ) {
+      throw new Error(
+        `${prefix}의 보조/비교 장면을 판매제품 성능 근거로 승격할 수 없습니다.`
       );
     }
   });
