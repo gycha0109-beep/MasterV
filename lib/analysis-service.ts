@@ -16,14 +16,12 @@ import {
 } from "@/lib/coarse-analysis";
 import { analyzeYouTubeVideo } from "@/lib/gemini";
 import { executeAnalysis, type AnalysisRunMode } from "@/lib/analysis-runtime";
+import { DEEP_MEDIA_RESOLUTION, DEEP_PROMPT_VERSION, DEEP_SCHEMA_VERSION } from "@/lib/analysis-versions";
 import { canonicalizeYouTubeSource } from "@/lib/source-identity";
 import {
   buildAnalysisCacheKey,
   type CoarseVideoAnalysis
 } from "@/lib/tiered-analysis";
-
-export const DEEP_SCHEMA_VERSION = "deep-v2";
-export const DEEP_PROMPT_VERSION = "deep-prompt-v5";
 
 const sharedCache = new InMemoryAnalysisCacheStore();
 const sharedBudget = new InMemoryAnalysisBudgetStore();
@@ -64,7 +62,7 @@ export async function analyzeYouTubeDeepManaged(rawUrl: string, dependencies: Ru
     schema_version: DEEP_SCHEMA_VERSION,
     prompt_version: DEEP_PROMPT_VERSION,
     model,
-    media_resolution: "default"
+    media_resolution: DEEP_MEDIA_RESOLUTION
   });
   const runtime = runtimeDependencies(dependencies);
 
