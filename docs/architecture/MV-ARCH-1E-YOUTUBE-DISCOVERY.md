@@ -1,8 +1,8 @@
 # MV-ARCH-1E — YouTube Discovery MVP
 
-Status: **STATIC_VERIFIED / RUNTIME_NOT_VERIFIED / NOT ACTIVATED**
+Status: **RUNTIME_VERIFIED / NOT ACTIVATED**
 
-Date: 2026-08-13
+Date: 2026-08-14
 
 ## 1. Scope
 
@@ -102,8 +102,6 @@ Gemini                0 requests
 
 If search returns no video IDs, `videos.list` is skipped.
 
-As of the 2026 granular quota transition, current official YouTube Data API documentation places `search.list` in its own Search Queries quota bucket with a default 100 calls/day and 1 unit per call. `videos.list` costs 1 unit. Actual project quota remains Google API Console authority.
-
 ## 4. Static verification
 
 `npm run test:youtube-discovery` verifies with deterministic fake YouTube responses:
@@ -123,29 +121,59 @@ As of the 2026 granular quota transition, current official YouTube Data API docu
 
 The contract is part of normal CI together with all pre-existing regression tests and `next build`.
 
-## 5. Deliberate limitations
+## 5. Runtime verification
+
+Manual GitHub Actions Runtime Smoke run:
+
+```text
+run_id: 31760373402
+branch: feat/mvp-foundation
+head: 62f2347cd3d7d9bc409c49d4c41ecb6d57bb4a33
+query: sunscreen review shorts
+```
+
+Observed result:
+
+```text
+status: YOUTUBE_DISCOVERY_SMOKE_PASS
+discovered_count: 10
+deduped_count: 10
+filtered_count: 10
+shortlisted_count: 5
+youtube_api_requests: 2
+gemini_requests: 0
+```
+
+The uploaded `youtube-discovery-smoke` artifact was inspected. All five returned candidates had:
+
+- canonical `yt:<videoId>` source IDs;
+- canonical `https://www.youtube.com/watch?v=<videoId>` URLs;
+- real titles and creator metadata;
+- parsed durations;
+- native search rank;
+- native view/like/comment metrics when supplied by YouTube.
+
+The workflow separately showed:
+
+- `Verify YouTube secret exists`: success;
+- `Run one-shot YouTube discovery smoke`: success;
+- artifact upload: success;
+- `gemini-smoke`: skipped.
+
+This is sufficient to promote the metadata discovery backend to `RUNTIME_VERIFIED`.
+
+## 6. Deliberate limitations
 
 1. One search page only. MV-ARCH-1E caps discovery at 50 candidates; PRODUCT_INTERACTIVE pagination belongs to a later profile/orchestration decision.
 2. Duplicate detection is exact identity/canonical URL only. Reuploads with different YouTube video IDs are not claimed to be detected without a media fingerprint or stronger evidence.
 3. YouTube relevance ordering remains the platform-native search signal. MasterV does not invent a cross-platform performance score.
 4. No coarse/deep analysis is triggered by discovery.
-5. No Search UX is activated here.
-6. No live YouTube Data API smoke was executed in this checkpoint; runtime key availability is not asserted. Therefore this checkpoint is not `RUNTIME_VERIFIED`.
-
-## 6. Runtime activation gate
-
-Before calling MV-ARCH-1E runtime-verified:
-
-1. configure a restricted `YOUTUBE_DATA_API_KEY` in the runtime environment;
-2. execute one live keyword discovery query;
-3. verify metadata results are returned without Gemini availability;
-4. verify canonical source IDs and native metrics on real results;
-5. verify request diagnostics report YouTube calls and `gemini_requests = 0`;
-6. confirm upstream quota/config failures do not fall through to Gemini.
+5. Runtime verification above proves the discovery backend/provider path, not browser interaction UX.
+6. This stage is still `NOT ACTIVATED`; no production deployment/runtime activation has been established.
 
 ## 7. Next stage
 
-After the live smoke checkpoint, MV-ARCH-1F can compose:
+MV-ARCH-1F/1G may compose the verified discovery backend as:
 
 ```text
 search
@@ -155,4 +183,4 @@ search
   -> deep few
 ```
 
-Discovery itself remains independently usable when Gemini analysis is blocked.
+Discovery remains independently usable when Gemini analysis is blocked.
