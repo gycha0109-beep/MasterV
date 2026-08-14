@@ -12,6 +12,7 @@ import styles from "@/components/DiscoverySearch.module.css";
 type Props = {
   plan: OrchestrationPlan;
   analysisBusy: boolean;
+  analyzingSourceId: string | null;
   onAnalyzeCandidate: (candidate: SearchCandidate) => void | Promise<void>;
 };
 
@@ -27,7 +28,7 @@ function statusClass(status: SearchUxStatus) {
   return `${styles.status} ${statusClasses[status]}`;
 }
 
-export function DiscoveryResultGrid({ plan, analysisBusy, onAnalyzeCandidate }: Props) {
+export function DiscoveryResultGrid({ plan, analysisBusy, analyzingSourceId, onAnalyzeCandidate }: Props) {
   const planStatus = getPlanSearchUxStatus(plan);
   return (
     <section className={styles.results} id="search-results">
@@ -47,8 +48,9 @@ export function DiscoveryResultGrid({ plan, analysisBusy, onAnalyzeCandidate }: 
             const candidate = planned.candidate;
             const status = getCandidateSearchUxStatus(planned, plan.diagnostics.coarse_runtime_allowed);
             const coarse = planned.coarse_analysis;
+            const analyzingThis = analyzingSourceId === candidate.source_id;
             return (
-              <article className={styles.card} key={candidate.source_id}>
+              <article className={styles.card} key={candidate.source_id} aria-busy={analyzingThis || undefined}>
                 <div className={styles.thumbnail}>
                   {candidate.thumbnail_url ? <img src={candidate.thumbnail_url} alt="" /> : <div className={styles.placeholder}>▶</div>}
                   <span className={styles.rank}>#{index + 1}</span>
@@ -60,7 +62,7 @@ export function DiscoveryResultGrid({ plan, analysisBusy, onAnalyzeCandidate }: 
                   <div className={styles.quick}>
                     {coarse ? <><strong>{coarse.primary_delivery_mode} · {coarse.confidence}</strong><span>훅: {coarse.hook_type || "미확인"}</span><span>{coarse.direct_demo_present ? "직접 시연 있음" : "직접 시연 없음"} · {coarse.cta_present ? "CTA 있음" : "CTA 없음"}</span></> : status === "limited" ? <><strong>메타데이터만 사용 가능</strong><span>빠른 AI 분석은 현재 quality gate 때문에 자동 실행하지 않습니다.</span></> : <><strong>{status === "queued" ? "빠른 분석 대기" : "아직 빠른 분석 없음"}</strong><span>메타데이터는 먼저 사용할 수 있습니다.</span></>}
                   </div>
-                  <div className={styles.actions}><button disabled={analysisBusy} onClick={() => void onAnalyzeCandidate(candidate)}>{analysisBusy ? "분석 작업 중..." : "이 영상 정밀 분석"}</button><a href={candidate.canonical_url} target="_blank" rel="noreferrer">YouTube</a></div>
+                  <div className={styles.actions}><button disabled={analysisBusy} onClick={() => void onAnalyzeCandidate(candidate)}>{analyzingThis ? "이 영상 분석 중..." : analysisBusy ? "다른 영상 분석 중" : "이 영상 정밀 분석"}</button><a href={candidate.canonical_url} target="_blank" rel="noreferrer">YouTube</a></div>
                 </div>
               </article>
             );
