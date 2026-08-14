@@ -38,6 +38,29 @@ jobs:
       - run: npm run test:reference-library-supabase
       - run: npm run test:supabase-auth
       - run: npm run test:runtime-api
+      - run: npm run test:desktop-shell
       - run: npm run test:reference-library-browser-script
       - run: npm run test:search-ux-browser-script
       - run: npm run build
+
+  desktop-shell:
+    if: ${{ github.event_name == 'pull_request' }}
+    runs-on: ubuntu-22.04
+    env:
+      NEXT_PUBLIC_SUPABASE_URL: https://euqkjrmrhhvnyzasppnd.supabase.co
+      NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: sb_publishable_WUdzeBz9jsYwQXP_YeyD4w_OdkRcLp2
+      NEXT_PUBLIC_MASTERV_API_BASE_URL: https://euqkjrmrhhvnyzasppnd.supabase.co/functions/v1
+      MASTERV_DESKTOP_REQUIRE_CONFIG: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Tauri Linux dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf xdg-utils
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - uses: dtolnay/rust-toolchain@stable
+      - run: npm install
+      - run: npm run test:desktop-shell
+      - run: npm run desktop:build
