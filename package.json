@@ -27,6 +27,7 @@
     "test:reference-library": "tsx scripts/reference-library-contract.ts",
     "test:reference-library-supabase": "tsx scripts/reference-library-supabase-contract.ts",
     "test:supabase-auth": "tsx scripts/supabase-auth-contract.ts",
+    "test:runtime-api": "tsx scripts/runtime-api-contract.ts",
     "test:reference-library-browser-script": "node --check scripts/reference-library-browser-smoke.mjs",
     "test:search-ux-browser-script": "node --check scripts/search-ux-browser-smoke.mjs",
     "smoke:gemini": "tsx scripts/runtime-smoke.ts",
