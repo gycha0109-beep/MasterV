@@ -1,6 +1,6 @@
 # MV-ARCH-1G-C — Search UX Browser E2E Smoke
 
-Status: **STATIC_VERIFIED_PENDING_CI / LIVE_BROWSER_NOT_VERIFIED / NOT ACTIVATED**
+Status: **RUNTIME_VERIFIED_BEHAVIOR / VISUAL_HARNESS_RETRY_REQUIRED / NOT ACTIVATED**
 
 Date: 2026-08-14
 
@@ -34,10 +34,11 @@ The GitHub Actions job:
 3. verifies `YOUTUBE_DATA_API_KEY` exists;
 4. explicitly verifies `GEMINI_API_KEY` is absent from the browser-smoke job;
 5. verifies a Chrome/Chromium executable exists on the runner;
-6. builds the production Next.js app;
-7. starts `next start` on `127.0.0.1:3000`;
-8. drives headless Chrome through the Chrome DevTools Protocol;
-9. uploads JSON evidence, desktop/mobile screenshots, Chrome log, and Next server log.
+6. ensures a Korean-capable font is available for screenshot evidence;
+7. builds the production Next.js app;
+8. starts `next start` on `127.0.0.1:3000`;
+9. drives headless Chrome through the Chrome DevTools Protocol;
+10. uploads JSON evidence, desktop/mobile screenshots, Chrome log, and Next server log.
 
 No Playwright/Puppeteer dependency is added. This avoids increasing the existing unresolved npm dependency-determinism surface.
 
@@ -85,13 +86,58 @@ The smoke intentionally does **not** click a Deep-analysis candidate action.
 
 ### Responsive check
 
-After the desktop evidence is captured, Chrome is switched to a 390×844 mobile viewport.
+After the desktop evidence is captured, Chrome is switched to an exact 390×844 responsive CSS viewport.
 
 The smoke verifies:
 
+- `window.innerWidth === 390`;
 - no document-level horizontal overflow;
 - the first result card fits within the viewport;
 - no `/api/analyze` request appears after responsive layout changes.
+
+## First live browser run — behavioral evidence
+
+GitHub Actions Runtime Smoke:
+
+```text
+run_id: 31763089540
+branch: feat/mvp-foundation
+head: 12f9d1ac7785a31394f811be4009794f8437256a
+query: sunscreen review shorts
+result: SUCCESS
+candidate_cards: 12
+discovery_requests: 1
+discovery_status: 200
+analyze_requests: 0
+gemini_api_key_present: false
+automatic_deep_analysis_observed: false
+plan_limited_badge: true
+limited_card_count: 8
+precise_action_count: 12
+thumbnail_count: 12
+metadata_only_copy: true
+```
+
+This is sufficient to mark the **behavioral browser path runtime verified**: a real production Next server, a real browser interaction, and a real YouTube Data API discovery response all completed without any automatic Deep request.
+
+The first artifact also reported no horizontal overflow and a fitting first card, but the visual harness itself had two limitations:
+
+1. the GitHub Ubuntu image had no Korean-capable font, so Korean screenshot glyphs rendered as tofu boxes;
+2. CDP mobile device emulation produced `window.innerWidth = 494` instead of the intended 390 CSS pixels after switching from the already-loaded desktop page.
+
+Those are test-harness limitations, not evidence of product failure. They prevent claiming the original screenshot as final mobile visual evidence.
+
+## Harness correction after first run
+
+The smoke was tightened without changing product code:
+
+- the workflow installs `fonts-noto-cjk` only when the runner has no Korean-capable font;
+- responsive verification now uses a fixed 390px CSS viewport rather than mobile device scaling;
+- the script fails unless `window.innerWidth === 390`;
+- no-overflow and card-fit assertions remain mandatory;
+- Gemini remains absent and `/api/analyze` must remain zero.
+
+One corrected manual browser run is required before the full stage is closed as `RUNTIME_VERIFIED`.
 
 ## Evidence artifact
 
@@ -113,7 +159,7 @@ The JSON artifact records:
 - discovery request count/status;
 - `/api/analyze` request count;
 - blocked-gate UI checks;
-- mobile overflow checks;
+- mobile viewport/overflow checks;
 - whether a Gemini key was present;
 - whether automatic Deep analysis was observed.
 
@@ -133,7 +179,14 @@ which performs `node --check` on the browser smoke script, then the existing ful
 
 ## Runtime verification gate
 
-MV-ARCH-1G-C can become `RUNTIME_VERIFIED` only after one manual `search-ux-browser` run produces a PASS artifact proving the browser contract above.
+The behavioral half of MV-ARCH-1G-C is already runtime verified by run `31763089540`.
+
+Full `RUNTIME_VERIFIED` additionally requires one corrected `search-ux-browser` run that produces a PASS artifact with:
+
+- Korean-capable screenshot rendering;
+- exact 390px mobile CSS viewport;
+- no horizontal overflow;
+- the same zero-auto-Deep boundary.
 
 A successful backend-only YouTube discovery smoke is not enough for this stage; that evidence belongs to MV-ARCH-1E.
 
