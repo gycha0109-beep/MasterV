@@ -1,6 +1,6 @@
 # MV-ARCH-1H-B — Guarded Live Gemini Batch Smoke
 
-Status: **STATIC_VERIFIED / LIVE_BATCH_NOT_VERIFIED / NOT ACTIVATED**
+Status: **RUNTIME_ATTEMPTED / BLOCKED_MODEL_TIER_PRECONDITION / RETRY_READY / NOT ACTIVATED**
 
 Date: 2026-08-14
 
@@ -12,15 +12,50 @@ This checkpoint separates Batch creation from later checking because Batch creat
 
 ## Default live target
 
-The smoke defaults to one short public YouTube video already returned by the verified MV-ARCH-1E discovery runtime smoke:
+The smoke uses one short public YouTube video already returned by the verified MV-ARCH-1E discovery runtime smoke:
 
 ```text
 source_id: yt:dr7rrnD_4jI
 url: https://www.youtube.com/watch?v=dr7rrnD_4jI
-model: gemini-3.6-flash
 ```
 
 The source is normalized again through the canonical YouTube identity authority before submission.
+
+The original Batch smoke model was `gemini-3.6-flash`. Run #31761461317 proved that this path is not available under the current project precondition: Batch create returned synchronous `400 FAILED_PRECONDITION`, no job name, and zero interactive generation requests.
+
+Current official pricing shows that `gemini-3.6-flash` Batch is not available on the Free Tier, while `gemini-3.5-flash-lite` supports video input, supports Batch API, and currently has Free Tier Batch availability. The guarded retry model is therefore:
+
+```text
+gemini-3.5-flash-lite
+```
+
+This is a changed-input retry after a synchronous rejected create; it is not a duplicate submission of an existing Batch job because the failed attempt returned no Batch resource name.
+
+## First live attempt evidence
+
+GitHub Actions Runtime Smoke:
+
+```text
+run_id: 31761461317
+branch: feat/mvp-foundation
+head: 56af8a871d7d666b13fce392624e9b1c88c0717e
+mode: submit
+model: gemini-3.6-flash
+result: failure
+api_status: 400 FAILED_PRECONDITION
+job_name: null
+batch_create_attempts: 1
+interactive_generate_requests: 0
+```
+
+The failure occurred at `ai.batches.create(...)` before a job resource was returned. The smoke artifact was still uploaded successfully.
+
+Interpretation boundary:
+
+- this does not prove that Batch + public YouTube URL is unsupported;
+- this does prove that the exact `gemini-3.6-flash` Batch create was rejected under the current project/model precondition;
+- official model/pricing evidence makes model/tier availability the primary blocker to remove before re-testing the media combination;
+- no automatic retry was performed.
 
 ## Runtime modes
 
@@ -111,7 +146,7 @@ Terminal failed/cancelled/expired states are persisted with the available job er
 
 Per-item inline errors are treated separately from whole-job terminal state.
 
-A submission failure is not retried automatically because a caller cannot safely assume a Batch creation attempt was not accepted when the response path is ambiguous.
+A submission failure is not retried automatically when a Batch resource may have been created. A synchronous rejected create with `job_name = null` may be retried only after changing the identified precondition/input and recording the previous attempt.
 
 ## GitHub Actions manual gate
 
@@ -130,30 +165,7 @@ batch_model
 batch_job_name   # check only
 ```
 
-The default branch contains only the dispatcher definition needed to expose these manual choices. The actual smoke implementation remains on `feat/mvp-foundation`.
-
-## Static verification
-
-The guarded smoke implementation is included in normal TypeScript typechecking but is never executed by CI.
-
-Verification checkpoint before this documentation freeze:
-
-```text
-head: 888d7429fbe1799960a1dd2cc17e05de89f4a074
-CI run: 31761132768 (#467)
-conclusion: success
-```
-
-The checkpoint passed:
-
-- TypeScript typecheck;
-- all existing regression contracts;
-- YouTube discovery contract;
-- Search UX contract;
-- background Batch mapping contract;
-- Next production build.
-
-No live Gemini Batch job was created by CI.
+The dispatcher default Batch model is now `gemini-3.5-flash-lite` to match current Free Tier Batch availability. The default branch contains only the dispatcher definition needed to expose these manual choices. The actual smoke implementation remains on `feat/mvp-foundation`.
 
 ## Activation boundary
 
