@@ -1,39 +1,27 @@
 # MV-ARCH-1H-B — Guarded Live Gemini Batch Smoke
 
-Status: **RUNTIME_ATTEMPTED / BLOCKED_MODEL_TIER_PRECONDITION / RETRY_READY / NOT ACTIVATED**
+Status: **RUNTIME_ATTEMPTED / BLOCKED_PRECONDITION / NOT ACTIVATED**
 
 Date: 2026-08-14
 
 ## Goal
 
-Verify exactly one real Gemini Batch job against one public YouTube video without activating background enrichment or falling back to interactive generation.
+Verify one real Gemini Batch job against one public YouTube video without activating background enrichment or falling back to interactive generation.
 
-This checkpoint separates Batch creation from later checking because Batch creation is not idempotent.
+Batch creation and later checking are intentionally separated because Batch creation is not treated as safely idempotent.
 
-## Default live target
-
-The smoke uses one short public YouTube video already returned by the verified MV-ARCH-1E discovery runtime smoke:
+## Target
 
 ```text
 source_id: yt:dr7rrnD_4jI
 url: https://www.youtube.com/watch?v=dr7rrnD_4jI
 ```
 
-The source is normalized again through the canonical YouTube identity authority before submission.
+The source is normalized through the canonical YouTube identity authority before submission.
 
-The original Batch smoke model was `gemini-3.6-flash`. Run #31761461317 proved that this path is not available under the current project precondition: Batch create returned synchronous `400 FAILED_PRECONDITION`, no job name, and zero interactive generation requests.
+## Live evidence
 
-Current official pricing shows that `gemini-3.6-flash` Batch is not available on the Free Tier, while `gemini-3.5-flash-lite` supports video input, supports Batch API, and currently has Free Tier Batch availability. The guarded retry model is therefore:
-
-```text
-gemini-3.5-flash-lite
-```
-
-This is a changed-input retry after a synchronous rejected create; it is not a duplicate submission of an existing Batch job because the failed attempt returned no Batch resource name.
-
-## First live attempt evidence
-
-GitHub Actions Runtime Smoke:
+### Attempt 1
 
 ```text
 run_id: 31761461317
@@ -48,140 +36,90 @@ batch_create_attempts: 1
 interactive_generate_requests: 0
 ```
 
-The failure occurred at `ai.batches.create(...)` before a job resource was returned. The smoke artifact was still uploaded successfully.
-
-Interpretation boundary:
-
-- this does not prove that Batch + public YouTube URL is unsupported;
-- this does prove that the exact `gemini-3.6-flash` Batch create was rejected under the current project/model precondition;
-- official model/pricing evidence makes model/tier availability the primary blocker to remove before re-testing the media combination;
-- no automatic retry was performed.
-
-## Runtime modes
-
-`scripts/background-batch-smoke.ts` supports exactly two modes.
-
-### submit
+### Attempt 2
 
 ```text
-BACKGROUND_BATCH_MODE=submit
+run_id: 31761909252
+branch: feat/mvp-foundation
+head: 15f2a9dc40122c925d8170aa522d3da84e9c6932
+mode: submit
+model: gemini-3.5-flash-lite
+result: failure
+api_status: 400 FAILED_PRECONDITION
+job_name: null
+state: null
+batch_create_attempts: 1
+interactive_generate_requests: 0
+artifact_id: 9204918780
+artifact_digest: sha256:df9d5ecb1fd081ecd4fa7151eb326cace059a825b09c39c9c66ca9e520216b05
 ```
 
-Behavior:
+Both failures occurred synchronously at `ai.batches.create(...)` before a Batch resource name was returned. No check job exists for either attempt, and neither path fell back to interactive generation.
 
-1. requires `GEMINI_API_KEY`;
-2. rejects a supplied existing job name;
-3. performs at most one `ai.batches.create(...)` attempt;
-4. submits exactly one `GenerateContentRequest` containing one public YouTube URL;
-5. requests an exact canonical source ID echo in the response;
-6. polls only the created job with `ai.batches.get(...)` for a short bounded window;
-7. never automatically performs a second Batch create;
-8. never falls back to interactive `generateContent` or Interactions API;
-9. writes `artifacts/background-batch-smoke.json`.
+## Current capability interpretation
 
-Artifact counters distinguish:
+Current official Gemini documentation establishes that:
+
+- `gemini-3.5-flash-lite` supports video input;
+- `gemini-3.5-flash-lite` supports Batch API as a model capability;
+- public YouTube URLs are supported by the generateContent video input path;
+- Batch API is listed as a Paid tier feature;
+- current Batch pricing tables show Free Tier as not available.
+
+Therefore the two `FAILED_PRECONDITION` responses do **not** prove that Batch + public YouTube URL is unsupported. They prove only that the exact Batch create requests were rejected under the current project/request preconditions.
+
+The connected tooling cannot inspect the Gemini project's billing tier. Paid-tier availability must be explicitly established before another live Batch submit is justified.
+
+## Retry boundary
+
+Do not submit another Batch smoke merely by changing models.
+
+A future retry is permitted only after a materially changed precondition is established, such as:
 
 ```text
-batch_create_attempts
-interactive_generate_requests = 0
+Gemini API Paid tier / billing confirmed for the same project
 ```
 
-A create attempt is not described as a confirmed inference request if the API call fails before a job is created.
+If a future create returns a `batches/...` resource name, all subsequent observation must use `gemini-batch-check`; do not create another job for polling.
 
-### check
+## Runtime contract retained
 
-```text
-BACKGROUND_BATCH_MODE=check
-BACKGROUND_BATCH_JOB_NAME=batches/...
-```
+`scripts/background-batch-smoke.ts` still enforces:
 
-Behavior:
+- one Batch create attempt maximum in `submit` mode;
+- zero interactive generation fallback;
+- `check` mode requires an existing Batch job name and performs zero creates;
+- bounded polling only;
+- explicit `PENDING`, `SUCCEEDED`, and `FAILED` artifacts;
+- exact canonical source ID binding;
+- whole-job and per-item failure separation.
 
-1. requires an existing job name;
-2. performs only `ai.batches.get(...)` polling;
-3. performs zero Batch create attempts;
-4. performs zero interactive generation requests;
-5. writes the same normalized artifact format.
+`lib/background-batch.ts` retains the static Batch mapping contract:
 
-The check path therefore cannot accidentally duplicate the original Batch job.
+- canonical `yt:<videoId>` target identity;
+- duplicate target rejection;
+- JSONL key/source binding;
+- inline/JSONL result-key compatibility;
+- response/error ambiguity rejection;
+- SDK `JOB_STATE_*` and REST `BATCH_STATE_*` terminal-state compatibility.
 
-## Terminal handling
+## Activation decision
 
-The smoke accepts both documented state surfaces at the integration boundary:
+MV-ARCH-1H is **not activated**.
 
-```text
-JOB_STATE_SUCCEEDED / FAILED / CANCELLED / EXPIRED
-BATCH_STATE_SUCCEEDED / FAILED / CANCELLED / EXPIRED
-```
+The architecture remains valid as an optional future background-enrichment path, but MasterV MVP does not depend on it. Interactive discovery, cache/replay, deterministic orchestration, and explicit single-video Deep analysis remain independent of Batch availability.
 
-Pending/running states are not failures.
+Production Batch activation would still require:
 
-If the bounded submit/check window ends while the job remains non-terminal, the script records:
-
-```text
-status: PENDING
-job_name: batches/...
-```
-
-and exits without creating another job.
-
-## Success gate
-
-`LIVE_BATCH_VERIFIED` requires all of the following from the real job:
-
-1. Batch create returns a persistent job name;
-2. the job can be retrieved with that name;
-3. the job reaches a successful terminal state;
-4. exactly one inline response exists;
-5. the item itself has no error;
-6. response text includes the exact canonical `source_id` bound in the request;
-7. the artifact records one Batch create attempt for submit mode;
-8. the artifact records zero interactive generate requests.
-
-A successful create followed by a pending state is not enough for runtime verification.
-
-## Failure evidence
-
-Terminal failed/cancelled/expired states are persisted with the available job error.
-
-Per-item inline errors are treated separately from whole-job terminal state.
-
-A submission failure is not retried automatically when a Batch resource may have been created. A synchronous rejected create with `job_name = null` may be retried only after changing the identified precondition/input and recording the previous attempt.
-
-## GitHub Actions manual gate
-
-The `Runtime Smoke` dispatcher exposes:
-
-```text
-gemini-batch-submit
-gemini-batch-check
-```
-
-Inputs:
-
-```text
-batch_source_url
-batch_model
-batch_job_name   # check only
-```
-
-The dispatcher default Batch model is now `gemini-3.5-flash-lite` to match current Free Tier Batch availability. The default branch contains only the dispatcher definition needed to expose these manual choices. The actual smoke implementation remains on `feat/mvp-foundation`.
-
-## Activation boundary
-
-Even a successful 1H-B smoke does not activate background library processing.
-
-It only proves that the current project/model can execute the exact Batch + public YouTube URL path and return a mappable result.
-
-Production activation still requires a separate decision on:
-
+- paid-tier availability;
+- successful Batch + public YouTube live evidence;
 - persistent job storage;
 - scheduling/worker ownership;
-- deduplication/idempotency around submit intent;
-- Batch quota budgeting;
-- result persistence and replay;
-- retry policy for per-item failures;
+- submit idempotency/deduplication;
+- quota budgeting;
+- result persistence/replay;
+- retry policy;
 - user-facing background status;
 - operational monitoring.
 
-MV-ARCH-1C remains `NOT QUALITY_VALIDATED`; this Batch spike does not enable interactive live coarse analysis.
+MV-ARCH-1C remains `NOT QUALITY_VALIDATED`; this spike does not enable interactive live coarse analysis.
