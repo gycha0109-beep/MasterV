@@ -1,14 +1,12 @@
 # MV-ARCH-1G-C — Search UX Browser E2E Smoke
 
-Status: **RUNTIME_VERIFIED_BEHAVIOR / VISUAL_HARNESS_RETRY_REQUIRED / NOT ACTIVATED**
+Status: **RUNTIME_VERIFIED_BEHAVIOR / MOBILE_OVERFLOW_FIXED_PENDING_RECHECK / NOT ACTIVATED**
 
 Date: 2026-08-14
 
 ## Goal
 
 Close the remaining browser-runtime gap after MV-ARCH-1E proved the YouTube discovery backend with a real API call.
-
-The smoke verifies the real product UI flow in a production Next.js server without activating live coarse analysis or automatic Deep analysis.
 
 ```text
 keyword input
@@ -21,47 +19,25 @@ keyword input
 
 ## Execution environment
 
-The smoke is manual-only through the existing `Runtime Smoke` workflow target:
+Manual-only `Runtime Smoke` target:
 
 ```text
 search-ux-browser
 ```
 
-The GitHub Actions job:
+The job checks out the selected branch, verifies `YOUTUBE_DATA_API_KEY`, verifies that `GEMINI_API_KEY` is absent, ensures Chrome and Korean-capable fonts, builds and starts the production Next.js app, drives Chrome through CDP, and uploads JSON/screenshots/logs.
 
-1. checks out the selected branch;
-2. installs the existing repository dependencies;
-3. verifies `YOUTUBE_DATA_API_KEY` exists;
-4. explicitly verifies `GEMINI_API_KEY` is absent from the browser-smoke job;
-5. verifies a Chrome/Chromium executable exists on the runner;
-6. ensures a Korean-capable font is available for screenshot evidence;
-7. builds the production Next.js app;
-8. starts `next start` on `127.0.0.1:3000`;
-9. drives headless Chrome through the Chrome DevTools Protocol;
-10. uploads JSON evidence, desktop/mobile screenshots, Chrome log, and Next server log.
-
-No Playwright/Puppeteer dependency is added. This avoids increasing the existing unresolved npm dependency-determinism surface.
+No Playwright/Puppeteer dependency is added.
 
 ## Browser contract
 
-`scripts/search-ux-browser-smoke.mjs` performs these checks against the actual rendered DOM.
+Before search:
 
-### Before search
+- discovery input exists;
+- direct URL analyzer exists and is empty;
+- no result grid exists.
 
-- discovery search input exists;
-- existing direct URL analyzer input exists;
-- direct URL input is empty;
-- no result grid is rendered yet.
-
-### Search interaction
-
-The smoke enters a real query using the native input setter + bubbling input event and clicks the actual `참고영상 찾기` button.
-
-It waits for real result cards rather than calling the discovery library directly.
-
-### Network observations
-
-Browser CDP network events must prove:
+After entering the query and clicking the actual search button:
 
 ```text
 /api/discover/youtube requests = 1
@@ -69,41 +45,29 @@ Browser CDP network events must prove:
 /api/analyze requests = 0
 ```
 
-The browser job has no Gemini credential, providing a second boundary against accidental Deep execution.
+With MV-ARCH-1C still not quality validated, results must show:
 
-### Result-state checks
+- at least one candidate;
+- plan-level `자동 빠른 분석 제한`;
+- pending candidates labeled `분석 제한됨`;
+- metadata-only explanation;
+- one explicit Deep action per candidate;
+- direct URL analyzer still unpopulated before explicit selection.
 
-With MV-ARCH-1C still not quality validated and no server-authoritative calibrated coarse gate enabled, the rendered result must show:
+The smoke never clicks Deep.
 
-- at least one candidate card;
-- plan-level `자동 빠른 분석 제한` indication;
-- at least one candidate labeled `분석 제한됨`;
-- metadata-only explanation while coarse auto-analysis is blocked;
-- one explicit `정밀 분석` action per candidate;
-- direct URL analyzer remains unpopulated because no candidate was selected.
+Responsive verification requires:
 
-The smoke intentionally does **not** click a Deep-analysis candidate action.
-
-### Responsive check
-
-After the desktop evidence is captured, Chrome is switched to an exact 390×844 responsive CSS viewport.
-
-The smoke verifies:
-
-- `window.innerWidth === 390`;
+- exact `window.innerWidth === 390`;
 - no document-level horizontal overflow;
-- the first result card fits within the viewport;
-- no `/api/analyze` request appears after responsive layout changes.
+- first result card fits within the viewport;
+- `/api/analyze` remains zero.
 
-## First live browser run — behavioral evidence
-
-GitHub Actions Runtime Smoke:
+## Live run 1 — behavioral PASS
 
 ```text
 run_id: 31763089540
-branch: feat/mvp-foundation
 head: 12f9d1ac7785a31394f811be4009794f8437256a
-query: sunscreen review shorts
 result: SUCCESS
 candidate_cards: 12
 discovery_requests: 1
@@ -118,30 +82,63 @@ thumbnail_count: 12
 metadata_only_copy: true
 ```
 
-This is sufficient to mark the **behavioral browser path runtime verified**: a real production Next server, a real browser interaction, and a real YouTube Data API discovery response all completed without any automatic Deep request.
+This proves the real production Next server + browser + YouTube Data API search path and the zero-auto-Deep boundary.
 
-The first artifact also reported no horizontal overflow and a fitting first card, but the visual harness itself had two limitations:
+The first harness had no Korean font and its mobile emulation reported 494 CSS pixels instead of the intended 390, so its mobile visual result was not accepted as final evidence.
 
-1. the GitHub Ubuntu image had no Korean-capable font, so Korean screenshot glyphs rendered as tofu boxes;
-2. CDP mobile device emulation produced `window.innerWidth = 494` instead of the intended 390 CSS pixels after switching from the already-loaded desktop page.
+## Harness correction
 
-Those are test-harness limitations, not evidence of product failure. They prevent claiming the original screenshot as final mobile visual evidence.
+After run 1:
 
-## Harness correction after first run
+- install `fonts-noto-cjk` only when no Korean-capable font exists;
+- use a fixed 390px CSS viewport;
+- fail unless `window.innerWidth === 390`;
+- retain no-overflow/card-fit/zero-Deep assertions.
 
-The smoke was tightened without changing product code:
+## Live run 2 — real mobile overflow discovered
 
-- the workflow installs `fonts-noto-cjk` only when the runner has no Korean-capable font;
-- responsive verification now uses a fixed 390px CSS viewport rather than mobile device scaling;
-- the script fails unless `window.innerWidth === 390`;
-- no-overflow and card-fit assertions remain mandatory;
-- Gemini remains absent and `/api/analyze` must remain zero.
+```text
+run_id: 31763430735
+head: b42076353a1cfae1788152011dd4d69047d5b341
+result: FAILURE
+viewport_width: 390
+document_width: 494
+discovery_requests: 1
+discovery_status: 200
+analyze_requests: 0
+```
 
-One corrected manual browser run is required before the full stage is closed as `RUNTIME_VERIFIED`.
+The corrected harness proved that the 494px width was not only an emulation artifact. The page actually overflowed by 104px at a 390px viewport.
+
+Root cause was the mobile sidebar navigation intrinsic width:
+
+```text
+5 * 86px minimum nav item width
++ 4 * 7px grid gap
++ 36px sidebar horizontal padding
+= 494px
+```
+
+`overflow-x: auto` existed on the nav, but the flex/grid intrinsic minimum width still expanded the document.
+
+## Product fix
+
+Commit `83d5c5c758e935d239d7a12286b2d376d16b07a1` adds a mobile containment rule:
+
+```css
+@media (max-width: 640px) {
+  .sidebar { min-width: 0; }
+  .sidebar nav { width: 100%; min-width: 0; max-width: 100%; }
+}
+```
+
+The intended behavior is now: the sidebar remains viewport-bound while the five navigation items scroll inside the nav container rather than expanding the whole page.
+
+This is a product CSS fix, not a smoke bypass.
 
 ## Evidence artifact
 
-Manual run uploads:
+Manual runs upload:
 
 ```text
 artifacts/search-ux-browser/
@@ -152,57 +149,34 @@ artifacts/search-ux-browser/
   server.log
 ```
 
-The JSON artifact records:
-
-- query;
-- candidate count;
-- discovery request count/status;
-- `/api/analyze` request count;
-- blocked-gate UI checks;
-- mobile viewport/overflow checks;
-- whether a Gemini key was present;
-- whether automatic Deep analysis was observed.
-
 No API key value is written to artifacts.
 
 ## CI boundary
 
-Normal CI does not execute Chrome or call YouTube.
-
-It only runs:
+Normal CI does not execute Chrome or call YouTube. It performs `node --check` through:
 
 ```text
 npm run test:search-ux-browser-script
 ```
 
-which performs `node --check` on the browser smoke script, then the existing full regression suite and production build continue as normal.
+and then runs the existing regression suite and production build.
 
 ## Runtime verification gate
 
-The behavioral half of MV-ARCH-1G-C is already runtime verified by run `31763089540`.
+Behavioral runtime is verified by run `31763089540`.
 
-Full `RUNTIME_VERIFIED` additionally requires one corrected `search-ux-browser` run that produces a PASS artifact with:
+Full `RUNTIME_VERIFIED` now requires one post-fix manual `search-ux-browser` PASS proving:
 
 - Korean-capable screenshot rendering;
-- exact 390px mobile CSS viewport;
-- no horizontal overflow;
-- the same zero-auto-Deep boundary.
-
-A successful backend-only YouTube discovery smoke is not enough for this stage; that evidence belongs to MV-ARCH-1E.
+- exact 390px viewport;
+- document width <= viewport width;
+- card fit;
+- the same one discovery request / zero automatic Deep boundary.
 
 ## Activation boundary
 
-Even a successful browser smoke does not activate live coarse analysis.
+Even after full browser verification, live coarse remains disabled because MV-ARCH-1C is still `NOT QUALITY_VALIDATED`. Search remains Gemini-free and Deep still requires an explicit candidate or URL action.
 
-MV-ARCH-1C remains `NOT QUALITY_VALIDATED`, so:
+## Batch safety
 
-- automatic live coarse remains disabled;
-- no calibrated coarse gate is injected from the client;
-- search itself remains Gemini-free;
-- Deep analysis still requires an explicit candidate or URL action.
-
-## Batch safety follow-up
-
-The `Runtime Smoke` UI no longer exposes `gemini-batch-submit` or `gemini-batch-check` as selectable targets while MV-ARCH-1H-B is blocked on an unverified paid-tier precondition.
-
-The guarded Batch implementation remains in the branch for future reopening, but accidental manual submission is removed from the normal dispatcher choices.
+`gemini-batch-submit` and `gemini-batch-check` remain hidden from dispatcher choices while MV-ARCH-1H-B is blocked on an unverified paid-tier precondition.
