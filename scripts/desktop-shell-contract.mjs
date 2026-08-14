@@ -35,6 +35,16 @@ assert(icon.length > 24, "generated Tauri icon is unexpectedly small");
 assert(icon.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])), "generated Tauri icon must be a PNG");
 assert(icon.readUInt32BE(16) === 128 && icon.readUInt32BE(20) === 128, "generated Tauri icon must be 128x128");
 
+const windowsIconPath = path.join(root, "src-tauri", "icons", "icon.ico");
+assert(fs.existsSync(windowsIconPath), "generated Windows Tauri icon missing");
+const windowsIcon = fs.readFileSync(windowsIconPath);
+assert(windowsIcon.length > 22, "generated Windows icon is unexpectedly small");
+assert(windowsIcon.readUInt16LE(0) === 0, "ICO reserved field must be zero");
+assert(windowsIcon.readUInt16LE(2) === 1, "ICO type must be icon");
+assert(windowsIcon.readUInt16LE(4) >= 1, "ICO must contain at least one image");
+assert(windowsIcon.readUInt8(6) === 128 && windowsIcon.readUInt8(7) === 128, "generated Windows icon must contain a 128x128 image");
+assert(windowsIcon.subarray(22, 30).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])), "ICO payload must contain PNG image data");
+
 const configText = fs.readFileSync(path.join(outputDir, "config.js"), "utf8");
 assert(configText.includes('"surface":"desktop"'), "desktop config must declare desktop surface");
 assert(configText.includes('"api_contract_version":"mv-hosted-api-v1"'), "desktop config contract version mismatch");
@@ -57,6 +67,7 @@ console.log(JSON.stringify({
   bundle_active: tauriConfig.bundle.active,
   tauri_icon_png: true,
   tauri_icon_size: "128x128",
+  tauri_windows_icon_ico: true,
   local_next_api_calls: 0,
   provider_secrets_embedded: 0
 }));
