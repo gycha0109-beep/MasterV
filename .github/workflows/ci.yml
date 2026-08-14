@@ -36,5 +36,6 @@ jobs:
       - run: npm run test:background-batch
       - run: npm run test:reference-library
       - run: npm run test:reference-library-supabase
+      - run: npm run test:supabase-auth
       - run: npm run test:search-ux-browser-script
       - run: npm run build
