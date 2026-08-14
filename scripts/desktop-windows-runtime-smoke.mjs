@@ -178,8 +178,8 @@ async function main() {
       cwd: path.dirname(appBinaryPath),
       env: {
         ...process.env,
-        WEBVIEW2_USER_DATA_FOLDER: webviewUserDataFolder,
-        WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS: `--remote-debugging-port=${debugPort}`
+        MASTERV_DESKTOP_TEST_REMOTE_DEBUGGING_PORT: String(debugPort),
+        MASTERV_DESKTOP_TEST_WEBVIEW_DATA_DIR: webviewUserDataFolder
       },
       stdio: ["ignore", appLog, appLog],
       windowsHide: false
