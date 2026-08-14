@@ -1,6 +1,6 @@
 # MV-ARCH-3A — Desktop Surface + Hosted API Boundary
 
-Status: **STATIC_VERIFIED / HOSTED_BOUNDARY_DEPLOYED / AUTHENTICATED_RUNTIME_NOT_VERIFIED / NOT ACTIVATED**
+Status: **RUNTIME_VERIFIED / NOT ACTIVATED**
 
 Date: 2026-08-15
 
@@ -23,7 +23,7 @@ The existing web/Next.js surface remains valid during migration.
 
 ## Why a hosted boundary is required
 
-Tauri hosts static frontend assets and does not natively provide a Next.js server runtime. The desktop build therefore cannot depend on local `/api/*` route handlers being present in the packaged executable.
+Tauri hosts static frontend assets and does not provide a Next.js server runtime. The desktop build therefore cannot depend on local `/api/*` route handlers being present in the packaged executable.
 
 The migration rule is:
 
@@ -107,18 +107,42 @@ No service-role key, Gemini key, or YouTube key belongs in the desktop bundle.
 
 `npm run test:runtime-api` verifies these semantics without making a network request.
 
-## Live authenticated smoke
+## Live authenticated verification
 
-`scripts/hosted-api-boundary-smoke.ts` is prepared to:
+Runtime Smoke run:
 
-1. sign in using the existing Supabase Auth test user;
-2. call `masterv-api-boundary` with the real user JWT;
-3. require HTTP 200 and `mv-hosted-api-v1`;
-4. prove the endpoint is authenticated;
-5. assert `analyze` and `youtube_discovery` are still not migrated;
-6. execute with no Gemini or YouTube credentials.
+```text
+run_id: 31842641313
+execution_ref: feat/mvp-foundation
+head: b186efb775fa6bc30df8e112824d8501586deb2d
+result: SUCCESS
+```
 
-This smoke is not yet executed at this checkpoint.
+The live authenticated result proved:
+
+```text
+hosted_api_boundary_verified = true
+hosted_api_contract_version = mv-hosted-api-v1
+hosted_api_analyze_migrated = false
+hosted_api_youtube_discovery_migrated = false
+revision = 2
+first_saved_at_preserved = true
+cross_workspace_write_denied = true
+Gemini requests = 0
+YouTube requests = 0
+```
+
+The browser persistence leg also passed:
+
+```text
+reference_rest_requests = 6
+analyze_requests = 0
+restored_after_reload = true
+```
+
+Cleanup removed the synthetic smoke reference successfully.
+
+Therefore the hosted boundary has been invoked with a real authenticated Supabase user session without exposing Gemini or YouTube credentials.
 
 ## Workload placement decision
 
@@ -145,22 +169,15 @@ If Deep analysis exceeds Edge constraints, the desktop architecture still remain
 
 No Tauri shell is created in 3A.
 
-Before MV-ARCH-3B, the client frontend must become compatible with static export or be separated into a desktop SPA surface. Existing Next.js route handlers must not be treated as part of the packaged desktop runtime.
+The current Next.js application still contains server route handlers, so the desktop build must not pretend those handlers exist inside a packaged Tauri executable. 3B creates a separate static desktop surface first and keeps backend migration independent.
 
-## Promotion gate
+## Status boundary
 
-3A becomes `RUNTIME_VERIFIED` when:
+3A is now `RUNTIME_VERIFIED`.
 
-- the authenticated hosted boundary smoke passes using a real Supabase user JWT;
-- unauthenticated access remains gateway-protected;
-- Gemini/YouTube request count remains zero;
-- exact-head CI passes.
-
-`ACTIVATED` remains separate.
+It is not `ACTIVATED` because no distributed desktop application consumes this boundary yet, and production analyze/discovery workloads have not migrated.
 
 ## Next
-
-After the hosted boundary is runtime verified:
 
 ```text
 MV-ARCH-3B — Tauri Desktop Shell + Static Client Build
