@@ -27,7 +27,8 @@ type SmokeArtifact = {
   status: "SUCCEEDED" | "PENDING" | "FAILED";
   response_text: string | null;
   error: string | null;
-  create_requests_executed: number;
+  batch_create_attempts: number;
+  interactive_generate_requests: 0;
 };
 
 function assert(condition: unknown, message: string): asserts condition {
@@ -46,6 +47,16 @@ function stateOf(job: { state?: unknown }) {
 
 function errorMessage(error: unknown) {
   return error instanceof Error ? error.message : String(error);
+}
+
+function jobErrorMessage(job: { error?: unknown }) {
+  if (job.error === undefined || job.error === null) return null;
+  if (typeof job.error === "string") return job.error;
+  try {
+    return JSON.stringify(job.error);
+  } catch {
+    return String(job.error);
+  }
 }
 
 async function writeArtifact(artifact: SmokeArtifact) {
@@ -83,14 +94,14 @@ async function main() {
   const [target] = normalizeBackgroundBatchTargets([sourceUrl]);
   const ai = new GoogleGenAI({ apiKey });
 
-  let createRequestsExecuted = 0;
+  let batchCreateAttempts = 0;
   let jobName = process.env.BACKGROUND_BATCH_JOB_NAME?.trim() || null;
   let job: Awaited<ReturnType<GoogleGenAI["batches"]["get"]>> | null = null;
 
   try {
     if (mode === "submit") {
       assert(!jobName, "submit mode must not receive BACKGROUND_BATCH_JOB_NAME");
-      createRequestsExecuted = 1;
+      batchCreateAttempts = 1;
       const created = await ai.batches.create({
         model,
         src: [
@@ -140,20 +151,23 @@ async function main() {
         status: "PENDING",
         response_text: null,
         error: null,
-        create_requests_executed: createRequestsExecuted
+        batch_create_attempts: batchCreateAttempts,
+        interactive_generate_requests: 0
       });
       console.log(JSON.stringify({
         status: "BACKGROUND_BATCH_SMOKE_PENDING",
         mode,
         job_name: jobName,
         state,
-        create_requests_executed: createRequestsExecuted,
+        batch_create_attempts: batchCreateAttempts,
+        interactive_generate_requests: 0,
         artifact: artifactPath
       }));
       return;
     }
 
     if (state !== "JOB_STATE_SUCCEEDED" && state !== "BATCH_STATE_SUCCEEDED") {
+      const jobError = jobErrorMessage(job);
       const artifactPath = await writeArtifact({
         version: "background-batch-smoke-v1",
         generated_at: new Date().toISOString(),
@@ -165,15 +179,18 @@ async function main() {
         state,
         status: "FAILED",
         response_text: null,
-        error: `Batch terminal state: ${state}`,
-        create_requests_executed: createRequestsExecuted
+        error: jobError ?? `Batch terminal state: ${state}`,
+        batch_create_attempts: batchCreateAttempts,
+        interactive_generate_requests: 0
       });
       console.error(JSON.stringify({
         status: "BACKGROUND_BATCH_SMOKE_FAILED",
         mode,
         job_name: jobName,
         state,
-        create_requests_executed: createRequestsExecuted,
+        error: jobError,
+        batch_create_attempts: batchCreateAttempts,
+        interactive_generate_requests: 0,
         artifact: artifactPath
       }));
       process.exitCode = 1;
@@ -199,7 +216,8 @@ async function main() {
       status: "SUCCEEDED",
       response_text: responseText,
       error: null,
-      create_requests_executed: createRequestsExecuted
+      batch_create_attempts: batchCreateAttempts,
+      interactive_generate_requests: 0
     });
 
     console.log(JSON.stringify({
@@ -208,7 +226,8 @@ async function main() {
       job_name: jobName,
       state,
       source_id: target.source_id,
-      create_requests_executed: createRequestsExecuted,
+      batch_create_attempts: batchCreateAttempts,
+      interactive_generate_requests: 0,
       artifact: artifactPath
     }));
   } catch (error) {
@@ -225,14 +244,16 @@ async function main() {
       status: "FAILED",
       response_text: null,
       error: message,
-      create_requests_executed: createRequestsExecuted
+      batch_create_attempts: batchCreateAttempts,
+      interactive_generate_requests: 0
     });
     console.error(JSON.stringify({
       status: "BACKGROUND_BATCH_SMOKE_ERROR",
       mode,
       job_name: jobName,
       error: message,
-      create_requests_executed: createRequestsExecuted,
+      batch_create_attempts: batchCreateAttempts,
+      interactive_generate_requests: 0,
       artifact: artifactPath
     }));
     process.exitCode = 1;
