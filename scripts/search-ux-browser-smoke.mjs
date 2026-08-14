@@ -239,9 +239,7 @@ async function main() {
       width: 390,
       height: 844,
       deviceScaleFactor: 1,
-      mobile: true,
-      screenWidth: 390,
-      screenHeight: 844
+      mobile: false
     });
     await sleep(300);
     await evaluate(cdp, "document.getElementById('search-results')?.scrollIntoView({ block: 'start' }); true");
@@ -258,6 +256,7 @@ async function main() {
         first_card_fits_viewport: rect ? rect.width <= window.innerWidth + 1 : false
       };
     })()`);
+    assert(mobile.viewport_width === 390, `Expected exact 390px CSS viewport, got ${mobile.viewport_width}px`);
     assert(mobile.no_horizontal_overflow, `Mobile page overflows horizontally: ${mobile.document_width}px > ${mobile.viewport_width}px`);
     assert(mobile.first_card_fits_viewport, "First result card does not fit the mobile viewport");
     assert(network.analyze_requests === 0, "Responsive check unexpectedly triggered Deep analysis");
@@ -285,6 +284,7 @@ async function main() {
       candidates: desktop.card_count,
       discovery_requests: network.discovery_requests,
       analyze_requests: network.analyze_requests,
+      mobile_viewport_width: mobile.viewport_width,
       mobile_no_horizontal_overflow: mobile.no_horizontal_overflow
     }));
   } catch (error) {
