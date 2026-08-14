@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import type { SearchOptions } from "@/lib/discovery";
-import { discoverYouTubeCandidates, YouTubeDiscoveryError } from "@/lib/youtube-discovery";
+import { discoverYouTubeProgressive, YouTubeDiscoveryError } from "@/lib/youtube-discovery";
 
 const QUOTA_REASONS = new Set(["quotaExceeded", "dailyLimitExceeded", "rateLimitExceeded"]);
 const CONFIG_REASONS = new Set(["keyInvalid", "accessNotConfigured", "ipRefererBlocked"]);
@@ -21,7 +21,7 @@ export async function POST(request: Request) {
       }, { status: 503 });
     }
 
-    const result = await discoverYouTubeCandidates(query, body.options ?? {});
+    const result = await discoverYouTubeProgressive(query, body.options ?? {});
     return NextResponse.json(result);
   } catch (error) {
     if (error instanceof YouTubeDiscoveryError) {
