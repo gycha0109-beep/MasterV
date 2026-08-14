@@ -16,7 +16,6 @@ jobs:
         with:
           node-version: 24
       - run: npm install
-      - run: npm run test:desktop-wdio-service
       - run: npm run typecheck
       - run: npm run test:observation-contract
       - run: npm run test:subject-attribution
@@ -43,6 +42,8 @@ jobs:
       - run: npm run test:reference-library-browser-script
       - run: npm run test:search-ux-browser-script
       - run: npm run build
+      - name: Production dependency audit
+        run: npm audit --omit=dev --audit-level=high
 
   desktop-shell:
     if: ${{ github.event_name == 'pull_request' }}
@@ -63,7 +64,6 @@ jobs:
           node-version: 24
       - uses: dtolnay/rust-toolchain@stable
       - run: npm install
-      - run: npm run test:desktop-wdio-service
       - run: npm run test:desktop-shell
       - run: npm run desktop:build
 
@@ -78,7 +78,6 @@ jobs:
       MASTERV_DESKTOP_REQUIRE_CONFIG: "1"
       SUPABASE_TEST_EMAIL: ${{ secrets.SUPABASE_TEST_EMAIL }}
       SUPABASE_TEST_PASSWORD: ${{ secrets.SUPABASE_TEST_PASSWORD }}
-      FORCE_COLOR: "0"
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -86,8 +85,6 @@ jobs:
           node-version: 24
       - uses: dtolnay/rust-toolchain@stable
       - run: npm install
-      - name: Verify WebdriverIO Tauri dependency contract
-        run: npm run test:desktop-wdio-service
       - name: Verify Windows desktop smoke preconditions
         shell: pwsh
         run: |
@@ -97,9 +94,7 @@ jobs:
           if ($env:YOUTUBE_DATA_API_KEY) { throw "YouTube credential must not be present in desktop runtime smoke" }
       - name: Build native Windows Tauri executable
         run: npm run desktop:build
-      - name: Install official Tauri WebDriver bridge
-        run: cargo install tauri-driver --locked
-      - name: Run native WebView2 auth and hosted-boundary smoke
+      - name: Run native WebView2 attach-mode auth and hosted-boundary smoke
         run: npm run test:desktop-windows-runtime
       - name: Generate platform icons for installer smoke
         run: npm run tauri -- icon src-tauri/icons/icon.png
