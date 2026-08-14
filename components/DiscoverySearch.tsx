@@ -13,6 +13,7 @@ type DiscoveryApiResponse = {
 
 type DiscoverySearchProps = {
   analysisBusy: boolean;
+  analyzingSourceId: string | null;
   onAnalyzeCandidate: (candidate: SearchCandidate) => void | Promise<void>;
 };
 
@@ -22,7 +23,7 @@ function friendlyDiscoveryError(data: DiscoveryApiResponse) {
   return data.error || "YouTube 참고영상 검색에 실패했습니다.";
 }
 
-export function DiscoverySearch({ analysisBusy, onAnalyzeCandidate }: DiscoverySearchProps) {
+export function DiscoverySearch({ analysisBusy, analyzingSourceId, onAnalyzeCandidate }: DiscoverySearchProps) {
   const [query, setQuery] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -42,13 +43,11 @@ export function DiscoverySearch({ analysisBusy, onAnalyzeCandidate }: DiscoveryS
       });
       const data = (await response.json()) as DiscoveryApiResponse;
       if (!response.ok || !data.orchestration) {
-        setPlan(null);
         setError(friendlyDiscoveryError(data));
         return;
       }
       setPlan(data.orchestration.plan);
     } catch (caught) {
-      setPlan(null);
       setError(caught instanceof Error ? caught.message : "YouTube 참고영상 검색에 실패했습니다.");
     } finally {
       setLoading(false);
@@ -67,7 +66,7 @@ export function DiscoverySearch({ analysisBusy, onAnalyzeCandidate }: DiscoveryS
         {loading && <div className={styles.loading}><div className={`spinner ${styles.smallSpinner}`} /><span>YouTube 후보와 저장된 빠른 분석 상태를 불러오고 있습니다.</span></div>}
         {error && <div className={`error-box ${styles.error}`}><p>{error}</p></div>}
       </section>
-      {plan && <DiscoveryResultGrid plan={plan} analysisBusy={analysisBusy} onAnalyzeCandidate={onAnalyzeCandidate} />}
+      {plan && <DiscoveryResultGrid plan={plan} analysisBusy={analysisBusy} analyzingSourceId={analyzingSourceId} onAnalyzeCandidate={onAnalyzeCandidate} />}
     </>
   );
 }
