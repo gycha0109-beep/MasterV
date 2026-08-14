@@ -16,6 +16,7 @@ jobs:
         with:
           node-version: 24
       - run: npm install
+      - run: npm run test:desktop-wdio-service
       - run: npm run typecheck
       - run: npm run test:observation-contract
       - run: npm run test:subject-attribution
@@ -62,6 +63,7 @@ jobs:
           node-version: 24
       - uses: dtolnay/rust-toolchain@stable
       - run: npm install
+      - run: npm run test:desktop-wdio-service
       - run: npm run test:desktop-shell
       - run: npm run desktop:build
 
@@ -84,6 +86,8 @@ jobs:
           node-version: 24
       - uses: dtolnay/rust-toolchain@stable
       - run: npm install
+      - name: Verify WebdriverIO Tauri dependency contract
+        run: npm run test:desktop-wdio-service
       - name: Verify Windows desktop smoke preconditions
         shell: pwsh
         run: |
