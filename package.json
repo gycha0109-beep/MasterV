@@ -23,6 +23,7 @@
     "test:analysis-budget": "tsx scripts/analysis-budget-contract.ts",
     "test:youtube-discovery": "tsx scripts/youtube-discovery-contract.ts",
     "test:search-ux": "tsx scripts/search-ux-contract.ts",
+    "test:background-batch": "tsx scripts/background-batch-contract.ts",
     "smoke:gemini": "tsx scripts/runtime-smoke.ts",
     "smoke:youtube-discovery": "tsx scripts/youtube-discovery-smoke.ts",
     "pilot:real-products": "tsx scripts/real-product-pilot.ts",
