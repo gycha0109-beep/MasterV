@@ -10,8 +10,10 @@ import {
   EMPTY_PRODUCT_TRUTH,
   type ProductTruthInput
 } from "@/lib/single-video-production";
+import type { SearchCandidate } from "@/lib/tiered-analysis";
 import { AdvancedAnalysis } from "@/components/AdvancedAnalysis";
 import { ComparisonDashboard } from "@/components/ComparisonDashboard";
+import { DiscoverySearch } from "@/components/DiscoverySearch";
 import { SingleVideoSummary } from "@/components/SingleVideoSummary";
 import { SingleVideoProductionGuide } from "@/components/SingleVideoProductionGuide";
 
@@ -97,9 +99,7 @@ export default function Home() {
     analysisUrl && savedReferences.some((reference) => reference.url === analysisUrl)
   );
 
-  async function submit(event: FormEvent) {
-    event.preventDefault();
-    const requestedUrl = url.trim();
+  async function analyzeRequestedUrl(requestedUrl: string) {
     setLoading(true);
     setError("");
     setRateLimitDiagnostic(null);
@@ -126,6 +126,7 @@ export default function Home() {
       setAnalysis(data.analysis);
       setMetrics(data.derived_metrics);
       setAnalysisUrl(data.source?.url || requestedUrl);
+      setProductTruth({ ...EMPTY_PRODUCT_TRUTH });
     } catch (caught) {
       setAnalysis(null);
       setMetrics(null);
@@ -136,6 +137,18 @@ export default function Home() {
     } finally {
       setLoading(false);
     }
+  }
+
+  async function submit(event: FormEvent) {
+    event.preventDefault();
+    const requestedUrl = url.trim();
+    if (!requestedUrl) return;
+    await analyzeRequestedUrl(requestedUrl);
+  }
+
+  async function analyzeCandidate(candidate: SearchCandidate) {
+    setUrl(candidate.canonical_url);
+    await analyzeRequestedUrl(candidate.canonical_url);
   }
 
   function saveCurrentReference() {
@@ -159,7 +172,10 @@ export default function Home() {
             <button
               key={item}
               className={`nav-item ${index === 0 ? "active" : ""}`}
-              onClick={() => index === 2 && document.getElementById("comparison")?.scrollIntoView({ behavior: "smooth" })}
+              onClick={() => {
+                if (index === 1) document.getElementById("discovery-search")?.scrollIntoView({ behavior: "smooth" });
+                if (index === 2) document.getElementById("comparison")?.scrollIntoView({ behavior: "smooth" });
+              }}
             >
               <span>{["⌂", "▣", "⌁", "✎", "▤"][index]}</span>{item}
             </button>
@@ -167,7 +183,7 @@ export default function Home() {
         </nav>
         <div className="sidebar-note">
           <strong>MVP 05</strong>
-          <span>핵심만 먼저 · 상세는 필요할 때</span>
+          <span>탐색은 먼저 · 정밀 분석은 선택한 영상만</span>
         </div>
       </aside>
 
@@ -175,15 +191,17 @@ export default function Home() {
         <header className="topbar">
           <div>
             <p className="eyebrow">상품 숏폼 역설계</p>
-            <h1>참고영상에서 쓸 만한 제작 방식을 찾습니다.</h1>
+            <h1>참고영상을 찾고, 필요한 것만 깊게 분석합니다.</h1>
           </div>
-          <span className="status-pill">분석 → 비교 → 제작</span>
+          <span className="status-pill">탐색 → 빠른 구조 → 정밀 분석</span>
         </header>
 
-        <section className="search-panel">
+        <DiscoverySearch analysisBusy={loading} onAnalyzeCandidate={analyzeCandidate} />
+
+        <section className="search-panel" style={{ marginTop: 16 }}>
           <div>
-            <h2>참고영상을 하나씩 분석해 비교함에 모으세요.</h2>
-            <p>한 영상은 핵심만 빠르게 보고, 여러 개를 저장하면 공통 제작 방식을 비교합니다.</p>
+            <h2>URL을 이미 알고 있다면 바로 정밀 분석하세요.</h2>
+            <p>키워드 탐색을 거치지 않고 기존 단일 영상 Deep 분석을 그대로 사용할 수 있습니다.</p>
           </div>
           <form onSubmit={submit} className="url-form">
             <input aria-label="YouTube URL" value={url} onChange={(event) => setUrl(event.target.value)} placeholder="https://www.youtube.com/shorts/..." />
@@ -227,7 +245,7 @@ export default function Home() {
                 </div>
               ))}
             </div>
-          ) : <p className="muted-copy tray-empty">분석 결과에서 ‘비교함에 저장’을 누르면 여기에 쌓입니다.</p>}
+          ) : <p className="muted-copy tray-empty">정밀 분석 결과에서 ‘비교함에 저장’을 누르면 여기에 쌓입니다.</p>}
         </section>
 
         {comparison && <ComparisonDashboard comparison={comparison} />}
@@ -235,16 +253,16 @@ export default function Home() {
         {!analysis && !loading && (
           <section className="empty-state">
             <div className="empty-icon">◎</div>
-            <h3>첫 참고영상을 분석해주세요.</h3>
-            <p>한 영상에서는 제작 구조만 빠르게 보고, 2개 이상부터 공통점을 비교합니다.</p>
+            <h3>검색 결과에서 후보를 고르거나 URL을 직접 분석해주세요.</h3>
+            <p>탐색은 먼저 보고, Deep 분석은 실제로 참고할 영상에만 사용합니다.</p>
           </section>
         )}
 
         {loading && (
           <section className="empty-state loading-state">
             <div className="spinner" />
-            <h3>영상의 화면과 음성을 함께 분해하고 있습니다.</h3>
-            <p>보여줄 결과는 핵심만 정리하고, 세부 데이터는 상세 분석에 보관합니다.</p>
+            <h3>선택한 영상의 화면과 음성을 정밀 분석하고 있습니다.</h3>
+            <p>검색 후보 전체가 아니라 지금 선택한 영상 한 개만 Deep 분석합니다.</p>
           </section>
         )}
 
