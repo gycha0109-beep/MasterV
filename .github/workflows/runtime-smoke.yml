@@ -1,10 +1,24 @@
-name: Gemini Runtime Smoke
+name: Runtime Smoke
 
 on:
   workflow_dispatch:
+    inputs:
+      target:
+        description: "Runtime smoke target"
+        required: true
+        type: choice
+        default: gemini
+        options:
+          - gemini
+          - youtube-discovery
+      query:
+        description: "YouTube discovery query when target is youtube-discovery"
+        required: false
+        default: "sunscreen review shorts"
 
 jobs:
-  smoke:
+  gemini-smoke:
+    if: ${{ inputs.target == 'gemini' }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     env:
@@ -15,7 +29,31 @@ jobs:
         with:
           node-version: 24
       - run: npm install
-      - name: Verify secret exists
+      - name: Verify Gemini secret exists
         run: test -n "$GEMINI_API_KEY"
       - name: Run live Gemini YouTube analysis
         run: npm run smoke:gemini
+
+  youtube-discovery-smoke:
+    if: ${{ inputs.target == 'youtube-discovery' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      YOUTUBE_DATA_API_KEY: ${{ secrets.YOUTUBE_DATA_API_KEY }}
+      YOUTUBE_DISCOVERY_SMOKE_QUERY: ${{ inputs.query }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - run: npm install
+      - name: Verify YouTube secret exists
+        run: test -n "$YOUTUBE_DATA_API_KEY"
+      - name: Run one-shot YouTube discovery smoke
+        run: npm run smoke:youtube-discovery
+      - name: Upload YouTube discovery smoke artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: youtube-discovery-smoke
+          path: artifacts/youtube-discovery-smoke.json
+          if-no-files-found: error
