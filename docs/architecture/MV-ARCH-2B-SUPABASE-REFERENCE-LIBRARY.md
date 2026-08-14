@@ -1,6 +1,6 @@
 # MV-ARCH-2B — Supabase Reference Library Adapter
 
-Status: **IMPLEMENTED_UNVERIFIED / LIVE_DB_NOT_APPLIED / NOT ACTIVATED**
+Status: **STATIC_VERIFIED / LIVE_DB_NOT_APPLIED / NOT ACTIVATED**
 
 Date: 2026-08-14
 
@@ -172,6 +172,15 @@ CI command:
 ```text
 npm run test:reference-library-supabase
 ```
+
+Static verification run:
+
+```text
+run_id: 31768125304
+result: SUCCESS
+```
+
+The new Supabase contract, all prior regression contracts, browser smoke script syntax check, typecheck, and production build all passed.
 
 ## Authentication boundary
 
