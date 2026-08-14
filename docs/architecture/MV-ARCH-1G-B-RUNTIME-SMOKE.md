@@ -1,12 +1,12 @@
 # MV-ARCH-1G-B — Discovery Runtime Smoke Gate
 
-Status: **STATIC_VERIFIED / LIVE_SMOKE_READY / LIVE_NOT_EXECUTED**
+Status: **STATIC_VERIFIED / DISCOVERY_BACKEND_RUNTIME_VERIFIED / BROWSER_INTERACTION_NOT_VERIFIED / NOT ACTIVATED**
 
 Date: 2026-08-14
 
 ## Goal
 
-Verify the real YouTube discovery path before promoting MV-ARCH-1E/1G to runtime-verified status.
+Verify the real YouTube discovery path before promoting the discovery backend, while keeping browser interaction and Gemini analysis as separate gates.
 
 The live smoke is deliberately one-shot and independent from Gemini.
 
@@ -33,10 +33,10 @@ A successful run writes `artifacts/youtube-discovery-smoke.json` without storing
 
 ## Manual GitHub Actions path
 
-The existing manual-only `Runtime Smoke` workflow now has a target selector:
+The manual-only `Runtime Smoke` workflow has a target selector:
 
-- `gemini`: preserves the existing Gemini runtime smoke;
-- `youtube-discovery`: runs only the YouTube discovery smoke job.
+- `gemini`: existing Gemini runtime smoke;
+- `youtube-discovery`: YouTube discovery smoke only.
 
 When `youtube-discovery` is selected, the Gemini job is skipped and no `GEMINI_API_KEY` is exported to the YouTube job.
 
@@ -46,7 +46,58 @@ Required repository secret:
 YOUTUBE_DATA_API_KEY
 ```
 
-The connector cannot list repository secret names, so secret presence must be verified by the workflow or by the repository owner.
+## Live evidence
+
+Successful manual run:
+
+```text
+run_id: 31760373402
+workflow: Runtime Smoke
+branch: feat/mvp-foundation
+head_sha: 62f2347cd3d7d9bc409c49d4c41ecb6d57bb4a33
+query: sunscreen review shorts
+```
+
+Observed job state:
+
+- `youtube-discovery-smoke`: success;
+- `Verify YouTube secret exists`: success;
+- `Run one-shot YouTube discovery smoke`: success;
+- `Upload YouTube discovery smoke artifact`: success;
+- `gemini-smoke`: skipped.
+
+Smoke output:
+
+```json
+{
+  "status": "YOUTUBE_DISCOVERY_SMOKE_PASS",
+  "query": "sunscreen review shorts",
+  "candidate_count": 5,
+  "youtube_api_requests": 2,
+  "gemini_requests": 0
+}
+```
+
+Artifact `youtube-discovery-smoke` / ID `9204360552` was downloaded and inspected.
+
+Artifact diagnostics:
+
+```text
+discovered_count: 10
+deduped_count: 10
+filtered_count: 10
+shortlisted_count: 5
+youtube_api_requests: 2
+gemini_requests: 0
+```
+
+All five candidates contained canonical source IDs and watch URLs, real YouTube metadata, parsed durations, and native search ranks. Native view/like/comment metrics were also present for these results.
+
+Therefore:
+
+- MV-ARCH-1E metadata discovery backend is `RUNTIME_VERIFIED`;
+- this evidence does not prove the React/browser interaction path;
+- no Gemini Deep or coarse analysis was executed by this smoke.
 
 ## UX refinement frozen in this checkpoint
 
@@ -57,8 +108,23 @@ The connector cannot list repository secret names, so secret presence must be ve
 - successful Deep analysis scrolls to the result;
 - failed Deep analysis scrolls to the direct-analysis error surface.
 
-## Promotion gate
+## Remaining interaction gate
 
-Do not mark MV-ARCH-1E or MV-ARCH-1G as `RUNTIME_VERIFIED` until a real `youtube-discovery` smoke run succeeds and its artifact is inspected.
+A browser interaction smoke still requires a reachable MasterV runtime with `YOUTUBE_DATA_API_KEY` configured.
 
-A browser interaction smoke remains desirable after a live runtime/deployment exists. Vercel currently has no MasterV project available through the connected account, so no hosted interaction smoke was performed in this checkpoint.
+It must verify:
+
+1. keyword submission returns real metadata cards;
+2. the search path does not automatically call Deep;
+3. current blocked 1C gate renders unresolved candidates as `분석 제한됨` rather than falsely implying execution;
+4. direct URL analysis remains usable after discovery errors;
+5. explicit candidate selection is the only action that may enter Deep;
+6. no live coarse activation occurs while MV-ARCH-1C is not `QUALITY_VALIDATED`.
+
+The connected Vercel account currently has no MasterV project, so hosted browser interaction has not yet been observed.
+
+## Activation boundary
+
+Do not mark MV-ARCH-1G as fully `RUNTIME_VERIFIED` or `ACTIVATED` from the backend smoke alone.
+
+MV-ARCH-1C remains `NOT QUALITY_VALIDATED`; automatic live coarse remains disabled.
