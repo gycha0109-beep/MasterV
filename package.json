@@ -24,9 +24,11 @@
     "test:youtube-discovery": "tsx scripts/youtube-discovery-contract.ts",
     "test:search-ux": "tsx scripts/search-ux-contract.ts",
     "test:background-batch": "tsx scripts/background-batch-contract.ts",
+    "test:search-ux-browser-script": "node --check scripts/search-ux-browser-smoke.mjs",
     "smoke:gemini": "tsx scripts/runtime-smoke.ts",
     "smoke:youtube-discovery": "tsx scripts/youtube-discovery-smoke.ts",
     "smoke:background-batch": "tsx scripts/background-batch-smoke.ts",
+    "smoke:search-ux-browser": "node scripts/search-ux-browser-smoke.mjs",
     "pilot:real-products": "tsx scripts/real-product-pilot.ts",
     "calibrate:coarse-bundles": "tsx scripts/coarse-bundle-calibration.ts",
     "evaluate:coarse-bundles": "tsx scripts/evaluate-coarse-bundle-calibration.ts"
