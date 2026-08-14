@@ -35,6 +35,7 @@
     "smoke:background-batch": "tsx scripts/background-batch-smoke.ts",
     "smoke:reference-library-live": "tsx scripts/reference-library-live-smoke.ts",
     "smoke:reference-library-browser": "node scripts/reference-library-browser-smoke.mjs",
+    "smoke:hosted-api-boundary": "tsx scripts/hosted-api-boundary-smoke.ts",
     "smoke:search-ux-browser": "node scripts/search-ux-browser-smoke.mjs",
     "pilot:real-products": "tsx scripts/real-product-pilot.ts",
     "calibrate:coarse-bundles": "tsx scripts/coarse-bundle-calibration.ts",
