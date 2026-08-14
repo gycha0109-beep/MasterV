@@ -28,7 +28,7 @@ on:
       batch_model:
         description: "Gemini Batch model"
         required: false
-        default: "gemini-3.6-flash"
+        default: "gemini-3.5-flash-lite"
 
 jobs:
   gemini-smoke:
