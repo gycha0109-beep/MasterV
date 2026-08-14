@@ -1,6 +1,6 @@
 # MV-ARCH-2C — Auth + Workspace Bootstrap + Live Persistence
 
-Status: **STATIC_VERIFIED / LIVE_AUTH_USER_REQUIRED / NOT ACTIVATED**
+Status: **RUNTIME_VERIFIED / NOT ACTIVATED**
 
 Date: 2026-08-15
 
@@ -8,7 +8,7 @@ Date: 2026-08-15
 
 Connect the MV-ARCH-2A Reference Library domain and MV-ARCH-2B Supabase adapter to an authenticated user session without weakening RLS or exposing service-role credentials.
 
-Target runtime flow:
+Verified runtime flow:
 
 ```text
 Supabase email/password auth
@@ -21,7 +21,7 @@ Supabase email/password auth
   -> session restore + DB list restore
 ```
 
-## Live database state before 2C UI activation
+## Live database authority
 
 Dedicated project:
 
@@ -32,15 +32,15 @@ region: ap-northeast-1
 status: ACTIVE_HEALTHY
 ```
 
-The 2B schema is live.
+The 2B schema and 2C personal-workspace bootstrap policy are live.
 
-Security hardening has already been applied:
+Security hardening already applied:
 
 - membership helper runs as `SECURITY INVOKER`;
 - anon execute is revoked;
 - membership foreign key has a covering index;
 - auth UID policy uses `(select auth.uid())` initialization-plan form;
-- security advisor currently reports zero lints.
+- security advisor reports zero lints after the hardening migrations.
 
 ## Personal workspace bootstrap
 
@@ -60,7 +60,7 @@ No update/delete membership grant is introduced by this stage.
 
 ## Auth client
 
-`lib/supabase-auth.ts` implements the minimal public-client Auth surface using native `fetch`:
+`lib/supabase-auth.ts` implements the minimal public-client Auth surface using native fetch semantics:
 
 - password sign-in;
 - password sign-up;
@@ -86,6 +86,24 @@ masterv.supabase.session.v1
 ```
 
 The stored session is revalidated against Supabase Auth on reload before it is promoted back into application authority.
+
+## Browser fetch binding correction
+
+The first authenticated browser smoke, Run `31833736668`, proved the server-side Auth/RLS CRUD path but exposed a browser-only failure:
+
+```text
+Failed to execute 'fetch' on 'Window': Illegal invocation
+```
+
+Cause: raw browser `fetch` function references were passed/stored unbound. Node runtime did not expose the same failure.
+
+Correction:
+
+- shared platform fetch wrapper invokes `globalThis.fetch(input, init)`;
+- Auth, workspace bootstrap, and Reference Library store no longer retain an unbound browser `window.fetch` reference;
+- fake-fetch injection remains available for deterministic contracts.
+
+The correction was statically verified by CI before the final runtime rerun.
 
 ## Workspace session adapter
 
@@ -114,7 +132,7 @@ A failed persistent write is surfaced as an error. The application does not sile
 
 ## UX compatibility boundary
 
-`app/page.tsx` now has two modes:
+`app/page.tsx` has two modes:
 
 ```text
 Supabase unconfigured / signed out
@@ -124,7 +142,7 @@ Supabase authenticated and ready
   -> Supabase Reference Library is the comparison authority
 ```
 
-Existing discovery and Deep analysis UX therefore remain usable before persistence activation.
+Existing discovery and Deep analysis UX therefore remain usable before production persistence activation.
 
 When persistent mode is ready:
 
@@ -151,69 +169,96 @@ When persistent mode is ready:
 
 All existing contracts remain in CI.
 
-## Manual live smoke
+## Final live runtime evidence
 
-Runtime Smoke target:
-
-```text
-reference-library
-```
-
-Required GitHub Secrets:
+Final successful Runtime Smoke:
 
 ```text
-SUPABASE_TEST_EMAIL
-SUPABASE_TEST_PASSWORD
+run_id: 31834335727
+execution_ref: feat/mvp-foundation
+checkout_sha: 10ac63448ce74b5cf37c10eaabf27db2649a01d6
+target: reference-library
+job: reference-library-smoke
+conclusion: success
 ```
 
-The project URL and publishable key are public frontend configuration in the manual workflow. The job deliberately receives neither `GEMINI_API_KEY` nor `YOUTUBE_DATA_API_KEY`.
-
-Sequence:
-
-1. sign in with the test user;
-2. bootstrap the user's personal workspace;
-3. delete any previous synthetic smoke row;
-4. insert synthetic Deep snapshot -> revision 1;
-5. upsert same canonical source -> revision 2;
-6. verify `first_saved_at` preservation;
-7. verify write to an unowned workspace is denied by RLS;
-8. keep the synthetic row temporarily;
-9. build/start Next with public Supabase config;
-10. headless Chrome signs in through the real UI;
-11. verify the synthetic DB reference appears;
-12. reload the page;
-13. verify Auth session and DB reference restore;
-14. assert `/api/analyze` was never called;
-15. collect screenshots/evidence;
-16. cleanup the synthetic row.
-
-The synthetic source is explicitly not a real analysis claim:
+Server-side authenticated RLS/CRUD evidence:
 
 ```text
-yt:MVpersist01
+status: REFERENCE_LIBRARY_LIVE_SMOKE_PASS
+source_id: yt:MVpersist01
+revision: 2
+first_saved_at_preserved: true
+cross_workspace_write_denied: true
+gemini_requests_executed: 0
+youtube_requests_executed: 0
 ```
 
-## Current blocker
+This verifies:
 
-At the latest live DB check:
+1. real password Auth sign-in;
+2. personal workspace bootstrap under RLS;
+3. synthetic Deep snapshot insert -> revision 1;
+4. same natural-key upsert -> revision 2;
+5. `first_saved_at` preservation;
+6. unauthorized cross-workspace write denial.
+
+Browser evidence:
 
 ```text
-auth.users count = 0
+status: REFERENCE_LIBRARY_BROWSER_SMOKE_PASS
+reference_rest_requests: 6
+analyze_requests: 0
+restored_after_reload: true
 ```
 
-Therefore authenticated CRUD and refresh persistence cannot yet be runtime-verified.
+This verifies through the production Next app and headless Chrome:
 
-No attempt is made to insert directly into `auth.users` through SQL. A legitimate Supabase Auth user must be created through the Auth surface or dashboard.
+1. real UI login succeeds;
+2. authenticated Reference Library requests reach Supabase;
+3. the seeded reference appears in the comparison tray;
+4. a full page reload restores the saved Auth session;
+5. the DB-backed reference is restored after reload;
+6. no `/api/analyze` request is triggered by persistence restoration.
 
-## Runtime promotion gate
+Other Runtime Smoke jobs, including Gemini and YouTube discovery, were skipped for this target.
 
-2C can become `RUNTIME_VERIFIED` only after:
+## Cleanup state
 
-- a test Auth user exists;
-- Runtime Smoke `reference-library` passes;
-- DB artifact proves revision 1 -> 2 and cross-workspace write denial;
-- browser artifact proves login + refresh restoration;
+The workflow cleanup step succeeded:
+
+```text
+status: REFERENCE_LIBRARY_LIVE_CLEANUP
+removed: true
+source_id: yt:MVpersist01
+```
+
+A subsequent direct live DB check confirmed:
+
+```text
+workspace_members = 1
+reference_entries = 0
+```
+
+The personal workspace membership is intentionally durable. The synthetic smoke reference is removed.
+
+## Runtime verdict
+
+MV-ARCH-2C satisfies the runtime promotion gate:
+
+- authenticated test user exists;
+- real Auth login passes;
+- personal workspace bootstrap passes;
+- RLS CRUD and natural-key revision semantics pass;
+- cross-workspace denial passes;
+- browser login and reload restoration pass;
 - Gemini/YouTube request counts remain zero;
-- smoke row cleanup succeeds or is manually confirmed.
+- synthetic smoke row cleanup passes.
 
-`ACTIVATED` remains separate. Production deployment environment variables and real user onboarding must be configured before persistence is considered active for end users.
+Therefore:
+
+```text
+MV-ARCH-2C = RUNTIME_VERIFIED / NOT ACTIVATED
+```
+
+`ACTIVATED` remains separate. Production deployment environment variables, deployment/runtime configuration, and intended real-user onboarding must be configured and verified before persistence is considered active for end users.
