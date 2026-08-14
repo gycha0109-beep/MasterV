@@ -4,6 +4,7 @@ import {
   type SupabasePublicConfig
 } from "@/lib/supabase-auth";
 import { SupabaseReferenceLibraryStore } from "@/lib/reference-library-supabase";
+import { platformFetch } from "@/lib/platform-fetch";
 
 function normalizeConfig(config: SupabasePublicConfig) {
   const projectUrl = config.project_url.trim().replace(/\/+$/, "");
@@ -15,7 +16,7 @@ function normalizeConfig(config: SupabasePublicConfig) {
 export async function bootstrapPersonalReferenceWorkspace(
   config: SupabasePublicConfig,
   session: SupabaseAuthSession,
-  fetchImpl: typeof fetch = fetch
+  fetchImpl: typeof fetch = platformFetch
 ) {
   const { projectUrl, publishableKey } = normalizeConfig(config);
   const workspaceId = personalWorkspaceId(session.user.id);
@@ -52,7 +53,7 @@ export async function bootstrapPersonalReferenceWorkspace(
 export function createSessionReferenceLibraryStore(
   config: SupabasePublicConfig,
   session: SupabaseAuthSession,
-  fetchImpl: typeof fetch = fetch
+  fetchImpl: typeof fetch = platformFetch
 ) {
   return new SupabaseReferenceLibraryStore({
     project_url: config.project_url,
