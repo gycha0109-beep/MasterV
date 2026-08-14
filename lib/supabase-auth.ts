@@ -1,3 +1,5 @@
+import { platformFetch } from "@/lib/platform-fetch";
+
 export type SupabasePublicConfig = {
   project_url: string;
   publishable_key: string;
@@ -75,7 +77,7 @@ async function authRequest<T>(
   config: SupabasePublicConfig,
   path: string,
   init: RequestInit,
-  fetchImpl: typeof fetch = fetch
+  fetchImpl: typeof fetch = platformFetch
 ): Promise<T> {
   const response = await fetchImpl(`${normalizeProjectUrl(config.project_url)}/auth/v1/${path}`, {
     ...init,
@@ -113,7 +115,7 @@ export async function signInWithPassword(
   config: SupabasePublicConfig,
   email: string,
   password: string,
-  fetchImpl: typeof fetch = fetch
+  fetchImpl: typeof fetch = platformFetch
 ) {
   const session = await authRequest<SupabaseAuthSession>(config, "token?grant_type=password", {
     method: "POST",
@@ -126,7 +128,7 @@ export async function signUpWithPassword(
   config: SupabasePublicConfig,
   email: string,
   password: string,
-  fetchImpl: typeof fetch = fetch
+  fetchImpl: typeof fetch = platformFetch
 ) {
   return await authRequest<Partial<SupabaseAuthSession> & { user?: SupabaseAuthUser | null }>(config, "signup", {
     method: "POST",
@@ -137,7 +139,7 @@ export async function signUpWithPassword(
 export async function refreshSupabaseSession(
   config: SupabasePublicConfig,
   refreshToken: string,
-  fetchImpl: typeof fetch = fetch
+  fetchImpl: typeof fetch = platformFetch
 ) {
   const token = refreshToken.trim();
   if (!token) throw new Error("Supabase refresh token이 비어 있습니다.");
@@ -151,7 +153,7 @@ export async function refreshSupabaseSession(
 export async function getSupabaseAuthUser(
   config: SupabasePublicConfig,
   accessToken: string,
-  fetchImpl: typeof fetch = fetch
+  fetchImpl: typeof fetch = platformFetch
 ) {
   const token = accessToken.trim();
   if (!token) throw new Error("Supabase access token이 비어 있습니다.");
@@ -164,7 +166,7 @@ export async function getSupabaseAuthUser(
 export async function signOutSupabaseSession(
   config: SupabasePublicConfig,
   accessToken: string,
-  fetchImpl: typeof fetch = fetch
+  fetchImpl: typeof fetch = platformFetch
 ) {
   const token = accessToken.trim();
   if (!token) return;
