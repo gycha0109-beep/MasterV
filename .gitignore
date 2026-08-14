@@ -3,6 +3,7 @@ node_modules
 out
 desktop-dist
 src-tauri/target
+src-tauri/icons/icon.png
 .env
 .env.local
 .env.*.local
