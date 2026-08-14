@@ -39,15 +39,31 @@ const jsonl = serializeBackgroundBatchJsonl(entries);
 assert(jsonl.endsWith("\n"), "JSONL must end with newline");
 assert(jsonl.trim().split("\n").length === 2, "JSONL line count mismatch");
 
-const success = parseBackgroundBatchResultLine(JSON.stringify({ key: "yt:ABCDEFGHIJK", response: { candidates: [] } }));
-assert(success.ok && success.key === "yt:ABCDEFGHIJK", "success result mapping mismatch");
+const fileSuccess = parseBackgroundBatchResultLine(JSON.stringify({
+  key: "yt:ABCDEFGHIJK",
+  response: { candidates: [] }
+}));
+assert(fileSuccess.ok && fileSuccess.key === "yt:ABCDEFGHIJK", "file result mapping mismatch");
 
-const failure = parseBackgroundBatchResultLine(JSON.stringify({ key: "yt:LMNOPQRSTUV", error: { code: 429 } }));
-assert(!failure.ok && failure.key === "yt:LMNOPQRSTUV", "error result mapping mismatch");
+const inlineSuccess = parseBackgroundBatchResultLine(JSON.stringify({
+  metadata: { key: "yt:LMNOPQRSTUV" },
+  response: { candidates: [] }
+}));
+assert(inlineSuccess.ok && inlineSuccess.key === "yt:LMNOPQRSTUV", "inline metadata mapping mismatch");
 
-assert(isBackgroundBatchTerminalState("JOB_STATE_SUCCEEDED"), "succeeded must be terminal");
-assert(isBackgroundBatchTerminalState("JOB_STATE_EXPIRED"), "expired must be terminal");
-assert(!isBackgroundBatchTerminalState("JOB_STATE_RUNNING"), "running must not be terminal");
+const agreeingKeys = parseBackgroundBatchResultLine(JSON.stringify({
+  key: "yt:ABCDEFGHIJK",
+  metadata: { key: "yt:ABCDEFGHIJK" },
+  error: { code: 429 }
+}));
+assert(!agreeingKeys.ok && agreeingKeys.key === "yt:ABCDEFGHIJK", "agreeing dual key mapping mismatch");
+
+assert(isBackgroundBatchTerminalState("JOB_STATE_SUCCEEDED"), "SDK succeeded must be terminal");
+assert(isBackgroundBatchTerminalState("JOB_STATE_EXPIRED"), "SDK expired must be terminal");
+assert(isBackgroundBatchTerminalState("BATCH_STATE_SUCCEEDED"), "REST succeeded must be terminal");
+assert(isBackgroundBatchTerminalState("BATCH_STATE_EXPIRED"), "REST expired must be terminal");
+assert(!isBackgroundBatchTerminalState("JOB_STATE_RUNNING"), "SDK running must not be terminal");
+assert(!isBackgroundBatchTerminalState("BATCH_STATE_RUNNING"), "REST running must not be terminal");
 
 let duplicateRejected = false;
 try {
@@ -60,16 +76,38 @@ try {
 }
 assert(duplicateRejected, "duplicate canonical source IDs must be rejected");
 
-let malformedRejected = false;
+let ambiguousRejected = false;
 try {
   parseBackgroundBatchResultLine(JSON.stringify({ key: "yt:bad", response: {}, error: {} }));
 } catch {
-  malformedRejected = true;
+  ambiguousRejected = true;
 }
-assert(malformedRejected, "ambiguous response/error result must be rejected");
+assert(ambiguousRejected, "ambiguous response/error result must be rejected");
+
+let mismatchedKeyRejected = false;
+try {
+  parseBackgroundBatchResultLine(JSON.stringify({
+    key: "yt:ABCDEFGHIJK",
+    metadata: { key: "yt:LMNOPQRSTUV" },
+    response: {}
+  }));
+} catch {
+  mismatchedKeyRejected = true;
+}
+assert(mismatchedKeyRejected, "conflicting result keys must be rejected");
+
+let missingKeyRejected = false;
+try {
+  parseBackgroundBatchResultLine(JSON.stringify({ response: {} }));
+} catch {
+  missingKeyRejected = true;
+}
+assert(missingKeyRejected, "result without mapping key must be rejected");
 
 console.log(JSON.stringify({
   status: "BACKGROUND_BATCH_CONTRACT_PASS",
   entries: entries.length,
+  sdk_and_rest_state_aliases: true,
+  file_and_inline_result_mapping: true,
   gemini_requests_executed: 0
 }));
