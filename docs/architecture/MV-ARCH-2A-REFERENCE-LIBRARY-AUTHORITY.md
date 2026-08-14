@@ -1,6 +1,6 @@
 # MV-ARCH-2A — Persistent Reference Library Authority
 
-Status: **IMPLEMENTED_UNVERIFIED / PRODUCTION_STORE_NOT_CONFIGURED / NOT ACTIVATED**
+Status: **STATIC_VERIFIED / PRODUCTION_STORE_NOT_CONFIGURED / NOT ACTIVATED**
 
 Date: 2026-08-14
 
@@ -175,6 +175,30 @@ CI command:
 npm run test:reference-library
 ```
 
+## Static verification evidence
+
+Initial CI run `31766899568` reached the new contract after all preceding regressions passed, then failed only because the test harness used top-level `await` while the current `tsx` path emitted CJS.
+
+The harness entrypoint was corrected without changing store semantics.
+
+Verification run:
+
+```text
+run_id: 31766974850
+head: 24744d9f309585e1db7ea63ef7dc9049cdacd10f
+result: SUCCESS
+```
+
+The exact code head passed:
+
+- TypeScript typecheck;
+- all pre-existing regression contracts;
+- `test:reference-library`;
+- browser-smoke script syntax contract;
+- Next production build.
+
+Therefore 2A is `STATIC_VERIFIED`.
+
 ## Production SQL target
 
 A future relational adapter should map the domain approximately as:
@@ -219,7 +243,7 @@ Creating or selecting the production database is a separate activation decision.
 
 ## Status boundary
 
-2A can become `STATIC_VERIFIED` after the new contract and the full existing CI/build pass on the exact branch head.
+2A is `STATIC_VERIFIED` only.
 
 It cannot become `RUNTIME_VERIFIED` or `ACTIVATED` from the in-memory adapter.
 
