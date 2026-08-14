@@ -24,7 +24,11 @@ export type BackgroundBatchTerminalState =
   | "JOB_STATE_SUCCEEDED"
   | "JOB_STATE_FAILED"
   | "JOB_STATE_CANCELLED"
-  | "JOB_STATE_EXPIRED";
+  | "JOB_STATE_EXPIRED"
+  | "BATCH_STATE_SUCCEEDED"
+  | "BATCH_STATE_FAILED"
+  | "BATCH_STATE_CANCELLED"
+  | "BATCH_STATE_EXPIRED";
 
 export type BackgroundBatchResult = {
   key: string;
@@ -37,7 +41,11 @@ const TERMINAL_STATES = new Set<BackgroundBatchTerminalState>([
   "JOB_STATE_SUCCEEDED",
   "JOB_STATE_FAILED",
   "JOB_STATE_CANCELLED",
-  "JOB_STATE_EXPIRED"
+  "JOB_STATE_EXPIRED",
+  "BATCH_STATE_SUCCEEDED",
+  "BATCH_STATE_FAILED",
+  "BATCH_STATE_CANCELLED",
+  "BATCH_STATE_EXPIRED"
 ]);
 
 function assertUniqueTargets(targets: BackgroundBatchTarget[]) {
@@ -46,6 +54,28 @@ function assertUniqueTargets(targets: BackgroundBatchTarget[]) {
     if (seen.has(target.source_id)) throw new Error(`duplicate batch source_id: ${target.source_id}`);
     seen.add(target.source_id);
   }
+}
+
+function nonEmptyString(value: unknown) {
+  return typeof value === "string" && value.trim() ? value : null;
+}
+
+function metadataKey(value: unknown) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  return nonEmptyString((value as Record<string, unknown>).key);
+}
+
+function resolveBatchResultKey(parsed: Record<string, unknown>) {
+  const topLevelKey = nonEmptyString(parsed.key);
+  const nestedMetadataKey = metadataKey(parsed.metadata);
+
+  if (topLevelKey && nestedMetadataKey && topLevelKey !== nestedMetadataKey) {
+    throw new Error(`batch result key mismatch: ${topLevelKey} != ${nestedMetadataKey}`);
+  }
+
+  const key = topLevelKey ?? nestedMetadataKey;
+  if (!key) throw new Error("batch result missing key");
+  return key;
 }
 
 export function normalizeBackgroundBatchTargets(rawUrls: string[]): BackgroundBatchTarget[] {
@@ -100,8 +130,7 @@ export function isBackgroundBatchTerminalState(state: string): state is Backgrou
 
 export function parseBackgroundBatchResultLine(line: string): BackgroundBatchResult {
   const parsed = JSON.parse(line) as Record<string, unknown>;
-  const key = parsed.key;
-  if (typeof key !== "string" || !key.trim()) throw new Error("batch result missing key");
+  const key = resolveBatchResultKey(parsed);
 
   const hasResponse = parsed.response !== undefined && parsed.response !== null;
   const hasError = parsed.error !== undefined && parsed.error !== null;
