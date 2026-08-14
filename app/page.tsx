@@ -69,6 +69,7 @@ export default function Home() {
   const [url, setUrl] = useState("");
   const [analysisUrl, setAnalysisUrl] = useState("");
   const [loading, setLoading] = useState(false);
+  const [analyzingSourceId, setAnalyzingSourceId] = useState<string | null>(null);
   const [error, setError] = useState("");
   const [rateLimitDiagnostic, setRateLimitDiagnostic] = useState<GeminiRateLimitDiagnostic | null>(null);
   const [analysis, setAnalysis] = useState<VideoAnalysis | null>(null);
@@ -99,8 +100,9 @@ export default function Home() {
     analysisUrl && savedReferences.some((reference) => reference.url === analysisUrl)
   );
 
-  async function analyzeRequestedUrl(requestedUrl: string) {
+  async function analyzeRequestedUrl(requestedUrl: string, sourceId: string | null = null) {
     setLoading(true);
+    setAnalyzingSourceId(sourceId);
     setError("");
     setRateLimitDiagnostic(null);
     setPromptOpen(false);
@@ -120,6 +122,7 @@ export default function Home() {
         setAnalysisUrl("");
         setError(friendlyApiError(data.error || "분석에 실패했습니다."));
         setRateLimitDiagnostic(data.code === "GEMINI_RATE_LIMIT" ? data.rate_limit ?? null : null);
+        requestAnimationFrame(() => document.getElementById("direct-analysis")?.scrollIntoView({ behavior: "smooth", block: "start" }));
         return;
       }
 
@@ -127,6 +130,7 @@ export default function Home() {
       setMetrics(data.derived_metrics);
       setAnalysisUrl(data.source?.url || requestedUrl);
       setProductTruth({ ...EMPTY_PRODUCT_TRUTH });
+      requestAnimationFrame(() => document.getElementById("analysis-result")?.scrollIntoView({ behavior: "smooth", block: "start" }));
     } catch (caught) {
       setAnalysis(null);
       setMetrics(null);
@@ -134,8 +138,10 @@ export default function Home() {
       setRateLimitDiagnostic(null);
       const message = caught instanceof Error ? caught.message : "분석에 실패했습니다.";
       setError(friendlyApiError(message));
+      requestAnimationFrame(() => document.getElementById("direct-analysis")?.scrollIntoView({ behavior: "smooth", block: "start" }));
     } finally {
       setLoading(false);
+      setAnalyzingSourceId(null);
     }
   }
 
@@ -148,7 +154,7 @@ export default function Home() {
 
   async function analyzeCandidate(candidate: SearchCandidate) {
     setUrl(candidate.canonical_url);
-    await analyzeRequestedUrl(candidate.canonical_url);
+    await analyzeRequestedUrl(candidate.canonical_url, candidate.source_id);
   }
 
   function saveCurrentReference() {
@@ -196,9 +202,9 @@ export default function Home() {
           <span className="status-pill">탐색 → 빠른 구조 → 정밀 분석</span>
         </header>
 
-        <DiscoverySearch analysisBusy={loading} onAnalyzeCandidate={analyzeCandidate} />
+        <DiscoverySearch analysisBusy={loading} analyzingSourceId={analyzingSourceId} onAnalyzeCandidate={analyzeCandidate} />
 
-        <section className="search-panel" style={{ marginTop: 16 }}>
+        <section className="search-panel" id="direct-analysis" style={{ marginTop: 16, scrollMarginTop: 24 }}>
           <div>
             <h2>URL을 이미 알고 있다면 바로 정밀 분석하세요.</h2>
             <p>키워드 탐색을 거치지 않고 기존 단일 영상 Deep 분석을 그대로 사용할 수 있습니다.</p>
@@ -267,7 +273,7 @@ export default function Home() {
         )}
 
         {analysis && metrics && (
-          <div className="results">
+          <div className="results" id="analysis-result" style={{ scrollMarginTop: 24 }}>
             <SingleVideoSummary
               analysis={analysis}
               metrics={metrics}
