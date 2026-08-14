@@ -1,8 +1,8 @@
 # MV-ARCH-2B — Supabase Reference Library Adapter
 
-Status: **STATIC_VERIFIED / LIVE_DB_NOT_APPLIED / NOT ACTIVATED**
+Status: **STATIC_VERIFIED / LIVE_SCHEMA_VERIFIED / AUTHENTICATED_CRUD_NOT_VERIFIED / NOT ACTIVATED**
 
-Date: 2026-08-14
+Date: 2026-08-15
 
 ## Goal
 
@@ -18,11 +18,18 @@ authenticated user
   -> persisted Deep analysis snapshots
 ```
 
-## Current boundary
+## Current live project
 
-A dedicated Supabase project named `MasterV` has been created externally, but at the time of this checkpoint it is still provisioning and is not yet visible through the connected Supabase MCP project list.
+Dedicated Supabase project:
 
-No migration has been applied to a live database in this stage.
+```text
+name: MasterV
+project_ref: euqkjrmrhhvnyzasppnd
+region: ap-northeast-1
+status: ACTIVE_HEALTHY
+```
+
+The connected account was granted Developer access to the organization that owns this project. `list_projects` did not immediately refresh to include the new organization, but direct project-ref access succeeds, so the connector can operate on the MasterV project.
 
 ## Migration
 
@@ -41,6 +48,82 @@ No migration has been applied to a live database in this stage.
 The migration does not create users or silently bootstrap a membership.
 
 Workspace membership must be established through a trusted authenticated flow or an explicit administrative bootstrap before the store can be used.
+
+### Live applied migrations
+
+The live MasterV database now contains:
+
+```text
+reference_library
+reference_library_security_hardening
+reference_library_performance_hardening
+```
+
+The initial schema migration applied successfully, then two hardening migrations were added after advisor review.
+
+`202608150001_reference_library_security_hardening.sql`:
+
+- changes `masterv_is_workspace_member(text)` from `SECURITY DEFINER` to `SECURITY INVOKER`;
+- revokes public/anon execution;
+- permits authenticated execution only.
+
+This removed Supabase security-advisor warnings that the helper could be invoked as an exposed SECURITY DEFINER RPC.
+
+`202608150002_reference_library_performance_hardening.sql`:
+
+- adds an index on `masterv_workspace_members(user_id)` for the auth-user foreign key/access path;
+- rewrites the membership RLS policy to use `(select auth.uid())`, avoiding per-row auth function re-evaluation.
+
+## Live schema verification
+
+Live introspection confirms:
+
+```text
+public.masterv_workspace_members
+  RLS: enabled
+  PK: (workspace_id, user_id)
+  FK: user_id -> auth.users(id)
+
+public.reference_library_entries
+  RLS: enabled
+  PK: (workspace_id, source_id)
+```
+
+The reference table has the expected checks for:
+
+- `source_platform = youtube`;
+- label length 1..120;
+- provenance in `cache | replay | live`;
+- `schema_version = reference-library-v1`;
+- positive revision.
+
+The live trigger is present:
+
+```text
+reference_library_revision_trigger
+BEFORE INSERT OR UPDATE
+-> masterv_reference_library_revision()
+```
+
+The expected authenticated policies are present:
+
+- workspace members can read own membership;
+- workspace members can read references;
+- workspace members can insert references;
+- workspace members can update references;
+- workspace members can delete references.
+
+## Advisor verification
+
+After the security hardening migration:
+
+```text
+security advisor lints: 0
+```
+
+After the performance hardening migration, the only remaining performance notices are `unused_index` INFO notices for newly created indexes on empty/unused tables.
+
+Those indexes are intentionally retained. A zero-row, not-yet-activated table naturally has no index usage history.
 
 ## Database-owned upsert semantics
 
@@ -173,34 +256,40 @@ CI command:
 npm run test:reference-library-supabase
 ```
 
-Static verification run:
-
-```text
-run_id: 31768125304
-result: SUCCESS
-```
-
-The new Supabase contract, all prior regression contracts, browser smoke script syntax check, typecheck, and production build all passed.
+The Supabase contract, all prior regression contracts, browser smoke script syntax check, typecheck, and production build passed before the live migration was applied.
 
 ## Authentication boundary
 
 RLS is intentionally designed around `auth.uid()` workspace membership.
 
-MasterV does not yet have a user sign-in/session flow wired into the application. Therefore this stage does not expose a public persistence API and does not replace the browser-session comparison tray yet.
+The live MasterV project currently has:
+
+```text
+auth.users count = 0
+```
+
+Therefore authenticated save/list/update/delete and cross-workspace denial cannot yet be truthfully marked runtime verified.
+
+MasterV does not yet have a user sign-in/session flow wired into the application. This stage does not expose a public persistence API and does not replace the browser-session comparison tray yet.
 
 A client-supplied arbitrary `workspace_id` must never be treated as authorization.
 
 ## Activation gate
 
-Before `RUNTIME_VERIFIED`:
+Already satisfied:
 
-1. dedicated MasterV Supabase project reaches healthy state;
-2. connector or trusted migration path can access it;
-3. migration applies successfully;
-4. at least one authenticated test user/workspace membership is bootstrapped;
-5. RLS proves cross-workspace denial;
-6. real save/list/update/delete smoke passes;
-7. security and performance advisors are reviewed.
+1. dedicated MasterV Supabase project is healthy;
+2. connector can access it by project ref;
+3. schema migration and hardening migrations applied successfully;
+4. tables, RLS policies, trigger and constraints verified live;
+5. security advisor is clean;
+6. performance advisor has no actionable warning beyond expected unused-index INFO on empty tables.
+
+Still required before full `RUNTIME_VERIFIED`:
+
+1. at least one authenticated test user/workspace membership is bootstrapped;
+2. RLS proves cross-workspace denial;
+3. real save/list/update/delete smoke passes.
 
 Before `ACTIVATED`:
 
@@ -213,4 +302,4 @@ Before `ACTIVATED`:
 
 `MV-ARCH-2C — Auth/Workspace Bootstrap + Live Supabase Persistence Smoke`
 
-If the dedicated Supabase project becomes available first, apply and verify the migration before UI wiring.
+The next unresolved product decision is the authentication model for the MVP. The live database is ready for that stage; it should not be bypassed with a client-exposed service-role credential.
