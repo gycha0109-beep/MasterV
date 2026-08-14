@@ -11,22 +11,21 @@ on:
         options:
           - gemini
           - youtube-discovery
-          - gemini-batch-submit
-          - gemini-batch-check
+          - search-ux-browser
       query:
-        description: "YouTube discovery query when target is youtube-discovery"
+        description: "YouTube query for discovery or browser smoke"
         required: false
         default: "sunscreen review shorts"
       batch_job_name:
-        description: "Existing batches/... name; required only for gemini-batch-check"
+        description: "Existing batches/... name; hidden until paid-tier Batch is explicitly reopened"
         required: false
         default: ""
       batch_source_url:
-        description: "Single public YouTube URL for the guarded Batch smoke"
+        description: "Single public YouTube URL for guarded Batch smoke; currently blocked"
         required: false
         default: "https://www.youtube.com/watch?v=dr7rrnD_4jI"
       batch_model:
-        description: "Gemini Batch model"
+        description: "Gemini Batch model; Batch submit is hidden until paid-tier precondition is verified"
         required: false
         default: "gemini-3.5-flash-lite"
 
@@ -71,6 +70,55 @@ jobs:
           name: youtube-discovery-smoke
           path: artifacts/youtube-discovery-smoke.json
           if-no-files-found: error
+
+  search-ux-browser-smoke:
+    if: ${{ inputs.target == 'search-ux-browser' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      YOUTUBE_DATA_API_KEY: ${{ secrets.YOUTUBE_DATA_API_KEY }}
+      SEARCH_UX_BROWSER_QUERY: ${{ inputs.query }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - run: npm install
+      - name: Verify browser smoke preconditions
+        run: |
+          test -n "$YOUTUBE_DATA_API_KEY"
+          test -z "${GEMINI_API_KEY:-}"
+          command -v google-chrome || command -v google-chrome-stable || command -v chromium || command -v chromium-browser
+      - name: Build production app
+        run: npm run build
+      - name: Start production app without Gemini credentials
+        run: |
+          mkdir -p artifacts/search-ux-browser
+          npm run start -- -H 127.0.0.1 -p 3000 > artifacts/search-ux-browser/server.log 2>&1 &
+          echo $! > /tmp/masterv-next.pid
+          for attempt in $(seq 1 60); do
+            if curl -fsS http://127.0.0.1:3000 >/dev/null; then
+              exit 0
+            fi
+            sleep 1
+          done
+          cat artifacts/search-ux-browser/server.log
+          exit 1
+      - name: Run live Search UX browser smoke
+        run: npm run smoke:search-ux-browser
+      - name: Upload Search UX browser evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: search-ux-browser-smoke
+          path: artifacts/search-ux-browser
+          if-no-files-found: error
+      - name: Stop production app
+        if: always()
+        run: |
+          if test -f /tmp/masterv-next.pid; then
+            kill "$(cat /tmp/masterv-next.pid)" || true
+          fi
 
   gemini-batch-submit:
     if: ${{ inputs.target == 'gemini-batch-submit' }}
