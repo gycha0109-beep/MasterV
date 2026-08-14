@@ -1,6 +1,6 @@
 # MV-ARCH-3B — Tauri Desktop Shell + Static Client Build
 
-Status: **STATIC_VERIFIED / NATIVE_RUNTIME_NOT_VERIFIED / NOT ACTIVATED**
+Status: **RUNTIME_VERIFIED / NOT ACTIVATED**
 
 Date: 2026-08-15
 
@@ -67,11 +67,25 @@ tauri-build = 2.6.3
 
 The shell has an explicit CSP allowing network connections only to the dedicated MasterV Supabase origin. No custom Rust commands or Tauri plugins are exposed.
 
+The main WebView window is created explicitly in Rust through `WebviewWindowBuilder`. Normal application execution does not enable remote debugging. Windows runtime automation enables it only when the CI-only environment boundary is present:
+
+```text
+MASTERV_DESKTOP_TEST_REMOTE_DEBUGGING_PORT
+MASTERV_DESKTOP_TEST_WEBVIEW_DATA_DIR
+```
+
 ## Deterministic icon preparation
 
-The first native compile attempt reached `tauri::generate_context!()` but failed because Tauri expects `src-tauri/icons/icon.png` even when installer bundling is disabled.
+Tauri requires application icon resources even before production installer activation.
 
-Instead of committing an opaque binary asset through the repository write path, `scripts/build-desktop-static.mjs` deterministically emits a 128×128 RGBA PNG before Cargo compilation. The generated icon is ignored by Git and validated by `test:desktop-shell` for PNG signature and dimensions.
+`scripts/build-desktop-static.mjs` deterministically emits:
+
+```text
+src-tauri/icons/icon.png
+src-tauri/icons/icon.ico
+```
+
+The generated resources are ignored by Git. `test:desktop-shell` validates the PNG signature/dimensions and the Windows ICO container before native compilation.
 
 ## Executable contract
 
@@ -83,43 +97,73 @@ Instead of committing an opaque binary asset through the repository write path, 
 - no local Next `/api/*` dependency;
 - hosted boundary usage;
 - Tauri `frontendDist` and CSP;
-- installer bundling remains disabled;
-- required 128×128 PNG icon generation.
+- installer bundling remains disabled in the base config;
+- required PNG/ICO generation.
 
-## Native compile verification
+## Static/native compile verification
 
-Exact-head PR CI:
+Earlier exact-head PR CI established the native compile gate:
 
 ```text
 head: 8e2990617ef3f2337f7bd418eab895d8875664ad
 run_id: 31843534347
-run_number: 645
+result:
+  validate       SUCCESS
+  desktop-shell  SUCCESS
 ```
 
-Results:
+The Linux `desktop-shell` job installs Tauri/WebKitGTK prerequisites and Rust stable, runs the static desktop contract, and compiles the release Tauri application.
+
+## Native runtime verification
+
+The later Windows runtime checkpoint promoted the shell beyond compile-only verification:
 
 ```text
-validate        SUCCESS
-desktop-shell   SUCCESS
-npm run desktop:build   SUCCESS
+head: 516498438765a38d43251b46692eb6c1561c2252
+run_id: 31848316668
+job: desktop-windows-runtime
+result: SUCCESS
 ```
 
-The `desktop-shell` job installed Tauri Linux/WebKitGTK prerequisites, Rust stable, npm dependencies, passed the static shell contract, and compiled the release Tauri application successfully.
+The actual Windows Tauri executable was built and launched under WebView2. The native UI then authenticated a real Supabase test user and reached the live JWT-protected hosted boundary.
 
-Therefore MV-ARCH-3B is `STATIC_VERIFIED`.
+Observed runtime state:
 
-It is not `RUNTIME_VERIFIED` because this checkpoint compiles the native application but does not launch the actual Tauri executable and observe its authenticated WebView flow.
+```text
+surface                desktop
+Supabase Auth          AUTHENTICATED
+Hosted API             CONNECTED
+Boundary probe         READY
+Analyze                PENDING
+YouTube discovery      PENDING
+Product Truth          PENDING
+```
+
+The runtime evidence also proved:
+
+```text
+local Next /api required       false
+Gemini credential in job       false
+YouTube credential in job      false
+logout -> SIGNED OUT           PASS
+```
+
+The screenshot captured after connection had the email/password fields cleared before evidence collection.
+
+Therefore MV-ARCH-3B is `RUNTIME_VERIFIED`.
 
 ## Remaining boundary
 
 Secure persistent desktop session storage is intentionally not introduced here. The current first shell keeps the Auth session in process memory and clears it on logout/process exit.
 
-Overall repository dependency determinism is also still unresolved; direct Tauri dependencies are pinned, but the pre-existing npm graph still contains ranges and no committed lockfile.
+Overall repository dependency determinism is also still unresolved: existing npm semver ranges remain, there is no committed npm lockfile, and Cargo resolves a fresh lock graph in CI.
+
+`ACTIVATED` remains separate. Runtime verification of the shell does not mean MasterV has been publicly distributed as a signed desktop product.
 
 ## Next
 
 ```text
-MV-ARCH-3C — Windows Native Build + Desktop Runtime Smoke
+MV-ARCH-3D — Desktop Reference Library Surface
 ```
 
-3C launches the real Windows executable in WebView2, performs the authenticated hosted-boundary flow with GitHub Secrets injected only into the test driver, captures non-secret runtime evidence, and then attempts an unsigned NSIS installer smoke build.
+The next product-facing desktop migration should use the already-runtime-verified Reference Library first because it requires no Gemini or YouTube hosted workload migration.
