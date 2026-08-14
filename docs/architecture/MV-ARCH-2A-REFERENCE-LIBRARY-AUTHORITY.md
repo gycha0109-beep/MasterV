@@ -1,14 +1,14 @@
 # MV-ARCH-2A — Persistent Reference Library Authority
 
-Status: **STATIC_VERIFIED / PRODUCTION_STORE_NOT_CONFIGURED / NOT ACTIVATED**
+Status: **RUNTIME_VERIFIED / NOT ACTIVATED**
 
-Date: 2026-08-14
+Date: 2026-08-15
 
 ## Goal
 
 Move the comparison/reference domain away from a browser-session-only identity model without pretending that local process state is production persistence.
 
-Current UI behavior before 2A:
+Original pre-2A behavior:
 
 ```text
 Deep analysis result
@@ -17,13 +17,16 @@ Deep analysis result
   -> refresh/tab loss removes the saved set
 ```
 
-Target architecture:
+Verified architecture:
 
 ```text
 Deep analysis result
   -> canonical reference snapshot
   -> authenticated workspace-scoped Reference Library Store
+  -> Supabase Postgres + RLS
   -> list/get/upsert/delete
+  -> browser reload
+  -> session + DB reference restore
   -> comparison derives current metrics from stored analysis snapshots
 ```
 
@@ -92,17 +95,21 @@ This prevents a valid analysis snapshot from being persisted under the wrong vid
 
 They are deterministic application output derived from the stored `VideoAnalysis`. Persisting them would make old records retain stale derived values when metric logic changes.
 
-Consumers should derive current metrics at read/use time.
+Consumers derive current metrics at read/use time.
 
 ## Workspace isolation
 
-The store contract is scoped by `workspace_id` and the in-memory contract verifies cross-workspace isolation.
+The store contract is scoped by `workspace_id`.
 
-This is not an authentication mechanism.
+Runtime authorization is supplied by the later Supabase/Auth layers:
 
-Production API routes must obtain the workspace scope from trusted server-side authentication/membership state. A production route must not trust a client-supplied arbitrary `workspace_id` as authorization.
+```text
+workspace_id = user:<auth.uid()>
+```
 
-Because MasterV does not yet have that authenticated workspace authority, 2A does **not** expose a production Reference Library API and does **not** activate a database adapter.
+RLS, not a client-supplied workspace string, is the authorization authority.
+
+The final live smoke proved that an authenticated user cannot write to an unowned workspace.
 
 ## Store contract
 
@@ -115,9 +122,9 @@ interface ReferenceLibraryStore {
 }
 ```
 
-`InMemoryReferenceLibraryStore` exists only as the executable contract adapter.
+`InMemoryReferenceLibraryStore` remains the executable domain contract adapter.
 
-It verifies semantics but is not durable and is not a production persistence claim.
+Production persistence is provided separately by `SupabaseReferenceLibraryStore`; the in-memory adapter itself is never treated as durable persistence.
 
 ## Upsert semantics
 
@@ -147,11 +154,11 @@ Returned records are cloned so callers cannot mutate store authority by changing
 
 ## Comparison compatibility
 
-`referenceLibraryRecordToComparisonInput()` converts a persisted record into the existing `ReferenceComparisonInput` without changing comparison semantics.
+`referenceLibraryRecordToComparisonInput()` converts a stored record into the existing `ReferenceComparisonInput` without changing comparison semantics.
 
 Comparison identity uses canonical `source_id`, while display text uses the saved label.
 
-## Executable contract
+## Executable domain contract
 
 `scripts/reference-library-contract.ts` verifies:
 
@@ -189,74 +196,100 @@ head: 24744d9f309585e1db7ea63ef7dc9049cdacd10f
 result: SUCCESS
 ```
 
-The exact code head passed:
+The domain contract has remained in every subsequent CI run.
 
-- TypeScript typecheck;
-- all pre-existing regression contracts;
-- `test:reference-library`;
-- browser-smoke script syntax contract;
-- Next production build.
+## Production implementation
 
-Therefore 2A is `STATIC_VERIFIED`.
+MV-ARCH-2B replaced the earlier SQL design target with the live Supabase implementation:
 
-## Production SQL target
+- `masterv_workspace_members`;
+- `reference_library_entries`;
+- primary key `(workspace_id, source_id)`;
+- RLS;
+- database-owned revision/timestamps;
+- authenticated PostgREST adapter;
+- read-time canonical/cache-key integrity validation.
 
-A future relational adapter should map the domain approximately as:
+MV-ARCH-2C added:
 
-```sql
-create table reference_library_entries (
-  workspace_id text not null,
-  source_platform text not null,
-  source_id text not null,
-  native_id text not null,
-  canonical_url text not null,
-  label text not null,
-  analysis jsonb not null,
-  analysis_cache_key text not null,
-  analysis_provenance text not null,
-  schema_version text not null,
-  revision integer not null,
-  first_saved_at timestamptz not null,
-  updated_at timestamptz not null,
-  primary key (workspace_id, source_id)
-);
+- real Supabase Auth session;
+- deterministic personal workspace bootstrap;
+- React persistence wiring;
+- session restore;
+- browser reload restoration.
+
+## Final runtime evidence
+
+Final successful persistence Runtime Smoke:
+
+```text
+run_id: 31834335727
+execution_ref: feat/mvp-foundation
+checkout_sha: 10ac63448ce74b5cf37c10eaabf27db2649a01d6
+job: reference-library-smoke
+conclusion: success
 ```
 
-Before activation the production implementation must additionally provide:
+Server-side Reference Library result:
 
-- authenticated workspace membership authority;
-- RLS or equivalent server authorization;
-- transactional upsert preserving `first_saved_at` and incrementing `revision`;
-- indexes for workspace/newest-first listing;
-- bounded payload/error handling;
-- deletion scoped to the authenticated workspace.
+```text
+status: REFERENCE_LIBRARY_LIVE_SMOKE_PASS
+source_id: yt:MVpersist01
+revision: 2
+first_saved_at_preserved: true
+cross_workspace_write_denied: true
+gemini_requests_executed: 0
+youtube_requests_executed: 0
+```
 
-The SQL above is a design target only. No migration is applied in 2A.
+Browser persistence result:
 
-## Supabase boundary
+```text
+status: REFERENCE_LIBRARY_BROWSER_SMOKE_PASS
+reference_rest_requests: 6
+analyze_requests: 0
+restored_after_reload: true
+```
 
-A Supabase connector is available, but no MasterV-specific production project/database was selected or created during 2A.
+This proves the 2A authority contract is not only statically modeled but used by the real authenticated Supabase persistence path and restored after browser reload.
 
-Existing unrelated projects are not reused implicitly.
+Cleanup also passed. Direct DB verification after the workflow confirmed:
 
-Creating or selecting the production database is a separate activation decision.
+```text
+workspace_members = 1
+reference_entries = 0
+```
 
-## Status boundary
+The personal workspace membership remains intentionally durable while the synthetic smoke reference is removed.
 
-2A is `STATIC_VERIFIED` only.
+## Runtime verdict
 
-It cannot become `RUNTIME_VERIFIED` or `ACTIVATED` from the in-memory adapter.
+The original 2A blockers are resolved:
+
+- a dedicated MasterV production-capable store exists;
+- authenticated workspace authority exists;
+- RLS isolation is verified live;
+- real natural-key upsert/revision behavior is verified live;
+- browser reload restores the DB-backed library;
+- comparison can consume persisted records through the existing conversion boundary.
+
+Therefore:
+
+```text
+MV-ARCH-2A = RUNTIME_VERIFIED / NOT ACTIVATED
+```
+
+## Activation boundary
+
+`RUNTIME_VERIFIED` does not mean end-user production activation.
+
+Before `ACTIVATED`:
+
+- the intended deployment environment must receive the public Supabase configuration;
+- deployed real-user Auth/onboarding behavior must be accepted;
+- deployed persistence must receive its own smoke verification;
+- no service-role credential may be exposed to browser code.
 
 ## Next
 
-`MV-ARCH-2B — Supabase Reference Library Adapter + Authenticated Server API`
-
-2B should:
-
-1. resolve the production workspace/auth model;
-2. select or create the MasterV Supabase project explicitly;
-3. apply a reviewed migration with RLS;
-4. implement a server-only Supabase adapter;
-5. expose scoped list/save/delete APIs;
-6. wire the existing comparison tray to server authority;
-7. verify refresh persistence and workspace isolation in runtime.
+Persistence architecture 2A -> 2B -> 2C is runtime-verified. The next persistence work is deployment/activation hardening, not another storage-contract stage.
