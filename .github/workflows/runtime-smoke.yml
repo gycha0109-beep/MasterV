@@ -14,6 +14,7 @@ on:
         default: search-ux-browser
         options:
           - search-ux-browser
+          - reference-library
           - youtube-discovery
           - gemini
       gemini_live_confirm:
@@ -149,6 +150,80 @@ jobs:
         run: |
           if test -f /tmp/masterv-next.pid; then
             kill "$(cat /tmp/masterv-next.pid)" || true
+          fi
+
+  reference-library-smoke:
+    if: ${{ inputs.target == 'reference-library' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      NEXT_PUBLIC_SUPABASE_URL: https://euqkjrmrhhvnyzasppnd.supabase.co
+      NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: sb_publishable_WUdzeBz9jsYwQXP_YeyD4w_OdkRcLp2
+      SUPABASE_TEST_EMAIL: ${{ secrets.SUPABASE_TEST_EMAIL }}
+      SUPABASE_TEST_PASSWORD: ${{ secrets.SUPABASE_TEST_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.execution_ref }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - run: npm install
+      - name: Verify persistence smoke preconditions
+        run: |
+          test -n "$NEXT_PUBLIC_SUPABASE_URL"
+          test -n "$NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY"
+          test -n "$SUPABASE_TEST_EMAIL"
+          test -n "$SUPABASE_TEST_PASSWORD"
+          test -z "${GEMINI_API_KEY:-}"
+          test -z "${YOUTUBE_DATA_API_KEY:-}"
+          command -v google-chrome || command -v google-chrome-stable || command -v chromium || command -v chromium-browser
+      - name: Seed and verify live RLS CRUD without Gemini
+        env:
+          REFERENCE_LIBRARY_SMOKE_MODE: seed
+        run: npm run smoke:reference-library-live
+      - name: Ensure Korean screenshot font
+        run: |
+          if ! fc-list :lang=ko | grep -q .; then
+            sudo apt-get update -qq
+            sudo apt-get install -y --no-install-recommends fonts-noto-cjk
+          fi
+      - name: Build production app with public Supabase config
+        run: npm run build
+      - name: Start production app without Gemini or YouTube credentials
+        run: |
+          mkdir -p artifacts/reference-library-browser
+          npm run start -- -H 127.0.0.1 -p 3000 > artifacts/reference-library-browser/server.log 2>&1 &
+          echo $! > /tmp/masterv-reference-next.pid
+          for attempt in $(seq 1 60); do
+            if curl -fsS http://127.0.0.1:3000 >/dev/null; then
+              exit 0
+            fi
+            sleep 1
+          done
+          cat artifacts/reference-library-browser/server.log
+          exit 1
+      - name: Run login and refresh persistence browser smoke
+        run: npm run smoke:reference-library-browser
+      - name: Cleanup persistence smoke reference
+        if: always()
+        env:
+          REFERENCE_LIBRARY_SMOKE_MODE: cleanup
+        run: npm run smoke:reference-library-live || true
+      - name: Upload Reference Library runtime evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: reference-library-runtime-smoke
+          path: |
+            artifacts/reference-library-live-smoke.json
+            artifacts/reference-library-browser
+          if-no-files-found: warn
+      - name: Stop production app
+        if: always()
+        run: |
+          if test -f /tmp/masterv-reference-next.pid; then
+            kill "$(cat /tmp/masterv-reference-next.pid)" || true
           fi
 
   gemini-batch-submit:
