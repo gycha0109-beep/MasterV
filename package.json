@@ -26,6 +26,7 @@
     "test:background-batch": "tsx scripts/background-batch-contract.ts",
     "smoke:gemini": "tsx scripts/runtime-smoke.ts",
     "smoke:youtube-discovery": "tsx scripts/youtube-discovery-smoke.ts",
+    "smoke:background-batch": "tsx scripts/background-batch-smoke.ts",
     "pilot:real-products": "tsx scripts/real-product-pilot.ts",
     "calibrate:coarse-bundles": "tsx scripts/coarse-bundle-calibration.ts",
     "evaluate:coarse-bundles": "tsx scripts/evaluate-coarse-bundle-calibration.ts"
