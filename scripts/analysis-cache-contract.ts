@@ -10,9 +10,31 @@ import {
 } from "../lib/analysis-cache";
 import { InMemoryAnalysisBudgetStore } from "../lib/analysis-budget";
 import { executeAnalysis } from "../lib/analysis-runtime";
+import {
+  buildYouTubeCoarseCacheKey,
+  readAvailableYouTubeCoarseAnalyses
+} from "../lib/analysis-service";
+import type { CoarseVideoAnalysis } from "../lib/tiered-analysis";
 
 function assert(condition: unknown, message: string) {
   if (!condition) throw new Error(message);
+}
+
+function coarse(sourceId: string): CoarseVideoAnalysis {
+  return {
+    source_id: sourceId,
+    duration_seconds: 30,
+    primary_delivery_mode: "demonstration",
+    hook_type: "fixture",
+    dominant_visual_source: "live_action",
+    product_first_seen_seconds: 1,
+    direct_demo_present: true,
+    cta_present: true,
+    multi_product: false,
+    rough_structure: ["hook", "demo", "cta"],
+    risk_flags: [],
+    confidence: "high"
+  };
 }
 
 async function main() {
@@ -74,6 +96,23 @@ async function main() {
   assert(replayed.provenance["yt:R"] === "replay" && replayed.replay_hit_count === 1, "replay must use fixture");
   assert(replayed.live_request_count === 0 && replayLiveCalls === 0, "replay must use zero live requests");
   assert((await replayBudget.get(model, now)).budget.tracked_requests_today === 0, "replay must not increment budget");
+
+  const coarseCache = new InMemoryAnalysisCacheStore();
+  await coarseCache.set(buildYouTubeCoarseCacheKey("https://www.youtube.com/watch?v=A"), coarse("yt:A"));
+  const coarseReplay = new InMemoryAnalysisReplayStore([{
+    key: buildYouTubeCoarseCacheKey("https://www.youtube.com/watch?v=B"),
+    value: coarse("yt:B")
+  }]);
+  const available = await readAvailableYouTubeCoarseAnalyses([
+    { source_id: "yt:A", url: "https://www.youtube.com/watch?v=A" },
+    { source_id: "yt:B", url: "https://www.youtube.com/watch?v=B" },
+    { source_id: "yt:C", url: "https://www.youtube.com/watch?v=C" }
+  ], { cache: coarseCache, replay: coarseReplay });
+  assert(available.diagnostics.cache_hit_count === 1, "read-only coarse inspection must include cache hit");
+  assert(available.diagnostics.replay_hit_count === 1, "read-only coarse inspection must include replay hit");
+  assert(available.diagnostics.missing_count === 1, "unresolved coarse candidate must remain missing");
+  assert(available.diagnostics.gemini_requests_executed === 0, "read-only coarse inspection must execute zero Gemini requests");
+  assert(available.provenance["yt:A"] === "cache" && available.provenance["yt:B"] === "replay", "coarse provenance must be preserved");
 
   const directory = await mkdtemp(path.join(os.tmpdir(), "masterv-analysis-cache-"));
   try {
