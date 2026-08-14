@@ -1,3 +1,5 @@
+import type { AnalysisCacheStore, AnalysisReplayStore } from "@/lib/analysis-cache";
+import { readAvailableYouTubeCoarseAnalyses } from "@/lib/analysis-service";
 import {
   normalizeSearchOptions,
   prepareDiscoveryCandidates,
@@ -6,7 +8,11 @@ import {
   type SearchOptions
 } from "@/lib/discovery";
 import { canonicalizeYouTubeSource } from "@/lib/source-identity";
-import type { SearchCandidate } from "@/lib/tiered-analysis";
+import {
+  buildOrchestrationPlan,
+  type OrchestratorProfile,
+  type SearchCandidate
+} from "@/lib/tiered-analysis";
 
 type FetchLike = (input: string | URL | Request, init?: RequestInit) => Promise<Response>;
 
@@ -229,6 +235,47 @@ export async function discoverYouTubeCandidates(
       ...prepared.diagnostics,
       youtube_api_requests: youtubeApiRequests,
       gemini_requests: 0
+    }
+  };
+}
+
+export type ProgressiveDiscoveryDependencies = {
+  api_key?: string;
+  fetcher?: FetchLike;
+  cache?: AnalysisCacheStore;
+  replay?: AnalysisReplayStore;
+  profile?: OrchestratorProfile;
+};
+
+export async function discoverYouTubeProgressive(
+  query: string,
+  options: SearchOptions = {},
+  dependencies: ProgressiveDiscoveryDependencies = {}
+) {
+  const discovery = await discoverYouTubeCandidates(query, options, {
+    api_key: dependencies.api_key,
+    fetcher: dependencies.fetcher
+  });
+  const availability = await readAvailableYouTubeCoarseAnalyses(
+    discovery.candidates.map((candidate) => ({ source_id: candidate.source_id, url: candidate.canonical_url })),
+    { cache: dependencies.cache, replay: dependencies.replay }
+  );
+  const plan = buildOrchestrationPlan({
+    query: discovery.query,
+    candidates: discovery.candidates,
+    coarse_by_source: availability.analyses,
+    profile: dependencies.profile
+  });
+
+  return {
+    ...discovery,
+    orchestration: {
+      plan,
+      availability: {
+        provenance: availability.provenance,
+        errors: availability.errors,
+        diagnostics: availability.diagnostics
+      }
     }
   };
 }
