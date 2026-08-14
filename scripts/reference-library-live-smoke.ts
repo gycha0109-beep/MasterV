@@ -63,6 +63,30 @@ async function writeArtifact(payload: Record<string, unknown>) {
   await fs.writeFile(target, JSON.stringify(payload, null, 2));
 }
 
+async function verifyHostedBoundary(config: SupabasePublicConfig, accessToken: string) {
+  const response = await fetch(`${config.project_url.replace(/\/+$/, "")}/functions/v1/masterv-api-boundary`, {
+    method: "GET",
+    headers: {
+      apikey: config.publishable_key,
+      Authorization: `Bearer ${accessToken}`
+    }
+  });
+  const body = await response.json() as {
+    service?: string;
+    contract_version?: string;
+    authenticated?: boolean;
+    capabilities?: Record<string, boolean>;
+  };
+  assert(response.status === 200, `hosted API boundary must return 200, got ${response.status}`);
+  assert(body.service === "masterv-hosted-api", "hosted API service identity mismatch");
+  assert(body.contract_version === "mv-hosted-api-v1", "hosted API contract version mismatch");
+  assert(body.authenticated === true, "hosted API must report authenticated boundary");
+  assert(body.capabilities?.boundary_probe === true, "hosted API boundary probe capability missing");
+  assert(body.capabilities?.analyze === false, "Deep analyze must not be claimed migrated in 3A");
+  assert(body.capabilities?.youtube_discovery === false, "YouTube discovery must not be claimed migrated in 3A");
+  return true;
+}
+
 async function run() {
   const config: SupabasePublicConfig = {
     project_url: required("NEXT_PUBLIC_SUPABASE_URL"),
@@ -94,6 +118,8 @@ async function run() {
     console.log(JSON.stringify({ status: "REFERENCE_LIBRARY_LIVE_CLEANUP", removed, source_id: source.source_id }));
     return;
   }
+
+  const hostedBoundaryVerified = await verifyHostedBoundary(config, session.access_token);
 
   await store.delete(workspaceId, source.source_id);
   const first = await store.upsert({
@@ -145,6 +171,10 @@ async function run() {
     revision: second.revision,
     first_saved_at_preserved: second.first_saved_at === first.first_saved_at,
     cross_workspace_write_denied: crossWorkspaceWriteDenied,
+    hosted_api_boundary_verified: hostedBoundaryVerified,
+    hosted_api_contract_version: "mv-hosted-api-v1",
+    hosted_api_analyze_migrated: false,
+    hosted_api_youtube_discovery_migrated: false,
     gemini_requests_executed: 0,
     youtube_requests_executed: 0
   };
