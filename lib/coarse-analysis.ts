@@ -46,6 +46,10 @@ export type CoarseInputVideo = {
   url: string;
 };
 
+type CoarseInteractionInputStep =
+  | { type: "text"; text: string }
+  | { type: "video"; uri: string };
+
 const COARSE_PROMPT = `
 당신은 상품 숏폼 참고영상의 빠른 구조 스캐너다.
 이 단계의 목적은 정밀 분석이 아니라 여러 후보 영상을 비교하기 위한 큰 제작 구조만 추출하는 것이다.
@@ -143,7 +147,7 @@ export async function analyzeYouTubeCoarseBundle(videos: CoarseInputVideo[]): Pr
 
   const ai = getClient();
   const model = process.env.GEMINI_COARSE_MODEL || process.env.GEMINI_MODEL || "gemini-3.6-flash";
-  const input: Array<Record<string, unknown>> = [];
+  const input: CoarseInteractionInputStep[] = [];
   const sourceIds = videos.map((video) => video.source_id);
 
   for (const video of videos) {
