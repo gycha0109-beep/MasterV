@@ -149,3 +149,8 @@
   .advanced-analysis-shell { padding: 14px; }
   .advanced-analysis-heading { flex-direction: column; }
 }
+
+@media (max-width: 640px) {
+  .sidebar { min-width: 0; }
+  .sidebar nav { width: 100%; min-width: 0; max-width: 100%; }
+}
