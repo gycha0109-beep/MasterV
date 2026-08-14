@@ -1,6 +1,6 @@
 # MV-ARCH-1H-B — Guarded Live Gemini Batch Smoke
 
-Status: **STATIC_VERIFIED_PENDING_CI / LIVE_BATCH_NOT_VERIFIED / NOT ACTIVATED**
+Status: **STATIC_VERIFIED / LIVE_BATCH_NOT_VERIFIED / NOT ACTIVATED**
 
 Date: 2026-08-14
 
@@ -131,6 +131,29 @@ batch_job_name   # check only
 ```
 
 The default branch contains only the dispatcher definition needed to expose these manual choices. The actual smoke implementation remains on `feat/mvp-foundation`.
+
+## Static verification
+
+The guarded smoke implementation is included in normal TypeScript typechecking but is never executed by CI.
+
+Verification checkpoint before this documentation freeze:
+
+```text
+head: 888d7429fbe1799960a1dd2cc17e05de89f4a074
+CI run: 31761132768 (#467)
+conclusion: success
+```
+
+The checkpoint passed:
+
+- TypeScript typecheck;
+- all existing regression contracts;
+- YouTube discovery contract;
+- Search UX contract;
+- background Batch mapping contract;
+- Next production build.
+
+No live Gemini Batch job was created by CI.
 
 ## Activation boundary
 
