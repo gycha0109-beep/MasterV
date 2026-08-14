@@ -5,22 +5,31 @@ import type { VideoAnalysis } from "@/lib/analysis-schema";
 import type { DerivedVideoMetrics } from "@/lib/derived-metrics";
 import type { GeminiRateLimitDiagnostic } from "@/lib/gemini-error";
 import { compareVideoAnalyses } from "@/lib/reference-compare";
+import { referenceLibraryRecordToComparisonInput } from "@/lib/reference-library";
 import {
   compileSingleVideoProductionGuide,
   EMPTY_PRODUCT_TRUTH,
   type ProductTruthInput
 } from "@/lib/single-video-production";
 import type { SearchCandidate } from "@/lib/tiered-analysis";
+import { usePersistentReferenceLibrary } from "@/lib/use-persistent-reference-library";
 import { AdvancedAnalysis } from "@/components/AdvancedAnalysis";
 import { ComparisonDashboard } from "@/components/ComparisonDashboard";
 import { DiscoverySearch } from "@/components/DiscoverySearch";
+import { ReferenceLibraryAccount } from "@/components/ReferenceLibraryAccount";
 import { SingleVideoSummary } from "@/components/SingleVideoSummary";
 import { SingleVideoProductionGuide } from "@/components/SingleVideoProductionGuide";
 
+type AnalysisExecution = {
+  cache_key: string;
+  provenance: "cache" | "replay" | "live";
+};
+
 type ApiResponse = {
-  source?: { platform: string; url: string };
+  source?: { platform: string; source_id: string; url: string };
   analysis?: VideoAnalysis;
   derived_metrics?: DerivedVideoMetrics;
+  execution?: AnalysisExecution;
   error?: string;
   code?: string;
   rate_limit?: GeminiRateLimitDiagnostic | null;
@@ -68,42 +77,66 @@ function rateLimitKindLabel(kind: GeminiRateLimitDiagnostic["kind"]) {
 export default function Home() {
   const [url, setUrl] = useState("");
   const [analysisUrl, setAnalysisUrl] = useState("");
+  const [analysisExecution, setAnalysisExecution] = useState<AnalysisExecution | null>(null);
   const [loading, setLoading] = useState(false);
   const [analyzingSourceId, setAnalyzingSourceId] = useState<string | null>(null);
   const [error, setError] = useState("");
+  const [libraryActionError, setLibraryActionError] = useState("");
   const [rateLimitDiagnostic, setRateLimitDiagnostic] = useState<GeminiRateLimitDiagnostic | null>(null);
   const [analysis, setAnalysis] = useState<VideoAnalysis | null>(null);
   const [metrics, setMetrics] = useState<DerivedVideoMetrics | null>(null);
-  const [savedReferences, setSavedReferences] = useState<SavedReference[]>([]);
+  const [sessionReferences, setSessionReferences] = useState<SavedReference[]>([]);
   const [promptOpen, setPromptOpen] = useState(false);
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [productTruth, setProductTruth] = useState<ProductTruthInput>({ ...EMPTY_PRODUCT_TRUTH });
+  const persistent = usePersistentReferenceLibrary();
+  const persistentMode = persistent.status === "ready";
 
   const productionGuide = useMemo(
     () => (analysis && metrics ? compileSingleVideoProductionGuide(analysis, metrics, productTruth) : null),
     [analysis, metrics, productTruth]
   );
 
+  const displayReferences = useMemo(() => {
+    if (persistentMode) {
+      return persistent.records.map((record) => ({
+        id: record.source.source_id,
+        url: record.source.canonical_url,
+        analysis: record.analysis
+      }));
+    }
+    return sessionReferences.map((reference) => ({
+      id: reference.id,
+      url: reference.url,
+      analysis: reference.analysis
+    }));
+  }, [persistentMode, persistent.records, sessionReferences]);
+
   const comparison = useMemo(() => {
-    if (savedReferences.length < 2) return null;
+    if (persistentMode) {
+      if (persistent.records.length < 2) return null;
+      return compareVideoAnalyses(persistent.records.map(referenceLibraryRecordToComparisonInput));
+    }
+    if (sessionReferences.length < 2) return null;
     return compareVideoAnalyses(
-      savedReferences.map((reference) => ({
+      sessionReferences.map((reference) => ({
         id: reference.id,
         label: reference.id,
         url: reference.url,
         analysis: reference.analysis
       }))
     );
-  }, [savedReferences]);
+  }, [persistentMode, persistent.records, sessionReferences]);
 
   const currentSaved = Boolean(
-    analysisUrl && savedReferences.some((reference) => reference.url === analysisUrl)
+    analysisUrl && displayReferences.some((reference) => reference.url === analysisUrl)
   );
 
   async function analyzeRequestedUrl(requestedUrl: string, sourceId: string | null = null) {
     setLoading(true);
     setAnalyzingSourceId(sourceId);
     setError("");
+    setLibraryActionError("");
     setRateLimitDiagnostic(null);
     setPromptOpen(false);
     setDetailsOpen(false);
@@ -120,6 +153,7 @@ export default function Home() {
         setAnalysis(null);
         setMetrics(null);
         setAnalysisUrl("");
+        setAnalysisExecution(null);
         setError(friendlyApiError(data.error || "분석에 실패했습니다."));
         setRateLimitDiagnostic(data.code === "GEMINI_RATE_LIMIT" ? data.rate_limit ?? null : null);
         requestAnimationFrame(() => document.getElementById("direct-analysis")?.scrollIntoView({ behavior: "smooth", block: "start" }));
@@ -129,12 +163,14 @@ export default function Home() {
       setAnalysis(data.analysis);
       setMetrics(data.derived_metrics);
       setAnalysisUrl(data.source?.url || requestedUrl);
+      setAnalysisExecution(data.execution ?? null);
       setProductTruth({ ...EMPTY_PRODUCT_TRUTH });
       requestAnimationFrame(() => document.getElementById("analysis-result")?.scrollIntoView({ behavior: "smooth", block: "start" }));
     } catch (caught) {
       setAnalysis(null);
       setMetrics(null);
       setAnalysisUrl("");
+      setAnalysisExecution(null);
       setRateLimitDiagnostic(null);
       const message = caught instanceof Error ? caught.message : "분석에 실패했습니다.";
       setError(friendlyApiError(message));
@@ -157,16 +193,46 @@ export default function Home() {
     await analyzeRequestedUrl(candidate.canonical_url, candidate.source_id);
   }
 
-  function saveCurrentReference() {
+  async function saveCurrentReference() {
     if (!analysis || !metrics || !analysisUrl) return;
-    if (savedReferences.some((reference) => reference.url === analysisUrl)) return;
+    setLibraryActionError("");
+
+    if (persistentMode) {
+      if (!analysisExecution?.cache_key || !analysisExecution.provenance) {
+        setLibraryActionError("이 분석 결과에는 영속 저장에 필요한 실행 provenance가 없습니다. 다시 분석해주세요.");
+        return;
+      }
+      try {
+        await persistent.save({
+          url: analysisUrl,
+          label: videoIdFromUrl(analysisUrl),
+          analysis,
+          analysis_cache_key: analysisExecution.cache_key,
+          analysis_provenance: analysisExecution.provenance
+        });
+      } catch (caught) {
+        setLibraryActionError(caught instanceof Error ? caught.message : "보관함 저장에 실패했습니다.");
+      }
+      return;
+    }
+
+    if (sessionReferences.some((reference) => reference.url === analysisUrl)) return;
     let id = videoIdFromUrl(analysisUrl);
-    if (savedReferences.some((reference) => reference.id === id)) id = `${id}-${savedReferences.length + 1}`;
-    setSavedReferences((current) => [...current, { id, url: analysisUrl, analysis, metrics }]);
+    if (sessionReferences.some((reference) => reference.id === id)) id = `${id}-${sessionReferences.length + 1}`;
+    setSessionReferences((current) => [...current, { id, url: analysisUrl, analysis, metrics }]);
   }
 
-  function removeReference(id: string) {
-    setSavedReferences((current) => current.filter((reference) => reference.id !== id));
+  async function removeReference(id: string) {
+    setLibraryActionError("");
+    if (persistentMode) {
+      try {
+        await persistent.remove(id);
+      } catch (caught) {
+        setLibraryActionError(caught instanceof Error ? caught.message : "보관함 삭제에 실패했습니다.");
+      }
+      return;
+    }
+    setSessionReferences((current) => current.filter((reference) => reference.id !== id));
   }
 
   return (
@@ -234,20 +300,32 @@ export default function Home() {
           )}
         </section>
 
+        <ReferenceLibraryAccount
+          configured={persistent.configured}
+          status={persistent.status}
+          email={persistent.session?.user.email}
+          error={persistent.error}
+          notice={persistent.notice}
+          onSignIn={persistent.signIn}
+          onSignUp={persistent.signUp}
+          onSignOut={persistent.signOut}
+        />
+
         <section className="reference-tray">
           <div className="reference-tray-heading">
             <div>
               <span className="section-kicker">비교함</span>
-              <strong>{savedReferences.length}개 저장</strong>
+              <strong>{displayReferences.length}개 저장</strong>
             </div>
-            <small>현재 브라우저 세션에서만 유지됩니다.</small>
+            <small>{persistentMode ? "Supabase 보관함 · 새로고침 후에도 유지" : "현재 브라우저 세션에서만 유지"}</small>
           </div>
-          {savedReferences.length > 0 ? (
+          {libraryActionError && <p className="error-box">{libraryActionError}</p>}
+          {displayReferences.length > 0 ? (
             <div className="reference-chip-list">
-              {savedReferences.map((reference) => (
+              {displayReferences.map((reference) => (
                 <div className="reference-chip" key={reference.id}>
                   <div><strong>{reference.id}</strong><span>{reference.analysis.structure_label}</span></div>
-                  <button onClick={() => removeReference(reference.id)} aria-label={`${reference.id} 제거`}>×</button>
+                  <button onClick={() => void removeReference(reference.id)} aria-label={`${reference.id} 제거`}>×</button>
                 </div>
               ))}
             </div>
@@ -280,7 +358,7 @@ export default function Home() {
               currentSaved={currentSaved}
               promptOpen={promptOpen}
               detailsOpen={detailsOpen}
-              onSave={saveCurrentReference}
+              onSave={() => void saveCurrentReference()}
               onTogglePrompt={() => setPromptOpen((value) => !value)}
               onToggleDetails={() => setDetailsOpen((value) => !value)}
             />
