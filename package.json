@@ -24,6 +24,7 @@
     "test:youtube-discovery": "tsx scripts/youtube-discovery-contract.ts",
     "test:search-ux": "tsx scripts/search-ux-contract.ts",
     "test:background-batch": "tsx scripts/background-batch-contract.ts",
+    "test:reference-library": "tsx scripts/reference-library-contract.ts",
     "test:search-ux-browser-script": "node --check scripts/search-ux-browser-smoke.mjs",
     "smoke:gemini": "tsx scripts/runtime-smoke.ts",
     "smoke:youtube-discovery": "tsx scripts/youtube-discovery-smoke.ts",
