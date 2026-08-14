@@ -1,4 +1,5 @@
 import type { VideoAnalysis } from "@/lib/analysis-schema";
+import { platformFetch } from "@/lib/platform-fetch";
 import {
   REFERENCE_LIBRARY_MAX_LABEL_LENGTH,
   createReferenceLibraryRecord,
@@ -110,7 +111,7 @@ export class SupabaseReferenceLibraryStore implements ReferenceLibraryStore {
     this.projectUrl = normalizeProjectUrl(config.project_url);
     this.apiKey = normalizeSecret(config.api_key, "Supabase api_key");
     this.accessToken = normalizeSecret(config.access_token, "Supabase access_token");
-    this.fetchImpl = config.fetch_impl ?? fetch;
+    this.fetchImpl = config.fetch_impl ?? platformFetch;
   }
 
   private async request(path: string, init: RequestInit = {}) {
