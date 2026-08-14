@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="color-scheme" content="dark" />
+    <title>MasterV Desktop</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <main class="shell">
+      <header class="topbar">
+        <div>
+          <p class="eyebrow">REFERENCE INTELLIGENCE</p>
+          <h1>MasterV Desktop</h1>
+        </div>
+        <span id="surface-badge" class="badge">desktop</span>
+      </header>
+
+      <section class="hero card">
+        <div>
+          <p class="eyebrow">DESKTOP FOUNDATION</p>
+          <h2>레퍼런스를 모으고, 분석하고, 제작으로 연결하는 작업 공간</h2>
+          <p class="muted">이 빌드는 Next.js 서버를 포함하지 않습니다. 인증과 서버 기능은 MasterV hosted API 경계로 연결됩니다.</p>
+        </div>
+        <div class="status-stack" aria-live="polite">
+          <div class="status-row"><span>Static client</span><strong class="ok">READY</strong></div>
+          <div class="status-row"><span>Supabase Auth</span><strong id="auth-status">SIGNED OUT</strong></div>
+          <div class="status-row"><span>Hosted API</span><strong id="api-status">NOT CHECKED</strong></div>
+        </div>
+      </section>
+
+      <section class="grid">
+        <article class="card">
+          <p class="eyebrow">ACCOUNT</p>
+          <h2>로그인</h2>
+          <form id="login-form">
+            <label>
+              이메일
+              <input id="email" type="email" autocomplete="username" required />
+            </label>
+            <label>
+              비밀번호
+              <input id="password" type="password" autocomplete="current-password" minlength="6" required />
+            </label>
+            <button id="login-button" type="submit">MasterV 연결</button>
+          </form>
+          <button id="logout-button" class="secondary" type="button" hidden>로그아웃</button>
+          <p id="message" class="message" aria-live="polite"></p>
+        </article>
+
+        <article class="card">
+          <p class="eyebrow">HOSTED CAPABILITIES</p>
+          <h2>서버 경계 상태</h2>
+          <dl class="capabilities">
+            <div><dt>Boundary probe</dt><dd id="cap-boundary">—</dd></div>
+            <div><dt>Analyze</dt><dd id="cap-analyze">—</dd></div>
+            <div><dt>YouTube discovery</dt><dd id="cap-youtube">—</dd></div>
+            <div><dt>Product Truth</dt><dd id="cap-product-truth">—</dd></div>
+          </dl>
+          <p class="muted small">3B에서는 shell과 인증 경계만 검증합니다. Deep 분석 기능이 desktop으로 이전됐다고 표시하지 않습니다.</p>
+        </article>
+      </section>
+
+      <section class="card roadmap">
+        <p class="eyebrow">NEXT SURFACE MIGRATION</p>
+        <div class="roadmap-row"><span>Reference Library UI</span><strong>next</strong></div>
+        <div class="roadmap-row"><span>Search / Discovery</span><strong>hosted route required</strong></div>
+        <div class="roadmap-row"><span>Deep Analysis</span><strong>compute placement pending</strong></div>
+        <div class="roadmap-row"><span>Production Guidance</span><strong>after analysis route</strong></div>
+      </section>
+    </main>
+
+    <script src="./config.js"></script>
+    <script src="./app.js"></script>
+  </body>
+</html>
