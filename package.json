@@ -7,6 +7,9 @@
     "build": "next build",
     "start": "next start",
     "typecheck": "tsc --noEmit",
+    "desktop:prepare": "node scripts/build-desktop-static.mjs",
+    "desktop:build": "tauri build",
+    "tauri": "tauri",
     "test:observation-contract": "tsx scripts/observation-contract.ts",
     "test:subject-attribution": "tsx scripts/subject-attribution-contract.ts",
     "test:derived-metrics": "tsx scripts/derived-metrics-contract.ts",
@@ -28,6 +31,7 @@
     "test:reference-library-supabase": "tsx scripts/reference-library-supabase-contract.ts",
     "test:supabase-auth": "tsx scripts/supabase-auth-contract.ts",
     "test:runtime-api": "tsx scripts/runtime-api-contract.ts",
+    "test:desktop-shell": "node scripts/desktop-shell-contract.mjs",
     "test:reference-library-browser-script": "node --check scripts/reference-library-browser-smoke.mjs",
     "test:search-ux-browser-script": "node --check scripts/search-ux-browser-smoke.mjs",
     "smoke:gemini": "tsx scripts/runtime-smoke.ts",
@@ -48,6 +52,7 @@
     "react-dom": "^19.2.8"
   },
   "devDependencies": {
+    "@tauri-apps/cli": "2.11.4",
     "@types/node": "^24.10.0",
     "@types/react": "^19.2.2",
     "@types/react-dom": "^19.2.3",
