@@ -1,6 +1,6 @@
 # MV-ARCH-2B — Supabase Reference Library Adapter
 
-Status: **STATIC_VERIFIED / LIVE_SCHEMA_VERIFIED / AUTHENTICATED_CRUD_NOT_VERIFIED / NOT ACTIVATED**
+Status: **RUNTIME_VERIFIED / NOT ACTIVATED**
 
 Date: 2026-08-15
 
@@ -8,7 +8,7 @@ Date: 2026-08-15
 
 Provide a production-capable persistence adapter for the MV-ARCH-2A Reference Library contract without activating unauthenticated public writes.
 
-Target flow:
+Verified flow:
 
 ```text
 authenticated user
@@ -47,19 +47,19 @@ The connected account was granted Developer access to the organization that owns
 
 The migration does not create users or silently bootstrap a membership.
 
-Workspace membership must be established through a trusted authenticated flow or an explicit administrative bootstrap before the store can be used.
+Workspace membership is established through the authenticated MV-ARCH-2C personal-workspace bootstrap flow.
 
 ### Live applied migrations
 
-The live MasterV database now contains:
+The live MasterV database contains the Reference Library schema plus security/performance hardening and the later personal-workspace bootstrap migration.
+
+Core 2B migrations:
 
 ```text
 reference_library
 reference_library_security_hardening
 reference_library_performance_hardening
 ```
-
-The initial schema migration applied successfully, then two hardening migrations were added after advisor review.
 
 `202608150001_reference_library_security_hardening.sql`:
 
@@ -105,13 +105,7 @@ BEFORE INSERT OR UPDATE
 -> masterv_reference_library_revision()
 ```
 
-The expected authenticated policies are present:
-
-- workspace members can read own membership;
-- workspace members can read references;
-- workspace members can insert references;
-- workspace members can update references;
-- workspace members can delete references.
+The expected authenticated policies are present for workspace-scoped reference read/insert/update/delete.
 
 ## Advisor verification
 
@@ -121,9 +115,9 @@ After the security hardening migration:
 security advisor lints: 0
 ```
 
-After the performance hardening migration, the only remaining performance notices are `unused_index` INFO notices for newly created indexes on empty/unused tables.
+After the performance hardening migration, the only remaining performance notices were `unused_index` INFO notices for newly created indexes on empty/unused tables.
 
-Those indexes are intentionally retained. A zero-row, not-yet-activated table naturally has no index usage history.
+Those indexes are intentionally retained.
 
 ## Database-owned upsert semantics
 
@@ -157,7 +151,7 @@ This avoids an application read-modify-write race for revision numbering.
 
 ## Adapter
 
-`lib/reference-library-supabase.ts` implements `ReferenceLibraryStore` over Supabase PostgREST using native `fetch`.
+`lib/reference-library-supabase.ts` implements `ReferenceLibraryStore` over Supabase PostgREST using native fetch semantics.
 
 No new Supabase JavaScript dependency is required.
 
@@ -170,9 +164,9 @@ access_token
 fetch_impl (optional test seam)
 ```
 
-The adapter does not read hard-coded credentials from source code.
+The adapter does not read secret service-role credentials from source code.
 
-An authenticated user flow can use a publishable API key plus that user's access token, allowing RLS to authorize workspace access.
+An authenticated user flow uses a publishable API key plus that user's access token, allowing RLS to authorize workspace access.
 
 Service-role bypass is not activated by this checkpoint.
 
@@ -256,50 +250,90 @@ CI command:
 npm run test:reference-library-supabase
 ```
 
-The Supabase contract, all prior regression contracts, browser smoke script syntax check, typecheck, and production build passed before the live migration was applied.
+## Live authenticated CRUD evidence
+
+MV-ARCH-2C Runtime Smoke Run `31834335727` exercised this adapter against the real MasterV Supabase project at checkout SHA:
+
+```text
+10ac63448ce74b5cf37c10eaabf27db2649a01d6
+```
+
+Observed server-side result:
+
+```text
+status: REFERENCE_LIBRARY_LIVE_SMOKE_PASS
+source_id: yt:MVpersist01
+revision: 2
+first_saved_at_preserved: true
+cross_workspace_write_denied: true
+gemini_requests_executed: 0
+youtube_requests_executed: 0
+```
+
+This proves the real adapter/database path for authenticated workspace bootstrap, insert, list/get-compatible persistence authority, natural-key update, delete cleanup, database-owned revision semantics, timestamp preservation, and RLS denial of an unowned workspace write.
+
+The production browser path also passed:
+
+```text
+status: REFERENCE_LIBRARY_BROWSER_SMOKE_PASS
+reference_rest_requests: 6
+analyze_requests: 0
+restored_after_reload: true
+```
+
+The workflow cleanup removed the synthetic row. A subsequent direct live DB check confirmed:
+
+```text
+workspace_members = 1
+reference_entries = 0
+```
 
 ## Authentication boundary
 
-RLS is intentionally designed around `auth.uid()` workspace membership.
+RLS remains intentionally designed around `auth.uid()` workspace membership.
 
-The live MasterV project currently has:
+MV-ARCH-2C now supplies the authenticated session and deterministic personal workspace bootstrap:
 
 ```text
-auth.users count = 0
+workspace_id = user:<auth.uid()>
 ```
 
-Therefore authenticated save/list/update/delete and cross-workspace denial cannot yet be truthfully marked runtime verified.
+A client-supplied arbitrary `workspace_id` is never treated as authorization.
 
-MasterV does not yet have a user sign-in/session flow wired into the application. This stage does not expose a public persistence API and does not replace the browser-session comparison tray yet.
+The live cross-workspace denial test confirms this boundary under an actual authenticated token.
 
-A client-supplied arbitrary `workspace_id` must never be treated as authorization.
+## Runtime verdict
 
-## Activation gate
-
-Already satisfied:
+The 2B runtime promotion conditions are now satisfied:
 
 1. dedicated MasterV Supabase project is healthy;
-2. connector can access it by project ref;
-3. schema migration and hardening migrations applied successfully;
-4. tables, RLS policies, trigger and constraints verified live;
-5. security advisor is clean;
-6. performance advisor has no actionable warning beyond expected unused-index INFO on empty tables.
+2. schema and hardening migrations are live;
+3. tables, RLS policies, trigger and constraints were verified live;
+4. security advisor is clean;
+5. authenticated test user and workspace exist;
+6. real authenticated Supabase adapter CRUD path passes;
+7. revision 1 -> 2 and `first_saved_at` preservation pass;
+8. RLS cross-workspace denial passes;
+9. cleanup passes.
 
-Still required before full `RUNTIME_VERIFIED`:
+Therefore:
 
-1. at least one authenticated test user/workspace membership is bootstrapped;
-2. RLS proves cross-workspace denial;
-3. real save/list/update/delete smoke passes.
+```text
+MV-ARCH-2B = RUNTIME_VERIFIED / NOT ACTIVATED
+```
 
-Before `ACTIVATED`:
+## Activation boundary
 
-1. MasterV auth/session authority is wired;
-2. server/UI persistence path uses the authenticated user token or equivalent trusted server identity;
-3. refresh persistence is browser-tested;
-4. no service-role credential is exposed to client code.
+`ACTIVATED` remains separate from runtime verification.
+
+Before production activation:
+
+1. deployment environment receives the intended public Supabase configuration;
+2. the real deployed application uses the authenticated persistence path;
+3. intended real-user onboarding/auth UX is accepted;
+4. no service-role credential is exposed to client code;
+5. deployment smoke confirms persistence outside GitHub Actions.
 
 ## Next
 
-`MV-ARCH-2C — Auth/Workspace Bootstrap + Live Supabase Persistence Smoke`
-
-The next unresolved product decision is the authentication model for the MVP. The live database is ready for that stage; it should not be bypassed with a client-exposed service-role credential.
+The persistence foundation is now runtime-verified through MV-ARCH-2C. The next persistence milestone is deployment/activation hardening rather than another local adapter stage.
