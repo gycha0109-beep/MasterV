@@ -85,6 +85,19 @@ export function buildYouTubeDeepCacheKey(rawUrl: string, model = deepModel()) {
   });
 }
 
+export function buildYouTubeCoarseCacheKey(rawUrl: string, model = coarseModel()) {
+  const source = canonicalizeYouTubeSource(rawUrl);
+  return buildAnalysisCacheKey({
+    provider: "youtube",
+    source_id: source.source_id,
+    analyzer_tier: "coarse",
+    schema_version: COARSE_SCHEMA_VERSION,
+    prompt_version: COARSE_PROMPT_VERSION,
+    model,
+    media_resolution: "default"
+  });
+}
+
 function executionMetrics<T>(execution: Awaited<ReturnType<typeof executeAnalysis<T>>>) {
   return {
     requested_count: execution.requested_count,
@@ -138,6 +151,85 @@ export async function invalidateYouTubeDeepCache(
   return (cache as InvalidatableAnalysisCacheStore).delete(buildYouTubeDeepCacheKey(rawUrl));
 }
 
+export type CoarseAvailabilityError = {
+  source_id: string;
+  store: "cache" | "replay";
+  message: string;
+};
+
+export async function readAvailableYouTubeCoarseAnalyses(
+  videos: CoarseInputVideo[],
+  dependencies: Pick<RuntimeDependencies, "cache" | "replay"> = {}
+) {
+  const cache = dependencies.cache ?? sharedCache;
+  const replay = dependencies.replay ?? sharedReplay;
+  const model = coarseModel();
+  const analyses: Record<string, CoarseVideoAnalysis> = {};
+  const provenance: Record<string, "cache" | "replay"> = {};
+  const errors: CoarseAvailabilityError[] = [];
+  let cacheHitCount = 0;
+  let replayHitCount = 0;
+
+  for (const video of videos) {
+    const source = canonicalizeYouTubeSource(video.url);
+    if (source.source_id !== video.source_id) {
+      throw new Error(`coarse source_id와 URL identity가 일치하지 않습니다: ${video.source_id} != ${source.source_id}`);
+    }
+    const cacheKey = buildYouTubeCoarseCacheKey(source.canonical_url, model);
+
+    try {
+      const cached = await cache.get<CoarseVideoAnalysis>(cacheKey);
+      if (cached) {
+        if (cached.value.source_id !== source.source_id) {
+          throw new Error(`coarse cache source_id 불일치: ${cached.value.source_id} != ${source.source_id}`);
+        }
+        analyses[source.source_id] = cached.value;
+        provenance[source.source_id] = "cache";
+        cacheHitCount += 1;
+        continue;
+      }
+    } catch (error) {
+      errors.push({
+        source_id: source.source_id,
+        store: "cache",
+        message: error instanceof Error ? error.message : String(error)
+      });
+    }
+
+    if (!replay) continue;
+    try {
+      const replayed = await replay.get<CoarseVideoAnalysis>(cacheKey);
+      if (!replayed) continue;
+      if (replayed.source_id !== source.source_id) {
+        throw new Error(`coarse replay source_id 불일치: ${replayed.source_id} != ${source.source_id}`);
+      }
+      analyses[source.source_id] = replayed;
+      provenance[source.source_id] = "replay";
+      replayHitCount += 1;
+    } catch (error) {
+      errors.push({
+        source_id: source.source_id,
+        store: "replay",
+        message: error instanceof Error ? error.message : String(error)
+      });
+    }
+  }
+
+  return {
+    analyses,
+    provenance,
+    errors,
+    diagnostics: {
+      requested_count: videos.length,
+      cache_hit_count: cacheHitCount,
+      replay_hit_count: replayHitCount,
+      missing_count: videos.length - Object.keys(analyses).length,
+      enrichment_error_count: errors.length,
+      gemini_requests_executed: 0 as const
+    }
+  };
+}
+
 export async function analyzeYouTubeCoarseManaged(
   videos: CoarseInputVideo[],
   dependencies: RuntimeDependencies = {}
@@ -152,15 +244,7 @@ export async function analyzeYouTubeCoarseManaged(
   });
   const cacheKeys = new Map(normalized.map(({ source }) => [
     source.source_id,
-    buildAnalysisCacheKey({
-      provider: "youtube",
-      source_id: source.source_id,
-      analyzer_tier: "coarse",
-      schema_version: COARSE_SCHEMA_VERSION,
-      prompt_version: COARSE_PROMPT_VERSION,
-      model,
-      media_resolution: "default"
-    })
+    buildYouTubeCoarseCacheKey(source.canonical_url, model)
   ]));
   const byId = new Map(normalized.map(({ video }) => [video.source_id, video]));
   const runtime = runtimeDependencies(dependencies);
