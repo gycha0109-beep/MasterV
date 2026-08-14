@@ -34,5 +34,6 @@ jobs:
       - run: npm run test:youtube-discovery
       - run: npm run test:search-ux
       - run: npm run test:background-batch
+      - run: npm run test:reference-library
       - run: npm run test:search-ux-browser-script
       - run: npm run build
