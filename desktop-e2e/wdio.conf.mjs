@@ -1,4 +1,5 @@
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 
 const appBinaryPath = path.resolve(process.cwd(), "src-tauri", "target", "release", "masterv-desktop.exe");
@@ -6,6 +7,11 @@ const appBinaryPath = path.resolve(process.cwd(), "src-tauri", "target", "releas
 if (!fs.existsSync(appBinaryPath)) {
   throw new Error(`MasterV Windows binary not found: ${appBinaryPath}`);
 }
+
+const runtimeTempRoot = process.env.RUNNER_TEMP?.trim() || os.tmpdir();
+const webviewUserDataFolder = path.resolve(runtimeTempRoot, `masterv-webview2-${process.pid}`);
+fs.rmSync(webviewUserDataFolder, { recursive: true, force: true });
+fs.mkdirSync(webviewUserDataFolder, { recursive: true });
 
 export const config = {
   runner: "local",
@@ -15,7 +21,10 @@ export const config = {
     {
       browserName: "tauri",
       "tauri:options": {
-        application: appBinaryPath
+        application: appBinaryPath,
+        webviewOptions: {
+          userDataFolder: webviewUserDataFolder
+        }
       }
     }
   ],
@@ -25,7 +34,8 @@ export const config = {
       {
         appBinaryPath,
         driverProvider: "external",
-        autoDownloadEdgeDriver: true
+        autoDownloadEdgeDriver: true,
+        startTimeout: 60_000
       }
     ]
   ],
