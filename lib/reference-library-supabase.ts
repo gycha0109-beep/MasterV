@@ -1,12 +1,15 @@
 import type { VideoAnalysis } from "@/lib/analysis-schema";
 import {
+  REFERENCE_LIBRARY_MAX_LABEL_LENGTH,
   createReferenceLibraryRecord,
   normalizeReferenceWorkspaceId,
+  parseDeepAnalysisCacheKey,
   type ReferenceAnalysisProvenance,
   type ReferenceLibraryRecord,
   type ReferenceLibrarySaveInput,
   type ReferenceLibraryStore
 } from "@/lib/reference-library";
+import { canonicalizeYouTubeSource } from "@/lib/source-identity";
 
 export type SupabaseReferenceLibraryConfig = {
   project_url: string;
@@ -45,7 +48,15 @@ function normalizeSecret(raw: string, name: string) {
   return value;
 }
 
+function validTimestamp(raw: string, name: string) {
+  if (!raw || Number.isNaN(Date.parse(raw))) {
+    throw new Error(`reference library ${name}가 올바르지 않습니다.`);
+  }
+  return raw;
+}
+
 function rowToRecord(row: ReferenceLibraryRow): ReferenceLibraryRecord {
+  const workspaceId = normalizeReferenceWorkspaceId(row.workspace_id);
   if (row.source_platform !== "youtube") {
     throw new Error(`지원하지 않는 reference source platform: ${row.source_platform}`);
   }
@@ -55,22 +66,32 @@ function rowToRecord(row: ReferenceLibraryRow): ReferenceLibraryRecord {
   if (!Number.isInteger(row.revision) || row.revision < 1) {
     throw new Error("reference library revision이 올바르지 않습니다.");
   }
+  if (!row.label?.trim() || row.label.length > REFERENCE_LIBRARY_MAX_LABEL_LENGTH) {
+    throw new Error("reference library label이 올바르지 않습니다.");
+  }
+  if (!["cache", "replay", "live"].includes(row.analysis_provenance)) {
+    throw new Error(`reference library provenance가 올바르지 않습니다: ${row.analysis_provenance}`);
+  }
+
+  const canonical = canonicalizeYouTubeSource(row.canonical_url);
+  if (canonical.source_id !== row.source_id || canonical.native_id !== row.native_id) {
+    throw new Error("reference library DB source identity가 canonical URL과 일치하지 않습니다.");
+  }
+  const parsedCacheKey = parseDeepAnalysisCacheKey(row.analysis_cache_key);
+  if (parsedCacheKey.source_id !== row.source_id) {
+    throw new Error("reference library DB source identity가 analysis cache key와 일치하지 않습니다.");
+  }
 
   return {
     schema_version: row.schema_version,
-    workspace_id: row.workspace_id,
-    source: {
-      platform: "youtube",
-      source_id: row.source_id,
-      canonical_url: row.canonical_url,
-      native_id: row.native_id
-    },
+    workspace_id: workspaceId,
+    source: canonical,
     label: row.label,
     analysis: structuredClone(row.analysis),
     analysis_cache_key: row.analysis_cache_key,
     analysis_provenance: row.analysis_provenance,
-    first_saved_at: row.first_saved_at,
-    updated_at: row.updated_at,
+    first_saved_at: validTimestamp(row.first_saved_at, "first_saved_at"),
+    updated_at: validTimestamp(row.updated_at, "updated_at"),
     revision: row.revision
   };
 }
