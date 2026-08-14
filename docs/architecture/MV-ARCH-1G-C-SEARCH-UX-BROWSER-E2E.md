@@ -1,6 +1,6 @@
 # MV-ARCH-1G-C — Search UX Browser E2E Smoke
 
-Status: **RUNTIME_VERIFIED_BEHAVIOR / MOBILE_OVERFLOW_FIXED_PENDING_RECHECK / NOT ACTIVATED**
+Status: **RUNTIME_VERIFIED / NOT ACTIVATED**
 
 Date: 2026-08-14
 
@@ -25,7 +25,9 @@ Manual-only `Runtime Smoke` target:
 search-ux-browser
 ```
 
-The job checks out the selected branch, verifies `YOUTUBE_DATA_API_KEY`, verifies that `GEMINI_API_KEY` is absent, ensures Chrome and Korean-capable fonts, builds and starts the production Next.js app, drives Chrome through CDP, and uploads JSON/screenshots/logs.
+The dispatcher has an explicit `execution_ref` authority. Its default is `feat/mvp-foundation`, and each runtime job passes that ref to `actions/checkout`, so the code under test is not inferred from the workflow-definition branch.
+
+The browser job verifies `YOUTUBE_DATA_API_KEY`, verifies that `GEMINI_API_KEY` is absent, ensures Chrome and Korean-capable fonts, builds and starts the production Next.js app, drives Chrome through CDP, and uploads JSON/screenshots/logs.
 
 No Playwright/Puppeteer dependency is added.
 
@@ -82,7 +84,7 @@ thumbnail_count: 12
 metadata_only_copy: true
 ```
 
-This proves the real production Next server + browser + YouTube Data API search path and the zero-auto-Deep boundary.
+This proved the real production Next server + browser + YouTube Data API search path and the zero-auto-Deep boundary.
 
 The first harness had no Korean font and its mobile emulation reported 494 CSS pixels instead of the intended 390, so its mobile visual result was not accepted as final evidence.
 
@@ -132,13 +134,67 @@ Commit `83d5c5c758e935d239d7a12286b2d376d16b07a1` adds a mobile containment rule
 }
 ```
 
-The intended behavior is now: the sidebar remains viewport-bound while the five navigation items scroll inside the nav container rather than expanding the whole page.
+The sidebar remains viewport-bound while the five navigation items scroll inside the nav container instead of expanding the document.
 
 This is a product CSS fix, not a smoke bypass.
 
+## Dispatcher hardening incidents
+
+Two later manual attempts did not produce valid post-fix browser evidence:
+
+- run `31763705848` checked out `main`, which only contained the dispatcher and therefore failed before browser execution because `package.json` was absent;
+- run `31766221748` accidentally used the old default `target=gemini`, so `search-ux-browser-smoke` was skipped and one live Gemini smoke executed successfully.
+
+The dispatcher was hardened after these incidents:
+
+- explicit `execution_ref`, default `feat/mvp-foundation`;
+- `target` default changed to `search-ux-browser`;
+- live Gemini requires explicit `gemini_live_confirm=RUN_GEMINI`;
+- without that confirmation, the live Gemini job is not eligible to run.
+
+## Final live run — full PASS
+
+```text
+run_id: 31766510601
+head: 6874924373187ccde1ed9d91ffdb140c153287e0
+result: SUCCESS
+status: SEARCH_UX_BROWSER_SMOKE_PASS
+query: sunscreen review shorts
+candidate_cards: 12
+discovery_requests: 1
+discovery_status: 200
+analyze_requests: 0
+gemini_api_key_present: false
+automatic_deep_analysis_observed: false
+plan_limited_badge: true
+limited_card_count: 8
+precise_action_count: 12
+thumbnail_count: 12
+mobile_viewport_width: 390
+mobile_document_width: 375
+mobile_no_horizontal_overflow: true
+mobile_first_card_width: 335
+mobile_first_card_fits_viewport: true
+```
+
+Artifact inspection also confirmed:
+
+- Korean text renders normally in both desktop and mobile screenshots;
+- desktop candidate layout renders 12 cards and preserves the explicit Deep action boundary;
+- mobile content remains inside the viewport after the sidebar containment fix.
+
+Therefore MV-ARCH-1G-C is **RUNTIME_VERIFIED**.
+
 ## Evidence artifact
 
-Manual runs upload:
+Final run artifact:
+
+```text
+artifact_id: 9206523380
+sha256: acb9e4733acddf87a69a05e2ff2f4beaf6b91688a75ee5363cc9ccaebc34c089
+```
+
+Contents:
 
 ```text
 artifacts/search-ux-browser/
@@ -161,21 +217,11 @@ npm run test:search-ux-browser-script
 
 and then runs the existing regression suite and production build.
 
-## Runtime verification gate
-
-Behavioral runtime is verified by run `31763089540`.
-
-Full `RUNTIME_VERIFIED` now requires one post-fix manual `search-ux-browser` PASS proving:
-
-- Korean-capable screenshot rendering;
-- exact 390px viewport;
-- document width <= viewport width;
-- card fit;
-- the same one discovery request / zero automatic Deep boundary.
-
 ## Activation boundary
 
-Even after full browser verification, live coarse remains disabled because MV-ARCH-1C is still `NOT QUALITY_VALIDATED`. Search remains Gemini-free and Deep still requires an explicit candidate or URL action.
+`RUNTIME_VERIFIED` does not imply production activation.
+
+Live coarse remains disabled because MV-ARCH-1C is still `NOT QUALITY_VALIDATED`. Search remains Gemini-free and Deep still requires an explicit candidate or URL action.
 
 ## Batch safety
 
