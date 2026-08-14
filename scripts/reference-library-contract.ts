@@ -209,4 +209,7 @@ async function run() {
   console.log("reference library contract: PASS");
 }
 
-await run();
+run().catch((error) => {
+  console.error(error);
+  process.exitCode = 1;
+});
