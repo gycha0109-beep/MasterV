@@ -11,10 +11,24 @@ on:
         options:
           - gemini
           - youtube-discovery
+          - gemini-batch-submit
+          - gemini-batch-check
       query:
         description: "YouTube discovery query when target is youtube-discovery"
         required: false
         default: "sunscreen review shorts"
+      batch_job_name:
+        description: "Existing batches/... name; required only for gemini-batch-check"
+        required: false
+        default: ""
+      batch_source_url:
+        description: "Single public YouTube URL for the guarded Batch smoke"
+        required: false
+        default: "https://www.youtube.com/watch?v=dr7rrnD_4jI"
+      batch_model:
+        description: "Gemini Batch model"
+        required: false
+        default: "gemini-3.6-flash"
 
 jobs:
   gemini-smoke:
@@ -57,3 +71,58 @@ jobs:
           name: youtube-discovery-smoke
           path: artifacts/youtube-discovery-smoke.json
           if-no-files-found: error
+
+  gemini-batch-submit:
+    if: ${{ inputs.target == 'gemini-batch-submit' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+      BACKGROUND_BATCH_MODE: submit
+      BACKGROUND_BATCH_SOURCE_URL: ${{ inputs.batch_source_url }}
+      BACKGROUND_BATCH_MODEL: ${{ inputs.batch_model }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - run: npm install
+      - name: Verify Gemini secret exists
+        run: test -n "$GEMINI_API_KEY"
+      - name: Submit exactly one guarded Gemini Batch job
+        run: npm run smoke:background-batch
+      - name: Upload Gemini Batch smoke artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: background-batch-smoke-submit
+          path: artifacts/background-batch-smoke.json
+          if-no-files-found: warn
+
+  gemini-batch-check:
+    if: ${{ inputs.target == 'gemini-batch-check' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+      BACKGROUND_BATCH_MODE: check
+      BACKGROUND_BATCH_JOB_NAME: ${{ inputs.batch_job_name }}
+      BACKGROUND_BATCH_SOURCE_URL: ${{ inputs.batch_source_url }}
+      BACKGROUND_BATCH_MODEL: ${{ inputs.batch_model }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - run: npm install
+      - name: Verify required check inputs
+        run: test -n "$GEMINI_API_KEY" && test -n "$BACKGROUND_BATCH_JOB_NAME"
+      - name: Check existing Gemini Batch job without creating another
+        run: npm run smoke:background-batch
+      - name: Upload Gemini Batch check artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: background-batch-smoke-check
+          path: artifacts/background-batch-smoke.json
+          if-no-files-found: warn
