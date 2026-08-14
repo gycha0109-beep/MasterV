@@ -1,4 +1,4 @@
-import { discoverYouTubeCandidates, parseIso8601DurationSeconds } from "../lib/youtube-discovery";
+import { discoverYouTubeProgressive, parseIso8601DurationSeconds } from "../lib/youtube-discovery";
 
 function assert(value: unknown, message: string) {
   if (!value) throw new Error(message);
@@ -41,7 +41,7 @@ async function main() {
     });
   };
 
-  const result = await discoverYouTubeCandidates("umbrella", {
+  const result = await discoverYouTubeProgressive("umbrella", {
     max_results: 6,
     shortlist_limit: 4,
     min_duration_seconds: 10,
@@ -62,6 +62,12 @@ async function main() {
   assert(result.candidates.map((item) => item.source_id).join(",") === "yt:A,yt:F,yt:C,yt:D", "diversity shortlist mismatch");
   assert(result.candidates[0].native_metrics.view_count === "1000", "native metrics must be preserved");
   assert(parseIso8601DurationSeconds("PT1H2M3S") === 3723, "duration parser mismatch");
+  assert(result.orchestration.availability.diagnostics.missing_count === 4, "uncached candidates must remain unresolved");
+  assert(result.orchestration.availability.diagnostics.gemini_requests_executed === 0, "availability inspection must execute zero Gemini requests");
+  assert(result.orchestration.plan.phase === "metadata_ready", "metadata-only result must remain immediately usable");
+  assert(result.orchestration.plan.diagnostics.coarse_runtime_allowed === false, "live coarse must remain quality-gated");
+  assert(result.orchestration.plan.coarse_live_batches.length === 0, "blocked quality gate must create zero live batches");
+  assert(result.orchestration.plan.diagnostics.gemini_requests_executed === 0, "orchestration planning must execute zero Gemini requests");
 
   console.log("YOUTUBE_DISCOVERY_CONTRACT_PASS");
 }
