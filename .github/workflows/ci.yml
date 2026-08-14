@@ -64,3 +64,49 @@ jobs:
       - run: npm install
       - run: npm run test:desktop-shell
       - run: npm run desktop:build
+
+  desktop-windows-runtime:
+    if: ${{ github.event_name == 'pull_request' }}
+    runs-on: windows-latest
+    timeout-minutes: 35
+    env:
+      NEXT_PUBLIC_SUPABASE_URL: https://euqkjrmrhhvnyzasppnd.supabase.co
+      NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: sb_publishable_WUdzeBz9jsYwQXP_YeyD4w_OdkRcLp2
+      NEXT_PUBLIC_MASTERV_API_BASE_URL: https://euqkjrmrhhvnyzasppnd.supabase.co/functions/v1
+      MASTERV_DESKTOP_REQUIRE_CONFIG: "1"
+      SUPABASE_TEST_EMAIL: ${{ secrets.SUPABASE_TEST_EMAIL }}
+      SUPABASE_TEST_PASSWORD: ${{ secrets.SUPABASE_TEST_PASSWORD }}
+      FORCE_COLOR: "0"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - uses: dtolnay/rust-toolchain@stable
+      - run: npm install
+      - name: Verify Windows desktop smoke preconditions
+        shell: pwsh
+        run: |
+          if (-not $env:SUPABASE_TEST_EMAIL) { throw "SUPABASE_TEST_EMAIL is required" }
+          if (-not $env:SUPABASE_TEST_PASSWORD) { throw "SUPABASE_TEST_PASSWORD is required" }
+          if ($env:GEMINI_API_KEY) { throw "Gemini credential must not be present in desktop runtime smoke" }
+          if ($env:YOUTUBE_DATA_API_KEY) { throw "YouTube credential must not be present in desktop runtime smoke" }
+      - name: Build native Windows Tauri executable
+        run: npm run desktop:build
+      - name: Install official Tauri WebDriver bridge
+        run: cargo install tauri-driver --locked
+      - name: Run native WebView2 auth and hosted-boundary smoke
+        run: npm run test:desktop-windows-runtime
+      - name: Generate platform icons for installer smoke
+        run: npm run tauri -- icon src-tauri/icons/icon.png
+      - name: Build unsigned NSIS installer smoke
+        run: npm run desktop:bundle:windows-smoke
+      - name: Upload Windows desktop runtime evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: masterv-windows-desktop-smoke
+          path: |
+            artifacts/desktop-windows-runtime
+            src-tauri/target/release/bundle/nsis/*.exe
+          if-no-files-found: warn
