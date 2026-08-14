@@ -29,8 +29,7 @@ export function ReferenceLibraryAccount({
   const [password, setPassword] = useState("");
   const [pending, setPending] = useState<"signin" | "signup" | "signout" | null>(null);
 
-  async function run(action: "signin" | "signup", event: FormEvent) {
-    event.preventDefault();
+  async function runCredentials(action: "signin" | "signup") {
     if (!inputEmail.trim() || password.length < 6 || pending) return;
     setPending(action);
     try {
@@ -40,6 +39,11 @@ export function ReferenceLibraryAccount({
     } finally {
       setPending(null);
     }
+  }
+
+  function submit(event: FormEvent) {
+    event.preventDefault();
+    void runCredentials("signin");
   }
 
   async function logout() {
@@ -108,7 +112,7 @@ export function ReferenceLibraryAccount({
         <span className={styles.badge}>로그인 필요</span>
       </div>
 
-      <form className={styles.form} onSubmit={(event) => run("signin", event)}>
+      <form className={styles.form} onSubmit={submit}>
         <input
           aria-label="보관함 이메일"
           type="email"
@@ -132,7 +136,7 @@ export function ReferenceLibraryAccount({
           className={styles.secondary}
           type="button"
           disabled={Boolean(pending)}
-          onClick={(event) => void run("signup", event as unknown as FormEvent)}
+          onClick={() => void runCredentials("signup")}
         >
           {pending === "signup" ? "가입 중..." : "계정 만들기"}
         </button>
