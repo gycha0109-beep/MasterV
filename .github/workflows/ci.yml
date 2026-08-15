@@ -43,6 +43,7 @@ jobs:
       - run: npm run test:desktop-reference-detail-compare
       - run: npm run test:hosted-reference-compiler
       - run: npm run test:hosted-youtube-discovery
+      - run: npm run test:hosted-deep-analysis
       - run: npm run test:reference-library-browser-script
       - run: npm run test:search-ux-browser-script
       - run: npm run build
@@ -73,12 +74,13 @@ jobs:
       - run: npm run test:desktop-reference-detail-compare
       - run: npm run test:hosted-reference-compiler
       - run: npm run test:hosted-youtube-discovery
+      - run: npm run test:hosted-deep-analysis
       - run: npm run desktop:build
 
   desktop-windows-runtime:
     if: ${{ github.event_name == 'pull_request' }}
     runs-on: windows-latest
-    timeout-minutes: 35
+    timeout-minutes: 40
     env:
       NEXT_PUBLIC_SUPABASE_URL: https://euqkjrmrhhvnyzasppnd.supabase.co
       NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: sb_publishable_WUdzeBz9jsYwQXP_YeyD4w_OdkRcLp2
@@ -110,6 +112,8 @@ jobs:
         run: npm run test:desktop-reference-compiler-windows
       - name: Run native WebView2 Hosted YouTube Discovery runtime smoke
         run: npm run test:desktop-youtube-discovery-windows
+      - name: Run native WebView2 Hosted Deep Analysis runtime smoke
+        run: npm run test:desktop-deep-analysis-windows
       - name: Generate platform icons for installer smoke
         run: npm run tauri -- icon src-tauri/icons/icon.png
       - name: Build unsigned NSIS installer smoke
@@ -124,5 +128,6 @@ jobs:
             artifacts/desktop-reference-detail-compare
             artifacts/desktop-reference-compiler
             artifacts/desktop-youtube-discovery
+            artifacts/desktop-deep-analysis
             src-tauri/target/release/bundle/nsis/*.exe
           if-no-files-found: warn

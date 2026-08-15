@@ -1,7 +1,14 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import type { SearchOptions } from "@/lib/discovery";
+import { deriveVideoMetrics } from "@/lib/derived-metrics";
+import { normalizeGeminiError } from "@/lib/gemini-error";
+import { canonicalizeYouTubeSource } from "@/lib/source-identity";
 import { compareVideoAnalyses } from "@masterv/reference-compare";
 import { compileEvidenceRules } from "@masterv/evidence-rules";
+import {
+  analyzeYouTubeVideoWithKey,
+  DEFAULT_DEEP_GEMINI_MODEL
+} from "@masterv/gemini-deep-core";
 import {
   discoverYouTubeCandidatesWithKey,
   YouTubeDiscoveryError
@@ -16,6 +23,7 @@ const headers = {
 
 const MAX_REFERENCE_SELECTION = 8;
 const MAX_DISCOVERY_QUERY_LENGTH = 200;
+const MAX_DEEP_ANALYSIS_URL_LENGTH = 500;
 const DISCOVERY_OPTION_KEYS = new Set([
   "max_results",
   "shortlist_limit",
@@ -99,6 +107,15 @@ function normalizedDiscoveryInput(body: { query?: unknown; options?: unknown }) 
   return { query, options: normalized as SearchOptions };
 }
 
+function normalizedDeepAnalysisInput(body: { url?: unknown }) {
+  if (typeof body.url !== "string") throw new Error("url must be a string");
+  const requestedUrl = body.url.trim();
+  if (!requestedUrl) throw new Error("url must not be empty");
+  if (requestedUrl.length > MAX_DEEP_ANALYSIS_URL_LENGTH) throw new Error(`url must be at most ${MAX_DEEP_ANALYSIS_URL_LENGTH} characters`);
+  const source = canonicalizeYouTubeSource(requestedUrl);
+  return { requestedUrl, source };
+}
+
 async function loadReference(req: Request, workspaceId: string, sourceId: string) {
   const authorization = req.headers.get("authorization")?.trim();
   const apikey = req.headers.get("apikey")?.trim();
@@ -115,9 +132,7 @@ async function loadReference(req: Request, workspaceId: string, sourceId: string
     method: "GET",
     headers: { authorization, apikey, Accept: "application/json" }
   });
-  if (!response.ok) {
-    throw new Error(`Reference Library read failed (${response.status})`);
-  }
+  if (!response.ok) throw new Error(`Reference Library read failed (${response.status})`);
   const rows = await response.json() as Array<{
     source_id?: string;
     canonical_url?: string;
@@ -157,15 +172,8 @@ async function compileReferenceWorkflow(req: Request, body: { source_ids?: unkno
       authenticated: true,
       operation: "reference_workflow",
       source_ids: sourceIds,
-      compiler: {
-        comparison: "canonical",
-        evidence: "canonical",
-        generated_at: "deterministic"
-      },
-      authority: {
-        workspace: "jwt-derived",
-        persistence: "user-jwt-rls"
-      },
+      compiler: { comparison: "canonical", evidence: "canonical", generated_at: "deterministic" },
+      authority: { workspace: "jwt-derived", persistence: "user-jwt-rls" },
       comparison,
       evidence_rules: evidenceRules
     });
@@ -218,11 +226,69 @@ async function discoverYouTube(body: { query?: unknown; options?: unknown }) {
   }
 }
 
+async function analyzeYouTubeDeep(req: Request, body: { url?: unknown }) {
+  try {
+    authenticatedUserId(req);
+  } catch (error) {
+    return json({ error: error instanceof Error ? error.message : String(error), code: "DEEP_ANALYSIS_UNAUTHENTICATED" }, 401);
+  }
+
+  let input: ReturnType<typeof normalizedDeepAnalysisInput>;
+  try {
+    input = normalizedDeepAnalysisInput(body);
+  } catch (error) {
+    return json({ error: error instanceof Error ? error.message : String(error), code: "DEEP_ANALYSIS_INVALID_REQUEST" }, 400);
+  }
+
+  const apiKey = Deno.env.get("GEMINI_API_KEY")?.trim() ?? "";
+  if (!apiKey) {
+    return json({ error: "Deep Analysis is not configured in hosted runtime.", code: "DEEP_ANALYSIS_NOT_CONFIGURED" }, 503);
+  }
+  const model = Deno.env.get("GEMINI_MODEL")?.trim() || DEFAULT_DEEP_GEMINI_MODEL;
+
+  try {
+    const analysis = await analyzeYouTubeVideoWithKey(input.source.canonical_url, { api_key: apiKey, model });
+    const derivedMetrics = deriveVideoMetrics(analysis);
+    return json({
+      service: "masterv-hosted-api",
+      contract_version: "mv-hosted-api-v1",
+      authenticated: true,
+      operation: "youtube_deep_analysis",
+      provider: "gemini",
+      provider_authority: "hosted-secret",
+      compute_authority: "hosted-deep-analysis",
+      analysis_tier: "deep",
+      persistence_authority: "none",
+      model,
+      source: {
+        platform: input.source.platform,
+        source_id: input.source.source_id,
+        url: input.source.canonical_url,
+        requested_url: input.requestedUrl
+      },
+      analysis,
+      derived_metrics: derivedMetrics,
+      diagnostics: { gemini_requests: 1, persistence_writes: 0 }
+    });
+  } catch (error) {
+    const normalized = normalizeGeminiError(error);
+    if (normalized.is_rate_limit) {
+      return json({
+        error: normalized.message,
+        code: "GEMINI_RATE_LIMIT",
+        rate_limit: normalized.diagnostic
+      }, 429);
+    }
+    return json({ error: normalized.message, code: "DEEP_ANALYSIS_UPSTREAM" }, 502);
+  }
+}
+
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response(null, { status: 204, headers });
 
   if (req.method === "GET") {
     const youtubeDiscoveryReady = Boolean(Deno.env.get("YOUTUBE_DATA_API_KEY")?.trim());
+    const deepAnalysisReady = Boolean(Deno.env.get("GEMINI_API_KEY")?.trim());
     return json({
       service: "masterv-hosted-api",
       contract_version: "mv-hosted-api-v1",
@@ -231,6 +297,8 @@ Deno.serve(async (req: Request) => {
         boundary_probe: true,
         reference_compiler: true,
         analyze: false,
+        deep_analysis_route: true,
+        deep_analysis: deepAnalysisReady,
         youtube_discovery_route: true,
         youtube_discovery: youtubeDiscoveryReady,
         product_truth: false
@@ -239,7 +307,7 @@ Deno.serve(async (req: Request) => {
   }
 
   if (req.method === "POST") {
-    let body: { operation?: unknown; source_ids?: unknown; query?: unknown; options?: unknown };
+    let body: { operation?: unknown; source_ids?: unknown; query?: unknown; options?: unknown; url?: unknown };
     try {
       body = await req.json();
     } catch {
@@ -247,6 +315,7 @@ Deno.serve(async (req: Request) => {
     }
     if (body.operation === "reference_workflow") return await compileReferenceWorkflow(req, body);
     if (body.operation === "youtube_discovery") return await discoverYouTube(body);
+    if (body.operation === "youtube_deep_analysis") return await analyzeYouTubeDeep(req, body);
     return json({ error: "Unsupported operation" }, 400);
   }
   return json({ error: "Method not allowed" }, 405);

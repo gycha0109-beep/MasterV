@@ -44,11 +44,12 @@
           <dl class="capabilities">
             <div><dt>Boundary probe</dt><dd id="cap-boundary">—</dd></div>
             <div><dt>Reference Compare/Evidence</dt><dd id="cap-reference-compiler">—</dd></div>
-            <div><dt>Analyze</dt><dd id="cap-analyze">—</dd></div>
+            <div><dt>Legacy Next Analyze</dt><dd id="cap-analyze">—</dd></div>
+            <div><dt>Hosted Deep Analysis</dt><dd id="cap-deep-analysis">—</dd></div>
             <div><dt>YouTube discovery</dt><dd id="cap-youtube">—</dd></div>
             <div><dt>Product Truth</dt><dd id="cap-product-truth">—</dd></div>
           </dl>
-          <p class="muted small">Compare/Evidence와 YouTube metadata discovery는 hosted boundary를 사용합니다. Deep Analysis와 Product Truth는 Desktop으로 이전하지 않습니다.</p>
+          <p class="muted small">Compare/Evidence, YouTube metadata discovery, Deep Analysis compute는 authenticated hosted boundary를 사용합니다. Legacy Next Analyze와 Product Truth는 Desktop 런타임 의존성이 아닙니다.</p>
         </article>
       </section>
 
@@ -56,7 +57,7 @@
         <div class="surface-heading">
           <div>
             <p class="eyebrow">SEARCH / DISCOVERY</p><h2>YouTube 참고영상 찾기</h2>
-            <p class="muted small">Desktop은 검색어와 제한된 필터만 보냅니다. YouTube provider credential과 실제 provider call은 hosted runtime에만 존재하며, 이 단계에서는 metadata 후보만 반환합니다.</p>
+            <p class="muted small">Desktop은 검색어와 제한된 필터만 보냅니다. YouTube provider credential과 실제 provider call은 hosted runtime에만 존재하며, metadata 후보만 반환합니다.</p>
           </div>
           <span class="badge">metadata only</span>
         </div>
@@ -64,27 +65,16 @@
           <label class="discovery-query">검색어<input id="discovery-query" type="search" maxlength="200" placeholder="예: sunscreen review shorts" required /></label>
           <label>지역
             <select id="discovery-region">
-              <option value="KR">KR</option>
-              <option value="US">US</option>
-              <option value="JP">JP</option>
-              <option value="ID">ID</option>
-              <option value="">전체</option>
+              <option value="KR">KR</option><option value="US">US</option><option value="JP">JP</option><option value="ID">ID</option><option value="">전체</option>
             </select>
           </label>
           <label>언어
             <select id="discovery-language">
-              <option value="ko">한국어</option>
-              <option value="en">English</option>
-              <option value="ja">日本語</option>
-              <option value="id">Bahasa Indonesia</option>
-              <option value="">전체</option>
+              <option value="ko">한국어</option><option value="en">English</option><option value="ja">日本語</option><option value="id">Bahasa Indonesia</option><option value="">전체</option>
             </select>
           </label>
           <label>최대 길이
-            <select id="discovery-duration">
-              <option value="60">60초</option>
-              <option value="180" selected>180초</option>
-            </select>
+            <select id="discovery-duration"><option value="60">60초</option><option value="180" selected>180초</option></select>
           </label>
           <button id="discovery-search" type="submit" disabled>참고영상 찾기</button>
         </form>
@@ -94,6 +84,26 @@
           <span>Provider <strong id="discovery-provider">HOSTED</strong></span>
         </div>
         <div id="discovery-results" class="discovery-results"></div>
+      </section>
+
+      <section id="deep-analysis-panel" class="card reference-detail" aria-label="Deep Analysis" hidden>
+        <div class="surface-heading">
+          <div>
+            <p class="eyebrow">DEEP ANALYSIS / HOSTED COMPUTE</p><h2>YouTube 영상 심층 분석</h2>
+            <p class="muted small">Desktop은 공개 YouTube URL만 authenticated hosted boundary로 전달합니다. Gemini credential, model authority, provider call은 hosted runtime에만 존재하며 이 단계는 자동 persistence를 수행하지 않습니다.</p>
+          </div>
+          <span class="badge">deep / hosted</span>
+        </div>
+        <form id="deep-analysis-form" class="discovery-form">
+          <label class="discovery-query">YouTube URL<input id="deep-analysis-url" type="url" maxlength="500" placeholder="https://www.youtube.com/watch?v=..." required /></label>
+          <button id="deep-analysis-submit" type="submit" disabled>Deep Analysis</button>
+        </form>
+        <div class="library-summary" aria-live="polite">
+          <span>상태 <strong id="deep-analysis-status">SIGNED OUT</strong></span>
+          <span>Model <strong id="deep-analysis-model">—</strong></span>
+          <span>Source <strong id="deep-analysis-source">—</strong></span>
+        </div>
+        <div id="deep-analysis-content"></div>
       </section>
 
       <section id="reference-library-panel" class="card library" aria-label="Reference Library" hidden>
@@ -118,10 +128,7 @@
 
       <section id="reference-detail-panel" class="card reference-detail" aria-label="Reference Detail" hidden>
         <div class="surface-heading">
-          <div>
-            <p class="eyebrow">REFERENCE DETAIL</p><h2>레퍼런스 상세</h2>
-            <p class="muted small">이 화면을 열 때만 선택 항목의 persisted analysis를 workspace-scoped RLS 아래 조회합니다.</p>
-          </div>
+          <div><p class="eyebrow">REFERENCE DETAIL</p><h2>레퍼런스 상세</h2><p class="muted small">이 화면을 열 때만 선택 항목의 persisted analysis를 workspace-scoped RLS 아래 조회합니다.</p></div>
           <button id="reference-detail-close" class="secondary compact" type="button">닫기</button>
         </div>
         <div class="library-summary"><span>상태 <strong id="reference-detail-status">IDLE</strong></span></div>
@@ -130,16 +137,10 @@
 
       <section id="reference-compare-panel" class="card reference-compare" aria-label="Reference Compare" hidden>
         <div class="surface-heading">
-          <div>
-            <p class="eyebrow">REFERENCE COMPARE / EVIDENCE</p><h2>Canonical 비교 · 근거 규칙</h2>
-            <p class="muted small">2개 이상 선택하면 authenticated hosted boundary가 JWT-derived workspace의 persisted analyses를 RLS 아래 읽고 canonical Compare/Evidence compiler를 실행합니다.</p>
-          </div>
+          <div><p class="eyebrow">REFERENCE COMPARE / EVIDENCE</p><h2>Canonical 비교 · 근거 규칙</h2><p class="muted small">2개 이상 선택하면 authenticated hosted boundary가 JWT-derived workspace의 persisted analyses를 RLS 아래 읽고 canonical Compare/Evidence compiler를 실행합니다.</p></div>
           <button id="reference-compare-clear" class="secondary compact" type="button">선택 초기화</button>
         </div>
-        <div class="library-summary">
-          <span>상태 <strong id="reference-compare-status">IDLE</strong></span>
-          <span>비교 항목 <strong id="reference-compare-count">0</strong></span>
-        </div>
+        <div class="library-summary"><span>상태 <strong id="reference-compare-status">IDLE</strong></span><span>비교 항목 <strong id="reference-compare-count">0</strong></span></div>
         <div id="reference-compare-content"></div>
       </section>
 
@@ -148,12 +149,13 @@
         <div class="roadmap-row"><span>Reference Library list / delete</span><strong>verified</strong></div>
         <div class="roadmap-row"><span>Reference Detail</span><strong>verified</strong></div>
         <div class="roadmap-row"><span>Canonical Compare / Evidence</span><strong>verified</strong></div>
-        <div class="roadmap-row"><span>Search / Discovery</span><strong>current</strong></div>
-        <div class="roadmap-row"><span>Deep Analysis</span><strong>compute placement pending</strong></div>
-        <div class="roadmap-row"><span>Production Guidance</span><strong>after analysis route</strong></div>
+        <div class="roadmap-row"><span>Search / Discovery</span><strong>verified</strong></div>
+        <div class="roadmap-row"><span>Deep Analysis</span><strong>current</strong></div>
+        <div class="roadmap-row"><span>Product Truth / Production Guidance</span><strong>pending</strong></div>
       </section>
     </main>
     <script src="./config.js"></script>
+    <script src="./deep-analysis.js"></script>
     <script src="./app.js"></script>
   </body>
 </html>
