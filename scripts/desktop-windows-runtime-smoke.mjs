@@ -407,7 +407,7 @@ async function main() {
     assert(connected.boundary === "READY", `boundary probe was not READY: ${JSON.stringify(connected)}`);
     assert(connected.analyze === "PENDING", `analyze capability must remain PENDING: ${connected.analyze}`);
     assert(["PENDING", "READY"].includes(connected.youtube), `YouTube discovery capability must be PENDING or READY: ${connected.youtube}`);
-    assert(connected.productTruth === "PENDING", `Product Truth capability must remain PENDING: ${connected.productTruth}`);
+    assert(["PENDING", "READY"].includes(connected.productTruth), `Product Truth capability observation is invalid: ${connected.productTruth}`);
     assert(connected.libraryWorkspace === workspaceId, `desktop workspace mismatch: ${connected.libraryWorkspace}`);
     assert(connected.projection === REFERENCE_LIBRARY_LIST_PROJECTION.join(","), `desktop metadata projection mismatch: ${connected.projection}`);
     assert(!connected.projection.split(",").includes("analysis"), "desktop list projection must not select analysis payload");
@@ -484,8 +484,8 @@ async function main() {
       cleanup: cleanupVerified ? "PASS" : "FAIL",
       logout: signedOut.auth === "SIGNED OUT" ? "PASS" : "FAIL",
       analyze_migrated: false,
-      youtube_discovery_migrated: false,
-      product_truth_migrated: false,
+      youtube_discovery_capability_observed: connected.youtube,
+      product_truth_capability_observed: connected.productTruth,
       local_next_api_required: false,
       provider_credentials_in_desktop_job: false,
       gemini_requests: 0,
