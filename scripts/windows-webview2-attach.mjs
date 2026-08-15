@@ -95,6 +95,26 @@ export async function execute(driverPort, sessionId, script, args = []) {
   return (await webdriverRequest(driverPort, "POST", `/session/${sessionId}/execute/sync`, { script, args })).value;
 }
 
+async function waitForMasterVDom(driverPort, sessionId, appProcess, timeoutMs = 30_000) {
+  const deadline = Date.now() + timeoutMs;
+  let last = null;
+  while (Date.now() < deadline) {
+    if (appProcess.exitCode !== null && appProcess.exitCode !== undefined) throw new Error(`MasterV exited before Desktop DOM was ready: ${appProcess.exitCode}`);
+    try {
+      last = await execute(driverPort, sessionId, `return {
+        href: location.href,
+        readyState: document.readyState,
+        surface: document.querySelector('#surface-badge')?.textContent?.trim() || ''
+      };`);
+      if (last?.href?.startsWith("https://tauri.localhost/") && last.readyState !== "loading" && last.surface === "desktop") return last;
+    } catch (error) {
+      last = { error: error instanceof Error ? error.message : String(error) };
+    }
+    await delay(200);
+  }
+  throw new Error(`MasterV Desktop DOM was not ready: ${JSON.stringify(last)}`);
+}
+
 export async function attachMasterV(appBinaryPath, evidenceDir, runtimeLabel, options = {}) {
   const resolvedBinary = resolveMasterVBinary(appBinaryPath);
   assert(fs.existsSync(resolvedBinary), `MasterV binary missing: ${resolvedBinary}`);
@@ -121,6 +141,7 @@ export async function attachMasterV(appBinaryPath, evidenceDir, runtimeLabel, op
   const created = await webdriverRequest(driverPort, "POST", "/session", { capabilities: { alwaysMatch: { browserName: "webview2", "ms:edgeChromium": true, "ms:edgeOptions": { debuggerAddress: `127.0.0.1:${debugPort}` } } } });
   const sessionId = created.value?.sessionId || created.sessionId;
   assert(sessionId, "WebDriver session id missing");
+  await waitForMasterVDom(driverPort, sessionId, appProcess);
   return {
     appBinaryPath: resolvedBinary,
     dataDir,
