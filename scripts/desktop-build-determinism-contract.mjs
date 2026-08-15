@@ -12,7 +12,8 @@ const workflowPaths = [
   ".github/workflows/ci.yml",
   ".github/workflows/runtime-smoke.yml",
   ".github/workflows/coarse-bundle-calibration.yml",
-  ".github/workflows/real-product-pilot.yml"
+  ".github/workflows/real-product-pilot.yml",
+  ".github/workflows/desktop-release-readiness.yml"
 ];
 
 assert(fs.existsSync("package-lock.json"), "package-lock.json is required");
@@ -29,7 +30,7 @@ assert(packageLock.packages?.["node_modules/@tauri-apps/cli"]?.version === "2.11
 
 const cargoLock = fs.readFileSync("src-tauri/Cargo.lock", "utf8");
 function cargoVersion(name) {
-  const match = cargoLock.match(new RegExp(`\\[\\[package\\]\\]\\nname = "${name.replace(/[.*+?^${}()|[\\]\\\\]/g, "\\$&")}"\\nversion = "([^"]+)"`));
+  const match = cargoLock.match(new RegExp(`\\[\\[package\\]\\]\\r?\\nname = "${name.replace(/[.*+?^${}()|[\\]\\\\]/g, "\\$&")}"\\r?\\nversion = "([^"]+)"`));
   return match?.[1] || "";
 }
 assert(cargoVersion("tauri") === "2.11.5", "locked tauri version drifted");
