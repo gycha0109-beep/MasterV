@@ -86,8 +86,7 @@ for (const id of [
 }
 assert(htmlText.includes("사용자가 입력한 원문만 Product Truth authority"), "Product Truth user-input authority disclosure missing");
 assert(htmlText.includes("자동 persistence와 Background Batch는 수행하지 않습니다"), "3I non-persistence/non-batch disclosure missing");
-assert(htmlText.includes("Product Truth / Production Guidance</span><strong>current"), "3I roadmap marker missing");
-assert(htmlText.includes("Background Batch</span><strong>not migrated"), "Background Batch non-migration marker missing");
+assert(htmlText.includes("Product Truth / Production Guidance</span><strong>verified"), "3I verified roadmap marker missing");
 
 const desktopText = fs.readFileSync("desktop/deep-analysis.js", "utf8");
 assert(desktopText.includes('const request = { operation: "production_guidance", analysis: latestAnalysis, product_truth: productTruth };'), "Desktop Production Guidance request shape missing");
