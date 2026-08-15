@@ -50,10 +50,17 @@ assert(functionText.includes('youtube_discovery_route: true'), "hosted capabilit
 assert(functionText.includes('youtube_discovery: youtubeDiscoveryReady'), "hosted capability must truthfully reflect provider-secret readiness");
 assert(functionText.includes('DISCOVERY_OPTION_KEYS'), "hosted discovery options whitelist missing");
 assert(functionText.includes('unsupported discovery option'), "hosted discovery must reject unknown option keys");
-assert(!functionText.includes("GEMINI_API_KEY"), "hosted discovery must not introduce Gemini dependency");
 assert(!functionText.includes("body.api_key"), "hosted discovery must not accept provider credential from caller body");
 assert(!functionText.includes("body.youtube_api_key"), "hosted discovery must not accept provider credential alias from caller body");
 assert(!functionText.includes("service_role"), "hosted discovery must not introduce service-role authority");
+
+const discoveryStart = functionText.indexOf("async function discoverYouTube");
+const discoveryEndCandidate = functionText.indexOf("async function analyzeYouTubeDeep", discoveryStart);
+const discoveryEnd = discoveryEndCandidate >= 0 ? discoveryEndCandidate : functionText.indexOf("Deno.serve", discoveryStart);
+const discoveryBlock = functionText.slice(discoveryStart, discoveryEnd);
+assert(discoveryStart >= 0 && discoveryEnd > discoveryStart, "hosted discovery operation block missing");
+assert(!discoveryBlock.includes("GEMINI_API_KEY"), "YouTube discovery operation must remain independent from Gemini credentials");
+assert(!discoveryBlock.includes("analyzeYouTubeVideoWithKey"), "YouTube discovery operation must remain independent from Deep Analysis compute");
 
 const htmlText = fs.readFileSync("desktop/index.html", "utf8");
 for (const id of ["discovery-panel", "discovery-form", "discovery-query", "discovery-region", "discovery-language", "discovery-duration", "discovery-search", "discovery-status", "discovery-count", "discovery-provider", "discovery-results"]) {
