@@ -69,7 +69,10 @@ assert(desktopText.includes('directGeminiRequests = "0"'), "Desktop direct Gemin
 assert(desktopText.includes('operation: "background_batch_submit", request_id: requestId, url: urlInput.value.trim()'), "Desktop submit request must contain only request id and URL authority");
 assert(desktopText.includes('operation: "background_batch_check", request_id: requestId'), "Desktop explicit check request missing");
 assert(desktopText.includes("crypto.randomUUID()"), "Desktop must create an explicit request reservation ID");
+assert(desktopText.includes('setStatus("CHECK REQUIRED")'), "Desktop must require explicit user refresh before Batch capability use");
+assert(desktopText.includes('await refreshCapability();') && desktopText.includes('await refreshJobs();'), "explicit Background Batch refresh must check capability and durable ledger");
 assert(desktopText.includes('logout.addEventListener("click", clearState)'), "logout must clear Background Batch process state");
+assert(!desktopText.includes("queueMicrotask"), "Background Batch must not auto-probe or auto-list after login");
 assert(!desktopText.includes("GEMINI_API_KEY"), "Desktop Background Batch must not contain Gemini credential name");
 assert(!desktopText.includes("generativelanguage.googleapis.com"), "Desktop Background Batch must not contact Gemini directly");
 assert(!desktopText.includes("/api/"), "Desktop Background Batch must not use local Next API");
@@ -88,12 +91,23 @@ const copyText = fs.readFileSync("scripts/copy-desktop-background-batch.mjs", "u
 assert(copyText.includes('"desktop", "background-batch.js"'), "Background Batch source asset copy missing");
 assert(copyText.includes('"desktop-dist", "background-batch.js"'), "Background Batch output asset copy missing");
 
+const windowsSmokeText = fs.readFileSync("scripts/desktop-background-batch-windows-smoke.mjs", "utf8");
+assert(windowsSmokeText.includes("MASTERV_WINDOWS_BACKGROUND_BATCH_GUARD_RUNTIME_PASS"), "3J Windows guard runtime evidence marker missing");
+assert(windowsSmokeText.includes("batch_submit_requests: 0"), "3J blocked runtime must prove zero Batch submits");
+assert(windowsSmokeText.includes("batch_create_attempts: 0"), "3J blocked runtime must prove zero provider creates");
+assert(windowsSmokeText.includes("provider_precondition_confirmed: false"), "3J blocked runtime must assert provider precondition remains false");
+assert(windowsSmokeText.includes("live_batch_verified: false"), "3J blocked runtime must assert live Batch remains unverified");
+assert(windowsSmokeText.includes("desktop_submit_enabled: false"), "3J blocked runtime must assert Desktop submit remains off");
+
 const packageJson = JSON.parse(fs.readFileSync("package.json", "utf8"));
 assert(packageJson.scripts?.["test:hosted-background-batch"] === "node scripts/hosted-background-batch-contract.mjs", "hosted Background Batch contract script missing");
+assert(packageJson.scripts?.["test:desktop-background-batch-windows"] === "node scripts/desktop-background-batch-windows-smoke.mjs", "Windows Background Batch guard smoke script missing");
 assert(packageJson.scripts?.["desktop:prepare"]?.includes("copy-desktop-background-batch.mjs"), "Desktop prepare must copy Background Batch asset");
 
 const ciText = fs.readFileSync(".github/workflows/ci.yml", "utf8");
 assert((ciText.match(/npm run test:hosted-background-batch/g) || []).length >= 2, "Background Batch static contract must run in validate and desktop-shell");
+assert(ciText.includes("npm run test:desktop-background-batch-windows"), "Windows Background Batch guard runtime smoke missing from CI");
+assert(ciText.includes("artifacts/desktop-background-batch"), "Background Batch guard runtime evidence artifact path missing");
 
 console.log(JSON.stringify({
   status: "MASTERV_HOSTED_BACKGROUND_BATCH_CONTRACT_PASS",
@@ -104,6 +118,7 @@ console.log(JSON.stringify({
   workspace_authority: "jwt-derived-personal",
   submit_gate: "provider-precondition+live-verified+activation",
   auto_retry: false,
+  auto_probe_after_login: false,
   interactive_fallback: false,
   reference_library_write: false,
   desktop_provider_credentials: false
