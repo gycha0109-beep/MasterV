@@ -33,11 +33,12 @@ for (const token of ["/S", "MasterV uninstall registry entry", "installer_sha256
 }
 assert(prepare.includes("GITHUB_ENV") && prepare.includes("MASTERV_DESKTOP_UNINSTALLER"), "Installed authority must be exported only through CI process environment");
 
-for (const token of ["process_restart_without_logout", "persistent_auth_storage", "localStorage", "sessionStorage", "direct_gemini_requests", "direct_youtube_data_api_requests", "local_next_api_requests", "uninstall_registry_removed", "autorun_residue", "service_residue", "scheduled_task_residue"]) {
+for (const token of ["process_restart_without_logout", "persistent_auth_storage", "localStorage", "sessionStorage", "direct_gemini_requests", "direct_youtube_data_api_requests", "local_next_api_requests", "uninstall_registry_removed", "autorun_residue", "service_residue", "scheduled_task_residue", "waitForUninstallCleanup", "60_000", "uninstall_cleanup_wait_ms"]) {
   assert(lifecycle.includes(token), `3L installed lifecycle invariant missing: ${token}`);
 }
 assert(lifecycle.includes("reuseDataDir: true"), "3L restart must reuse the same WebView profile to prove auth non-persistence");
 assert(lifecycle.includes("spawnSync(uninstaller, [\"/S\"]"), "3L must exercise the generated uninstaller");
+assert(lifecycle.includes("registryCount === 0") && lifecycle.includes("Installed executable still exists after bounded uninstall cleanup"), "3L must strictly require both executable and uninstall-registry cleanup after bounded polling");
 
 const installer = ci.indexOf("Build unsigned NSIS installer smoke");
 const install = ci.indexOf("Install and audit unsigned NSIS quality candidate");
@@ -71,6 +72,7 @@ console.log(JSON.stringify({
   installed_binary_authority: true,
   restart_auth_persistence_required: false,
   uninstall_required: true,
+  uninstall_cleanup_bounded: true,
   provider_health_isolated: true,
   syntax_guarded: true,
   quality_target: "QUALITY_VALIDATED",
