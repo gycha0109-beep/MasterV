@@ -35,36 +35,38 @@ async function probeBatch(apiBase, key, auth) {
   return await response.json();
 }
 
+const STATE_SCRIPT = `return {
+  surface: document.querySelector('#surface-badge')?.textContent?.trim() || '',
+  auth: document.querySelector('#auth-status')?.textContent?.trim() || '',
+  api: document.querySelector('#api-status')?.textContent?.trim() || '',
+  capability: document.querySelector('#cap-background-batch')?.textContent?.trim() || '',
+  panelHidden: Boolean(document.querySelector('#background-batch-panel')?.hidden),
+  batchStatus: document.querySelector('#background-batch-status')?.textContent?.trim() || '',
+  providerPrecondition: document.querySelector('#background-batch-provider-precondition')?.textContent?.trim() || '',
+  liveVerified: document.querySelector('#background-batch-live-verified')?.textContent?.trim() || '',
+  activation: document.querySelector('#background-batch-activation')?.textContent?.trim() || '',
+  count: document.querySelector('#background-batch-count')?.textContent?.trim() || '',
+  submitDisabled: Boolean(document.querySelector('#background-batch-submit')?.disabled),
+  refreshDisabled: Boolean(document.querySelector('#background-batch-refresh')?.disabled),
+  providerAuthority: document.querySelector('#background-batch-panel')?.dataset?.providerAuthority || '',
+  modelAuthority: document.querySelector('#background-batch-panel')?.dataset?.modelAuthority || '',
+  persistenceAuthority: document.querySelector('#background-batch-panel')?.dataset?.persistenceAuthority || '',
+  ledgerWriteAuthority: document.querySelector('#background-batch-panel')?.dataset?.ledgerWriteAuthority || '',
+  workspaceAuthority: document.querySelector('#background-batch-panel')?.dataset?.workspaceAuthority || '',
+  createIdempotency: document.querySelector('#background-batch-panel')?.dataset?.createIdempotency || '',
+  autoRetry: document.querySelector('#background-batch-panel')?.dataset?.autoRetry || '',
+  referenceLibraryWrites: document.querySelector('#background-batch-panel')?.dataset?.referenceLibraryWrites || '',
+  directGeminiRequests: document.querySelector('#background-batch-panel')?.dataset?.directGeminiRequests || '',
+  batchBoundaryResources: performance.getEntriesByType('resource').filter(e => e.name.includes('/functions/v1/masterv-background-batch-boundary')).length,
+  geminiClientResources: performance.getEntriesByType('resource').filter(e => e.name.includes('generativelanguage.googleapis.com') || e.name.includes('aiplatform.googleapis.com')).length,
+  localApiResources: performance.getEntriesByType('resource').filter(e => e.name.includes('/api/')).length,
+  batchItems: document.querySelectorAll('[data-batch-request-id]').length,
+  urlValue: document.querySelector('#background-batch-url')?.value || '',
+  libraryHidden: Boolean(document.querySelector('#reference-library-panel')?.hidden)
+};`;
+
 async function state(driverPort, sessionId) {
-  return await execute(driverPort, sessionId, `return {
-    surface: document.querySelector('#surface-badge')?.textContent?.trim() || '',
-    auth: document.querySelector('#auth-status')?.textContent?.trim() || '',
-    api: document.querySelector('#api-status')?.textContent?.trim() || '',
-    capability: document.querySelector('#cap-background-batch')?.textContent?.trim() || '',
-    panelHidden: Boolean(document.querySelector('#background-batch-panel')?.hidden),
-    batchStatus: document.querySelector('#background-batch-status')?.textContent?.trim() || '',
-    providerPrecondition: document.querySelector('#background-batch-provider-precondition')?.textContent?.trim() || '',
-    liveVerified: document.querySelector('#background-batch-live-verified')?.textContent?.trim() || '',
-    activation: document.querySelector('#background-batch-activation')?.textContent?.trim() || '',
-    count: document.querySelector('#background-batch-count')?.textContent?.trim() || '',
-    submitDisabled: Boolean(document.querySelector('#background-batch-submit')?.disabled),
-    refreshDisabled: Boolean(document.querySelector('#background-batch-refresh')?.disabled),
-    providerAuthority: document.querySelector('#background-batch-panel')?.dataset?.providerAuthority || '',
-    modelAuthority: document.querySelector('#background-batch-panel')?.dataset?.modelAuthority || '',
-    persistenceAuthority: document.querySelector('#background-batch-panel')?.dataset?.persistenceAuthority || '',
-    ledgerWriteAuthority: document.querySelector('#background-batch-panel')?.dataset?.ledgerWriteAuthority || '',
-    workspaceAuthority: document.querySelector('#background-batch-panel')?.dataset?.workspaceAuthority || '',
-    createIdempotency: document.querySelector('#background-batch-panel')?.dataset?.createIdempotency || '',
-    autoRetry: document.querySelector('#background-batch-panel')?.dataset?.autoRetry || '',
-    referenceLibraryWrites: document.querySelector('#background-batch-panel')?.dataset?.referenceLibraryWrites || '',
-    directGeminiRequests: document.querySelector('#background-batch-panel')?.dataset?.directGeminiRequests || '',
-    batchBoundaryResources: performance.getEntriesByType('resource').filter(e => e.name.includes('/functions/v1/masterv-background-batch-boundary')).length,
-    geminiClientResources: performance.getEntriesByType('resource').filter(e => /generativelanguage\\.googleapis\\.com|aiplatform\\.googleapis\\.com/i.test(e.name)).length,
-    localApiResources: performance.getEntriesByType('resource').filter(e => /\/api\//.test(e.name)).length,
-    batchItems: document.querySelectorAll('[data-batch-request-id]').length,
-    urlValue: document.querySelector('#background-batch-url')?.value || '',
-    libraryHidden: Boolean(document.querySelector('#reference-library-panel')?.hidden)
-  };`);
+  return await execute(driverPort, sessionId, STATE_SCRIPT);
 }
 
 async function waitState(driverPort, sessionId, predicate, label, timeout = 60_000) {
@@ -119,7 +121,7 @@ async function main() {
   let evidence;
   try {
     native = await attachMasterV(binary, evidenceDir, "masterv-desktop-3j");
-    await execute(native.driverPort, native.sessionId, `const e=document.querySelector('#email'),p=document.querySelector('#password'),b=document.querySelector('#login-button');if(!e||!p||!b)return false;e.value=arguments[0];p.value=arguments[1];b.click();return true;`, [email, password]);
+    await execute(native.driverPort, native.sessionId, "const e=document.querySelector('#email'),p=document.querySelector('#password'),b=document.querySelector('#login-button');if(!e||!p||!b)return false;e.value=arguments[0];p.value=arguments[1];b.click();return true;", [email, password]);
     const connected = await waitState(native.driverPort, native.sessionId, s => s.auth === "AUTHENTICATED" && s.api === "CONNECTED" && !s.panelHidden && s.batchStatus === "CHECK REQUIRED", "3J connected state");
     assert(connected.surface === "desktop", `unexpected surface: ${connected.surface}`);
     assert(connected.capability === "—", `3J capability must not auto-probe after login, got ${connected.capability}`);
@@ -139,7 +141,7 @@ async function main() {
     const beforeBatchResources = connected.batchBoundaryResources;
     const beforeGemini = connected.geminiClientResources;
     const beforeLocalApi = connected.localApiResources;
-    const refreshed = await execute(native.driverPort, native.sessionId, `const b=document.querySelector('#background-batch-refresh');if(!b||b.disabled)return false;b.click();return true;`);
+    const refreshed = await execute(native.driverPort, native.sessionId, "const b=document.querySelector('#background-batch-refresh');if(!b||b.disabled)return false;b.click();return true;");
     assert(refreshed, "3J explicit Background Batch refresh could not start");
     const guarded = await waitState(native.driverPort, native.sessionId, s => s.capability === "BLOCKED" && s.batchStatus === "PROVIDER PRECONDITION BLOCKED" && s.providerPrecondition === "BLOCKED" && s.liveVerified === "NOT VERIFIED" && s.activation === "OFF" && s.batchBoundaryResources >= beforeBatchResources + 2, "3J guarded boundary refresh");
     assert(guarded.batchBoundaryResources === beforeBatchResources + 2, `3J refresh must issue exactly one capability GET and one ledger list POST: ${beforeBatchResources} -> ${guarded.batchBoundaryResources}`);
@@ -148,13 +150,13 @@ async function main() {
     assert(guarded.localApiResources === beforeLocalApi, "3J Desktop issued local Next API request during refresh");
 
     const testUrl = "https://www.youtube.com/watch?v=9hE5-98ZeCg";
-    await execute(native.driverPort, native.sessionId, `const q=document.querySelector('#background-batch-url');if(!q)return false;q.value=arguments[0];q.dispatchEvent(new Event('input',{bubbles:true}));return true;`, [testUrl]);
+    await execute(native.driverPort, native.sessionId, "const q=document.querySelector('#background-batch-url');if(!q)return false;q.value=arguments[0];q.dispatchEvent(new Event('input',{bubbles:true}));return true;", [testUrl]);
     const filled = await state(native.driverPort, native.sessionId);
     assert(filled.urlValue === testUrl, "3J URL input did not retain test value");
     assert(filled.submitDisabled, "3J submit became enabled despite blocked provider/live/activation gate");
     assert(filled.batchBoundaryResources === guarded.batchBoundaryResources, "3J input mutation must not trigger hosted Batch traffic");
 
-    await execute(native.driverPort, native.sessionId, `const e=document.querySelector('#email'),p=document.querySelector('#password');if(e)e.value='';if(p)p.value='';document.querySelector('#background-batch-panel')?.scrollIntoView({block:'start'});return true;`);
+    await execute(native.driverPort, native.sessionId, "const e=document.querySelector('#email'),p=document.querySelector('#password');if(e)e.value='';if(p)p.value='';document.querySelector('#background-batch-panel')?.scrollIntoView({block:'start'});return true;");
     await delay(250);
     await screenshot(native, evidenceDir, "background-batch-guard-blocked.png");
 
