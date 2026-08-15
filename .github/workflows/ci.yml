@@ -84,7 +84,7 @@ jobs:
   desktop-windows-runtime:
     if: ${{ github.event_name == 'pull_request' }}
     runs-on: windows-latest
-    timeout-minutes: 40
+    timeout-minutes: 45
     env:
       NEXT_PUBLIC_SUPABASE_URL: https://euqkjrmrhhvnyzasppnd.supabase.co
       NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: sb_publishable_WUdzeBz9jsYwQXP_YeyD4w_OdkRcLp2
@@ -120,6 +120,8 @@ jobs:
         run: npm run test:desktop-deep-analysis-windows
       - name: Run native WebView2 Product Truth Production Guidance runtime smoke
         run: npm run test:desktop-production-guidance-windows
+      - name: Run native WebView2 Guarded Background Batch runtime smoke
+        run: npm run test:desktop-background-batch-windows
       - name: Generate platform icons for installer smoke
         run: npm run tauri -- icon src-tauri/icons/icon.png
       - name: Build unsigned NSIS installer smoke
@@ -136,5 +138,6 @@ jobs:
             artifacts/desktop-youtube-discovery
             artifacts/desktop-deep-analysis
             artifacts/desktop-production-guidance
+            artifacts/desktop-background-batch
             src-tauri/target/release/bundle/nsis/*.exe
           if-no-files-found: warn
