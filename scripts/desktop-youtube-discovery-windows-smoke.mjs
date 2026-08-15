@@ -41,6 +41,7 @@ async function state(driverPort, sessionId) {
     auth: document.querySelector('#auth-status')?.textContent?.trim() || '',
     api: document.querySelector('#api-status')?.textContent?.trim() || '',
     youtubeCapability: document.querySelector('#cap-youtube')?.textContent?.trim() || '',
+    deepCapability: document.querySelector('#cap-deep-analysis')?.textContent?.trim() || '',
     discoveryHidden: Boolean(document.querySelector('#discovery-panel')?.hidden),
     discoveryStatus: document.querySelector('#discovery-status')?.textContent?.trim() || '',
     discoveryCount: document.querySelector('#discovery-count')?.textContent?.trim() || '',
@@ -99,7 +100,12 @@ async function main() {
   try {
     native = await attachMasterV(binary, evidenceDir, "masterv-desktop-3g");
     await execute(native.driverPort, native.sessionId, `const e=document.querySelector('#email'),p=document.querySelector('#password'),b=document.querySelector('#login-button');if(!e||!p||!b)return false;e.value=arguments[0];p.value=arguments[1];b.click();return true;`, [email, password]);
-    const connected = await waitState(native.driverPort, native.sessionId, s => s.auth === "AUTHENTICATED" && s.api === "CONNECTED" && !s.discoveryHidden, "3G connected state");
+    const connected = await waitState(
+      native.driverPort,
+      native.sessionId,
+      s => s.auth === "AUTHENTICATED" && s.api === "CONNECTED" && !s.discoveryHidden && ["READY", "PENDING"].includes(s.deepCapability),
+      "3G connected state with settled 3H capability probe"
+    );
     assert(connected.surface === "desktop", `unexpected surface: ${connected.surface}`);
     assert(connected.providerAuthority === "hosted-secret" && connected.providerCredentialsInClient === "false" && connected.analysisAuthority === "metadata-only", "3G Desktop authority markers mismatch");
     assert(connected.youtubeClientResources === 0 && connected.localDiscoveryResources === 0, "3G Desktop must not contact provider/local Next discovery route during connect");
