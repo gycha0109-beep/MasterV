@@ -45,6 +45,7 @@ jobs:
       - run: npm run test:hosted-youtube-discovery
       - run: npm run test:hosted-deep-analysis
       - run: npm run test:hosted-production-guidance
+      - run: npm run test:hosted-background-batch
       - run: npm run test:reference-library-browser-script
       - run: npm run test:search-ux-browser-script
       - run: npm run build
@@ -77,6 +78,7 @@ jobs:
       - run: npm run test:hosted-youtube-discovery
       - run: npm run test:hosted-deep-analysis
       - run: npm run test:hosted-production-guidance
+      - run: npm run test:hosted-background-batch
       - run: npm run desktop:build
 
   desktop-windows-runtime:
