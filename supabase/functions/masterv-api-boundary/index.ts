@@ -1,8 +1,16 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import type { SearchOptions } from "@/lib/discovery";
+import { validateVideoAnalysis } from "@/lib/analysis-validation";
+import type { VideoAnalysis } from "@/lib/analysis-schema";
 import { deriveVideoMetrics } from "@/lib/derived-metrics";
 import { normalizeGeminiError } from "@/lib/gemini-error";
 import { canonicalizeYouTubeSource } from "@/lib/source-identity";
+import type { ProductTruthInput } from "@masterv/single-video-production";
+import { compileSingleVideoProductionGuide } from "@masterv/single-video-production";
+import {
+  DEFAULT_PRODUCT_TRUTH_MODEL,
+  interpretProductTruthAgainstReferenceWithKey
+} from "@masterv/product-truth-interpreter-core";
 import { compareVideoAnalyses } from "@masterv/reference-compare";
 import { compileEvidenceRules } from "@masterv/evidence-rules";
 import {
@@ -24,6 +32,13 @@ const headers = {
 const MAX_REFERENCE_SELECTION = 8;
 const MAX_DISCOVERY_QUERY_LENGTH = 200;
 const MAX_DEEP_ANALYSIS_URL_LENGTH = 500;
+const PRODUCT_TRUTH_KEYS = new Set(["product_name", "verified_facts", "target_customer", "price_offer"]);
+const PRODUCT_TRUTH_LIMITS = {
+  product_name: 160,
+  verified_facts: 4000,
+  target_customer: 500,
+  price_offer: 500
+} as const;
 const DISCOVERY_OPTION_KEYS = new Set([
   "max_results",
   "shortlist_limit",
@@ -114,6 +129,31 @@ function normalizedDeepAnalysisInput(body: { url?: unknown }) {
   if (requestedUrl.length > MAX_DEEP_ANALYSIS_URL_LENGTH) throw new Error(`url must be at most ${MAX_DEEP_ANALYSIS_URL_LENGTH} characters`);
   const source = canonicalizeYouTubeSource(requestedUrl);
   return { requestedUrl, source };
+}
+
+function normalizedProductionGuidanceInput(body: { analysis?: unknown; product_truth?: unknown }) {
+  if (!body.analysis || typeof body.analysis !== "object" || Array.isArray(body.analysis)) {
+    throw new Error("analysis must be an object");
+  }
+  const analysis = validateVideoAnalysis(body.analysis as VideoAnalysis);
+
+  if (!body.product_truth || typeof body.product_truth !== "object" || Array.isArray(body.product_truth)) {
+    throw new Error("product_truth must be an object");
+  }
+  const raw = body.product_truth as Record<string, unknown>;
+  for (const key of Object.keys(raw)) {
+    if (!PRODUCT_TRUTH_KEYS.has(key)) throw new Error(`unsupported product_truth field: ${key}`);
+  }
+
+  const productTruth = {} as ProductTruthInput;
+  for (const key of PRODUCT_TRUTH_KEYS) {
+    const value = raw[key] ?? "";
+    if (typeof value !== "string") throw new Error(`product_truth.${key} must be a string`);
+    const limit = PRODUCT_TRUTH_LIMITS[key as keyof typeof PRODUCT_TRUTH_LIMITS];
+    if (value.length > limit) throw new Error(`product_truth.${key} must be at most ${limit} characters`);
+    productTruth[key as keyof Omit<ProductTruthInput, "interpretation">] = value;
+  }
+  return { analysis, productTruth };
 }
 
 async function loadReference(req: Request, workspaceId: string, sourceId: string) {
@@ -283,6 +323,77 @@ async function analyzeYouTubeDeep(req: Request, body: { url?: unknown }) {
   }
 }
 
+async function compileProductionGuidance(req: Request, body: { analysis?: unknown; product_truth?: unknown }) {
+  try {
+    authenticatedUserId(req);
+  } catch (error) {
+    return json({ error: error instanceof Error ? error.message : String(error), code: "PRODUCTION_GUIDANCE_UNAUTHENTICATED" }, 401);
+  }
+
+  let input: ReturnType<typeof normalizedProductionGuidanceInput>;
+  try {
+    input = normalizedProductionGuidanceInput(body);
+  } catch (error) {
+    return json({ error: error instanceof Error ? error.message : String(error), code: "PRODUCTION_GUIDANCE_INVALID_REQUEST" }, 400);
+  }
+
+  const apiKey = Deno.env.get("GEMINI_API_KEY")?.trim() ?? "";
+  if (!apiKey) {
+    return json({ error: "Product Truth semantic matcher is not configured in hosted runtime.", code: "PRODUCTION_GUIDANCE_NOT_CONFIGURED" }, 503);
+  }
+  const model = Deno.env.get("GEMINI_PRODUCT_TRUTH_MODEL")?.trim() || Deno.env.get("GEMINI_MODEL")?.trim() || DEFAULT_PRODUCT_TRUTH_MODEL;
+
+  try {
+    const derivedMetrics = deriveVideoMetrics(input.analysis);
+    const initialGuide = compileSingleVideoProductionGuide(input.analysis, derivedMetrics, input.productTruth);
+    let guide = initialGuide;
+    let geminiRequests = 0;
+
+    if (initialGuide.interpretation_required) {
+      const interpretation = await interpretProductTruthAgainstReferenceWithKey({
+        verified_facts: input.productTruth.verified_facts,
+        reference_mechanisms: initialGuide.reference_mechanisms
+      }, { api_key: apiKey, model });
+      guide = compileSingleVideoProductionGuide(input.analysis, derivedMetrics, {
+        ...input.productTruth,
+        interpretation
+      });
+      geminiRequests = 1;
+    }
+
+    return json({
+      service: "masterv-hosted-api",
+      contract_version: "mv-hosted-api-v1",
+      authenticated: true,
+      operation: "production_guidance",
+      provider: geminiRequests === 1 ? "gemini" : "none",
+      provider_authority: "hosted-secret",
+      compute_authority: "hosted-production-guidance",
+      product_truth_authority: "user-input-raw",
+      reference_analysis_authority: "validated-hosted-result-transit",
+      metrics_authority: "server-derived",
+      persistence_authority: "none",
+      model: geminiRequests === 1 ? model : null,
+      guide,
+      diagnostics: {
+        gemini_requests: geminiRequests,
+        persistence_writes: 0,
+        background_batch_requests: 0
+      }
+    });
+  } catch (error) {
+    const normalized = normalizeGeminiError(error);
+    if (normalized.is_rate_limit) {
+      return json({
+        error: normalized.message,
+        code: "GEMINI_RATE_LIMIT",
+        rate_limit: normalized.diagnostic
+      }, 429);
+    }
+    return json({ error: normalized.message, code: "PRODUCTION_GUIDANCE_UPSTREAM" }, 502);
+  }
+}
+
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response(null, { status: 204, headers });
 
@@ -301,13 +412,24 @@ Deno.serve(async (req: Request) => {
         deep_analysis: deepAnalysisReady,
         youtube_discovery_route: true,
         youtube_discovery: youtubeDiscoveryReady,
-        product_truth: false
+        product_truth_route: true,
+        product_truth: deepAnalysisReady,
+        production_guidance_route: true,
+        production_guidance: deepAnalysisReady
       }
     });
   }
 
   if (req.method === "POST") {
-    let body: { operation?: unknown; source_ids?: unknown; query?: unknown; options?: unknown; url?: unknown };
+    let body: {
+      operation?: unknown;
+      source_ids?: unknown;
+      query?: unknown;
+      options?: unknown;
+      url?: unknown;
+      analysis?: unknown;
+      product_truth?: unknown;
+    };
     try {
       body = await req.json();
     } catch {
@@ -316,6 +438,7 @@ Deno.serve(async (req: Request) => {
     if (body.operation === "reference_workflow") return await compileReferenceWorkflow(req, body);
     if (body.operation === "youtube_discovery") return await discoverYouTube(body);
     if (body.operation === "youtube_deep_analysis") return await analyzeYouTubeDeep(req, body);
+    if (body.operation === "production_guidance") return await compileProductionGuidance(req, body);
     return json({ error: "Unsupported operation" }, 400);
   }
   return json({ error: "Method not allowed" }, 405);

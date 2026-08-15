@@ -47,9 +47,9 @@
             <div><dt>Legacy Next Analyze</dt><dd id="cap-analyze">—</dd></div>
             <div><dt>Hosted Deep Analysis</dt><dd id="cap-deep-analysis">—</dd></div>
             <div><dt>YouTube discovery</dt><dd id="cap-youtube">—</dd></div>
-            <div><dt>Product Truth</dt><dd id="cap-product-truth">—</dd></div>
+            <div><dt>Product Truth / Guidance</dt><dd id="cap-product-truth">—</dd></div>
           </dl>
-          <p class="muted small">Compare/Evidence, YouTube metadata discovery, Deep Analysis compute는 authenticated hosted boundary를 사용합니다. Legacy Next Analyze와 Product Truth는 Desktop 런타임 의존성이 아닙니다.</p>
+          <p class="muted small">Compare/Evidence, YouTube metadata discovery, Deep Analysis, Product Truth semantic matching과 Production Guidance는 authenticated hosted boundary를 사용합니다. Legacy Next Analyze는 Desktop 런타임 의존성이 아닙니다.</p>
         </article>
       </section>
 
@@ -106,6 +106,29 @@
         <div id="deep-analysis-content"></div>
       </section>
 
+      <section id="production-guidance-panel" class="card reference-detail" aria-label="Product Truth Production Guidance" hidden>
+        <div class="surface-heading">
+          <div>
+            <p class="eyebrow">PRODUCT TRUTH / PRODUCTION GUIDANCE</p><h2>내 상품에 맞춰 제작안 만들기</h2>
+            <p class="muted small">현재 Deep Analysis 결과는 Desktop 프로세스 메모리에서만 다음 hosted 요청으로 전달됩니다. 서버가 분석 schema를 다시 검증하고 metrics를 재계산한 뒤, 사용자가 입력한 원문만 Product Truth authority로 사용해 semantic matching과 canonical 제작 가이드를 컴파일합니다. 자동 persistence와 Background Batch는 수행하지 않습니다.</p>
+          </div>
+          <span class="badge">truth / hosted</span>
+        </div>
+        <form id="product-truth-form" class="discovery-form">
+          <label>상품명<input id="product-truth-name" type="text" maxlength="160" placeholder="예: 자동 단우산" /></label>
+          <label>타깃<input id="product-truth-target" type="text" maxlength="500" placeholder="예: 출퇴근 때 작은 우산이 필요한 사람" /></label>
+          <label>가격 / 혜택<input id="product-truth-price" type="text" maxlength="500" placeholder="예: 8,900원 / 무료배송" /></label>
+          <label class="discovery-query">확인된 특징 / 스펙<textarea id="product-truth-facts" rows="4" maxlength="4000" placeholder="한 줄에 하나씩 입력&#10;예: 200그람&#10;예: 버튼으로 자동 개폐&#10;예: 가방에 걍 쏙"></textarea></label>
+          <button id="production-guidance-submit" type="submit" disabled>제작안에 반영</button>
+        </form>
+        <div class="library-summary" aria-live="polite">
+          <span>상태 <strong id="production-guidance-status">SIGNED OUT</strong></span>
+          <span>Matcher model <strong id="production-guidance-model">—</strong></span>
+          <span>Authority <strong>USER RAW FACTS</strong></span>
+        </div>
+        <div id="production-guidance-content"></div>
+      </section>
+
       <section id="reference-library-panel" class="card library" aria-label="Reference Library" hidden>
         <div class="library-heading">
           <div>
@@ -150,8 +173,9 @@
         <div class="roadmap-row"><span>Reference Detail</span><strong>verified</strong></div>
         <div class="roadmap-row"><span>Canonical Compare / Evidence</span><strong>verified</strong></div>
         <div class="roadmap-row"><span>Search / Discovery</span><strong>verified</strong></div>
-        <div class="roadmap-row"><span>Deep Analysis</span><strong>current</strong></div>
-        <div class="roadmap-row"><span>Product Truth / Production Guidance</span><strong>pending</strong></div>
+        <div class="roadmap-row"><span>Deep Analysis</span><strong>verified</strong></div>
+        <div class="roadmap-row"><span>Product Truth / Production Guidance</span><strong>current</strong></div>
+        <div class="roadmap-row"><span>Background Batch</span><strong>not migrated</strong></div>
       </section>
     </main>
     <script src="./config.js"></script>

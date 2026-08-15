@@ -44,6 +44,7 @@ jobs:
       - run: npm run test:hosted-reference-compiler
       - run: npm run test:hosted-youtube-discovery
       - run: npm run test:hosted-deep-analysis
+      - run: npm run test:hosted-production-guidance
       - run: npm run test:reference-library-browser-script
       - run: npm run test:search-ux-browser-script
       - run: npm run build
@@ -75,6 +76,7 @@ jobs:
       - run: npm run test:hosted-reference-compiler
       - run: npm run test:hosted-youtube-discovery
       - run: npm run test:hosted-deep-analysis
+      - run: npm run test:hosted-production-guidance
       - run: npm run desktop:build
 
   desktop-windows-runtime:
@@ -114,6 +116,8 @@ jobs:
         run: npm run test:desktop-youtube-discovery-windows
       - name: Run native WebView2 Hosted Deep Analysis runtime smoke
         run: npm run test:desktop-deep-analysis-windows
+      - name: Run native WebView2 Product Truth Production Guidance runtime smoke
+        run: npm run test:desktop-production-guidance-windows
       - name: Generate platform icons for installer smoke
         run: npm run tauri -- icon src-tauri/icons/icon.png
       - name: Build unsigned NSIS installer smoke
@@ -129,5 +133,6 @@ jobs:
             artifacts/desktop-reference-compiler
             artifacts/desktop-youtube-discovery
             artifacts/desktop-deep-analysis
+            artifacts/desktop-production-guidance
             src-tauri/target/release/bundle/nsis/*.exe
           if-no-files-found: warn
