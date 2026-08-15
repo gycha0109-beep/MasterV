@@ -1,6 +1,6 @@
 # MV-ARCH-3G — Desktop YouTube Discovery Hosted Boundary
 
-Status: **STATIC_VERIFIED / CONFIG_BLOCKED / NOT ACTIVATED**
+Status: **RUNTIME_VERIFIED / NOT ACTIVATED**
 
 ## 1. Goal
 
@@ -70,7 +70,7 @@ youtube_discovery       = true only when the hosted provider secret exists
 
 ## 4. Desktop surface
 
-Desktop now includes an authenticated YouTube Search / Discovery surface.
+Desktop includes an authenticated YouTube Search / Discovery surface.
 
 Desktop sends:
 
@@ -96,7 +96,7 @@ Desktop renders metadata only:
 
 Remote provider thumbnails are deliberately not rendered. Tauri CSP was not expanded with Google/YouTube image origins.
 
-Desktop also does not call the local Next route `/api/discover/youtube` and does not call `googleapis.com/youtube` directly.
+Desktop does not call the local Next route `/api/discover/youtube` and does not call `googleapis.com/youtube` directly.
 
 Logout removes Search/Discovery state and query/result content from process memory.
 
@@ -115,13 +115,13 @@ The following remain outside this stage:
 
 This prevents a metadata search migration from implicitly becoming an analysis-compute migration.
 
-## 6. Static verification
+## 6. Static implementation and verification
 
-Code-head implementation commit:
+Canonical implementation commit:
 
 `a721455f2a6614c0972f75e9b6e8428783eeff34`
 
-Code-head CI:
+Initial implementation CI:
 
 - run: `31859400550` (#687)
 - `validate`: SUCCESS
@@ -135,77 +135,166 @@ Static gates include:
 - MV-ARCH-3D Reference Library contract
 - MV-ARCH-3E Detail/Compare contract
 - MV-ARCH-3F hosted canonical Reference compiler contract
-- new hosted YouTube discovery source-pin/security contract
+- hosted YouTube discovery source-pin/security contract
 - production Next build
 - Linux Tauri build
 - production dependency audit
 
-## 7. Windows runtime observation
+## 7. Initial runtime config blocker
 
-Actual Windows Tauri/WebView2 verification at code head used:
-
-- run: `31859400550` (#687)
-- WebView2 runtime: `151.0.4129.72`
-- CDP browser: `Edg/151.0.4129.72`
-- test-only debugger attach: true
-
-MV-ARCH-3D, 3E, and 3F runtime regression smokes all passed before the 3G smoke.
-
-The 3G smoke produced:
+Before the hosted provider secret was configured, Windows Tauri/WebView2 verification truthfully produced:
 
 ```text
-status                       = MASTERV_WINDOWS_YOUTUBE_DISCOVERY_CONFIG_BLOCKED
-surface                      = desktop
-auth_status                  = AUTHENTICATED
-hosted_api_status            = CONNECTED
-hosted_route                 = true
-hosted_provider_configured   = false
-provider_authority           = hosted-secret
-desktop_provider_credentials = false
-analysis_authority           = metadata-only
-client_youtube_api_delta     = 0
+status                        = MASTERV_WINDOWS_YOUTUBE_DISCOVERY_CONFIG_BLOCKED
+hosted_route                  = true
+hosted_provider_configured    = false
+provider_authority            = hosted-secret
+desktop_provider_credentials  = false
+analysis_authority            = metadata-only
+client_youtube_api_delta      = 0
 local_next_discovery_requests = 0
-gemini_requests              = 0
-logout_clear                 = true
+gemini_requests               = 0
+logout_clear                  = true
 ```
 
-Lifecycle blocker:
+The blocker was:
 
 ```text
 YOUTUBE_DATA_API_KEY missing from Supabase Edge Function environment
 ```
 
-This proves the deployed/authenticated boundary and the Desktop secret isolation/config-blocking behavior, but it does **not** prove an actual hosted YouTube provider search.
+That state established secret isolation and honest capability blocking, but did not qualify as `RUNTIME_VERIFIED`.
 
-Therefore MV-ARCH-3G is not `RUNTIME_VERIFIED`.
+## 8. Hosted secret unblock and regression-contract correction
 
-## 8. Runtime evidence artifact
+After `YOUTUBE_DATA_API_KEY` was configured in the Supabase Edge Function hosted environment, the live capability changed from `PENDING` to `READY` without putting the provider credential in Desktop or GitHub Actions.
 
-Code-head artifact:
+A rerun of the previous Windows job first failed in the older MV-ARCH-3D smoke because that smoke still asserted that YouTube discovery must always remain `PENDING`. The actual observed value was `READY`.
 
-- ID: `9240132212`
+This was a stale cross-stage test assumption, not a Reference Library regression. MV-ARCH-3D does not own YouTube discovery readiness, while MV-ARCH-3G has the dedicated strict provider/runtime smoke.
+
+The regression contract was minimally corrected in:
+
+- commit: `8f0d02e876bd98347ab7396021ad0ae93ebe6980`
+- message: `test(arch3g): decouple 3D smoke from discovery config`
+
+The 3D smoke now accepts the hosted discovery capability as either `PENDING` or `READY`. The MV-ARCH-3G smoke remains strict and still requires `READY`, an actual hosted provider search, no direct Desktop provider traffic, and no provider credential in the Desktop process/job.
+
+## 9. Actual Windows runtime verification
+
+Runtime-verification CI:
+
+- commit: `8f0d02e876bd98347ab7396021ad0ae93ebe6980`
+- run: `31891143508` (#691)
+- `validate`: SUCCESS
+- `desktop-shell`: SUCCESS
+- `desktop-windows-runtime`: SUCCESS
+
+The Windows job built the native Tauri executable and then passed MV-ARCH-3D, 3E, and 3F regression smokes before the dedicated 3G smoke.
+
+Actual MV-ARCH-3G evidence:
+
+```text
+status                         = MASTERV_WINDOWS_YOUTUBE_DISCOVERY_RUNTIME_PASS
+webview2_runtime_version       = 151.0.4129.72
+cdp_browser                    = Edg/151.0.4129.72
+attach_mode                    = true
+surface                        = desktop
+auth_status                    = AUTHENTICATED
+hosted_api_status              = CONNECTED
+youtube_discovery_capability   = READY
+hosted_provider_configured     = true
+provider_authority             = hosted-secret
+analysis_authority             = metadata-only
+candidate_count                = 12
+youtube_api_requests           = 2
+client_youtube_api_delta       = 0
+client_hosted_function_delta   = 1
+local_next_discovery_requests  = 0
+desktop_provider_credentials   = false
+gemini_requests                = 0
+deep_analysis_migrated         = false
+persistence_write              = false
+logout_clear                   = true
+screenshot                     = youtube-discovery.png
+```
+
+This proves an actual authenticated Desktop → hosted Edge Function → YouTube Data API metadata-discovery path while maintaining the intended secret boundary.
+
+The search produced 12 metadata candidates and required two hosted YouTube API requests. The Desktop itself made zero direct YouTube Data API requests and exactly one hosted-function request for the search.
+
+## 10. Previous-stage runtime regressions in the same Windows run
+
+MV-ARCH-3D:
+
+```text
+status                       = MASTERV_WINDOWS_REFERENCE_LIBRARY_RUNTIME_PASS
+reference_library_list       = PASS
+reference_delete_ui          = PASS
+reference_delete_db          = PASS
+cross_workspace_write_denied = true
+cleanup                      = PASS
+logout                       = PASS
+```
+
+MV-ARCH-3E:
+
+```text
+status                         = MASTERV_WINDOWS_REFERENCE_DETAIL_COMPARE_RUNTIME_PASS
+reference_detail_lazy_load     = true
+reference_compare_surface      = PASS
+compare_selection_count        = 2
+cleanup                        = PASS
+logout_clear                   = PASS
+```
+
+MV-ARCH-3F:
+
+```text
+status                            = MASTERV_WINDOWS_REFERENCE_COMPILER_RUNTIME_PASS
+hosted_compiler_authority         = canonical
+workspace_authority               = jwt-derived
+persistence_authority             = user-jwt-rls
+arbitrary_workspace_body_ignored  = true
+comparison_sample_size            = 2
+evidence_rule_count               = 11
+desktop_compare_raw_analysis_fetch = false
+client_reference_fetch_delta      = 0
+client_hosted_function_delta      = 1
+cleanup                           = PASS
+logout_clear                      = PASS
+```
+
+## 11. Runtime evidence artifact
+
+Runtime-verification artifact:
+
+- ID: `9248646432`
 - name: `masterv-windows-desktop-smoke`
-- run: `31859400550`
-- head: `a721455f2a6614c0972f75e9b6e8428783eeff34`
-- digest: `sha256:264aabcd6b3a7664e4ced939c810f57b736e10db50f3ef22e503d7352a216d11`
+- run: `31891143508`
+- branch head under verification: `8f0d02e876bd98347ab7396021ad0ae93ebe6980`
+- size: `1,380,747` bytes
+- digest: `sha256:f7ed5d8d33ea103775f4b34c3c8638aad382e055ad6370df344bcdcdbef9954c`
 
-The artifact includes the blocked-state screenshot and runtime evidence JSON.
+The artifact contains 3D/3E/3F/3G Windows runtime evidence, screenshots, and the unsigned NSIS smoke installer.
 
-## 9. Live hosted authority and cleanup
+The installer remains unsigned and is verification output only. It is not an activation or release artifact.
 
-Observed live hosted function after C2 deployment:
+## 12. Live hosted authority and cleanup
+
+After the hosted secret configuration, the live function was observed as:
 
 ```text
 slug       = masterv-api-boundary
-version    = 3
+version    = 4
 status     = ACTIVE
 verify_jwt = true
 import_map = true
 ```
 
-The live function deployment is verification infrastructure and does not activate or release the Desktop product.
+The function code hash remained unchanged from the 3G deployment; version 4 reflects hosted runtime configuration rather than a Desktop credential migration.
 
-Independent database cleanup check for run `31859400550`:
+Independent database cleanup check for run `31891143508`:
 
 ```text
 remaining MV3D fixtures = 0
@@ -213,27 +302,29 @@ remaining MV3E fixtures = 0
 remaining MV3F fixtures = 0
 ```
 
-MV-ARCH-3G creates no Reference Library database fixture.
+MV-ARCH-3G itself creates no Reference Library database fixture.
 
-## 10. Required gate to reach RUNTIME_VERIFIED
+## 13. Runtime gate result
 
-MV-ARCH-3G may be promoted to `RUNTIME_VERIFIED` only after all of the following are true:
+The required runtime gate is now satisfied:
 
-1. `YOUTUBE_DATA_API_KEY` exists in the Supabase Edge Function hosted environment.
-2. Desktop Windows CI still contains no YouTube provider credential.
-3. The exact authoritative branch head runs an actual hosted YouTube search through the real Tauri/WebView2 surface.
-4. Runtime evidence shows at least one hosted YouTube provider request.
-5. Desktop direct `googleapis.com/youtube` request delta remains zero.
-6. Local Next discovery request delta remains zero.
-7. Gemini request count remains zero for this metadata-only stage.
+1. Hosted `YOUTUBE_DATA_API_KEY` is configured.
+2. Desktop Windows CI contains no YouTube provider credential.
+3. The authoritative branch head executed a real hosted YouTube search through native Tauri/WebView2.
+4. Runtime evidence shows hosted YouTube provider requests > 0.
+5. Desktop direct YouTube API request delta is zero.
+6. Local Next discovery request delta is zero.
+7. Gemini request count is zero for this metadata-only stage.
 8. Previous 3D/3E/3F runtime regressions remain green.
-9. Documentation-inclusive exact-head CI succeeds.
+9. Runtime fixtures are cleaned.
 
-Until that gate is met, the authoritative lifecycle state is:
+Therefore the lifecycle state is promoted to:
 
-**STATIC_VERIFIED / CONFIG_BLOCKED / NOT ACTIVATED**
+**RUNTIME_VERIFIED / NOT ACTIVATED**
 
-## 11. Non-activation boundary
+A documentation-inclusive exact-head CI run is still required after this lifecycle-record update before the stage is considered frozen.
+
+## 14. Non-activation boundary
 
 MV-ARCH-3G does not authorize:
 
@@ -246,4 +337,4 @@ MV-ARCH-3G does not authorize:
 - Deep Analysis migration
 - Product Truth migration
 
-The next architecture stage should not bypass the unresolved hosted provider-secret gate. Resolve and re-run MV-ARCH-3G first; only after a real provider runtime pass should a subsequent Deep Analysis hosted-compute boundary be advanced.
+MV-ARCH-3G stops after documentation-inclusive exact-head verification. A subsequent Deep Analysis hosted-compute stage requires separate scope/approval and must not be inferred from this runtime pass.
