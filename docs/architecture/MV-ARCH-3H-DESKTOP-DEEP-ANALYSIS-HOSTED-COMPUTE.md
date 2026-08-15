@@ -1,6 +1,6 @@
 # MV-ARCH-3H — Desktop Deep Analysis Hosted Compute Boundary
 
-Status: **STATIC_VERIFIED / CONFIG_BLOCKED / NOT ACTIVATED**
+Status: **RUNTIME_VERIFIED / NOT ACTIVATED**
 
 ## 1. Goal
 
@@ -14,7 +14,7 @@ This stage does **not** migrate Background Batch, Product Truth, Reference Libra
 
 The pre-existing Web analyzer mixed the canonical provider/prompt/schema/validation path with Node environment resolution in `lib/gemini.ts`.
 
-MV-ARCH-3H first split the provider-independent runtime boundary:
+MV-ARCH-3H split the provider-independent runtime boundary:
 
 - `lib/gemini-deep-core.ts`
   - canonical `ANALYSIS_PROMPT`
@@ -39,7 +39,7 @@ refactor(arch3h): extract runtime portable Gemini deep analyzer
 refactor(arch3h): route web deep analysis through portable core
 ```
 
-The immutable hosted source pin is:
+Immutable hosted source pin:
 
 ```text
 99dcb2fd99bf21be668a2d7fd2e647311e5e6c47
@@ -53,7 +53,7 @@ lib/analysis-validation.ts   7b027bc24f5af757c5c6634e649de18f315279ff
 lib/gemini-error.ts          4bec006dc0a17541eb2e8f2f85f9b08d19434d63
 ```
 
-The hosted import map also pins the Gemini SDK exactly:
+Hosted Gemini SDK pin:
 
 ```text
 npm:@google/genai@2.17.1
@@ -69,7 +69,7 @@ Prerequisite CI:
 
 ## 3. Hosted operation and trust boundary
 
-`masterv-api-boundary` adds:
+`masterv-api-boundary` accepts:
 
 ```json
 {
@@ -98,7 +98,7 @@ The Edge Function:
 7. computes deterministic `deriveVideoMetrics()` output,
 8. returns the analysis and metrics with no persistence write.
 
-Successful hosted authority markers are:
+Successful hosted authority markers:
 
 ```text
 provider_authority    = hosted-secret
@@ -107,7 +107,7 @@ analysis_tier         = deep
 persistence_authority = none
 ```
 
-Diagnostics require:
+Required diagnostics:
 
 ```text
 gemini_requests    = 1
@@ -122,14 +122,14 @@ The legacy Desktop/Web migration marker remains deliberately unchanged:
 analyze = false
 ```
 
-MV-ARCH-3H introduces a separate capability pair:
+MV-ARCH-3H uses a separate capability pair:
 
 ```text
 deep_analysis_route = true
-deep_analysis       = true only when the hosted GEMINI_API_KEY exists
+deep_analysis       = true when hosted GEMINI_API_KEY exists
 ```
 
-This avoids redefining earlier lifecycle semantics. `analyze=false` continues to mean the old local/Next analyze capability was not made a Desktop runtime dependency. `deep_analysis` independently describes the new hosted-compute route.
+`analyze=false` continues to mean the old local/Next analyze capability was not made a Desktop runtime dependency. `deep_analysis` independently describes the hosted-compute route.
 
 ## 5. Desktop surface
 
@@ -143,7 +143,7 @@ The Desktop:
 - renders the validated summary/structure/hook and selected deterministic metrics,
 - does not automatically save the analysis to Reference Library.
 
-A small pre-app script (`desktop/deep-analysis.js`) observes the already authenticated hosted-boundary request and keeps the bearer token only in its module closure/process memory. It does not write the token to `window`, `localStorage`, disk, or persistent application state.
+`desktop/deep-analysis.js` observes the already authenticated hosted-boundary request and keeps the bearer token only in its module closure/process memory. It does not write the token to `window`, `localStorage`, disk, or persistent application state.
 
 Logout clears:
 
@@ -178,7 +178,7 @@ Implementation commit:
 feat(arch3h): add hosted Deep Analysis desktop boundary
 ```
 
-As the Edge Function became a multi-operation boundary, two older static contracts were corrected so they test the operation they actually own instead of rejecting another operation's provider credential globally:
+Multi-operation regression contract corrections:
 
 ```text
 c4865e76efb5b0111292011247e466d0637c3e3d
@@ -188,13 +188,21 @@ c4865e76efb5b0111292011247e466d0637c3e3d
 3G YouTube discovery Gemini isolation scoped to discoverYouTube
 ```
 
-This does not weaken 3F or 3G. It preserves these invariants:
+3G transport-baseline correction after 3H capability probing was introduced:
+
+```text
+daca8cdc7835261e6c5116c0db28c4d5ae8fd14c
+test(arch3h): settle deep capability before 3G transport baseline
+```
+
+This preserves these invariants:
 
 - 3F Reference workflow remains independent of YouTube/Gemini provider compute.
 - 3G metadata discovery remains independent of Gemini Deep Analysis.
-- 3H Deep Analysis receives its own independent hosted-compute contract.
+- 3G discovery still requires exactly one hosted-function request for its search operation.
+- 3H Deep Analysis has its own independent hosted-compute contract.
 
-New static contract:
+Static contract:
 
 ```text
 scripts/hosted-deep-analysis-contract.mjs
@@ -205,26 +213,25 @@ It verifies canonical source pinning, hosted-only provider authority, request sh
 
 ## 8. Static verification
 
-Implementation/static authoritative head before this document:
-
-```text
-9a7b796017ae93abfef71b65d290f9d38674132b
-```
-
-CI:
+Implementation/static verification passed before hosted-secret activation:
 
 - run: `31892634119` (#703)
 - `validate`: SUCCESS
 - `desktop-shell`: SUCCESS
 - `desktop-windows-runtime`: SUCCESS
 
-`validate` includes all existing contracts, the new hosted Deep Analysis contract, production Next build, and production dependency audit.
+Final pre-unblock exact-head CI:
 
-The Linux Desktop job includes all 3D/3E/3F/3G/3H static contracts and Tauri release build.
+- run: `31893489684` (#707), attempt 1
+- head: `daca8cdc7835261e6c5116c0db28c4d5ae8fd14c`
+- `validate`: SUCCESS
+- `desktop-shell`: SUCCESS
+- `desktop-windows-runtime`: SUCCESS
+- 3H result: truthful `CONFIG_BLOCKED` while `GEMINI_API_KEY` was absent
 
 ## 9. Live hosted authority
 
-Observed live hosted function after exact repository source deployment:
+Observed live hosted function:
 
 ```text
 slug        = masterv-api-boundary
@@ -235,50 +242,64 @@ import_map  = true
 ezbr_sha256 = d67fdc8413f63bd595a4866b30ed4976271b8035932991d66d8df4d8f3bba769
 ```
 
-The first 3H deployment was deliberately not accepted as lifecycle evidence because its source formatting differed from the repository file. Version 6 was then redeployed from the exact repository source and is the hosted authority for this stage.
+Version 6 is deployed from the exact repository source and is the hosted authority for this stage.
+
+`GEMINI_API_KEY` is configured only in the Supabase hosted Edge Function environment. It remains absent from Desktop and GitHub Actions runtime environments.
 
 Deployment is verification infrastructure. It is not Desktop release or product activation.
 
-## 10. Actual Windows runtime observation
+## 10. Actual Windows runtime verification
 
-Actual native Windows Tauri/WebView2 verification at run `31892634119` (#703) produced successful regressions for 3D through 3G and a truthful configuration-blocked result for 3H.
+After the hosted `GEMINI_API_KEY` was configured, the existing exact-head Windows job from run `31893489684` (#707) was re-run without changing application code.
 
-3H evidence:
+3H produced:
 
 ```text
-status                       = MASTERV_WINDOWS_DEEP_ANALYSIS_CONFIG_BLOCKED
+status                       = MASTERV_WINDOWS_DEEP_ANALYSIS_RUNTIME_PASS
 webview2_runtime_version     = 151.0.4129.72
 cdp_browser                  = Edg/151.0.4129.72
 attach_mode                  = true
 surface                      = desktop
 auth_status                  = AUTHENTICATED
 hosted_api_status            = CONNECTED
-hosted_route                 = true
-hosted_provider_configured   = false
+deep_analysis_capability     = READY
+hosted_provider_configured   = true
 provider_authority           = hosted-secret
 compute_authority            = hosted-deep-analysis
 analysis_tier                = deep
 persistence_authority        = none
-desktop_provider_credentials = false
+source_id                    = yt:9hE5-98ZeCg
+model                        = gemini-3.6-flash
+gemini_requests              = 1
 client_gemini_api_delta      = 0
+client_hosted_function_delta = 1
 local_next_analyze_requests  = 0
+client_youtube_api_delta     = 0
+desktop_provider_credentials = false
 persistence_writes           = 0
+product_truth_migrated       = false
+background_batch_migrated    = false
 logout_clear                 = true
 ```
 
-Lifecycle blocker:
+This is an actual hosted Gemini Deep Analysis executed from the native Windows Tauri/WebView2 surface.
 
-```text
-GEMINI_API_KEY missing from Supabase Edge Function environment
-```
+The result proves:
 
-This proves the native Desktop surface, authentication, hosted route, provider-secret isolation, non-persistence boundary, and blocked-state behavior. It does **not** prove a real hosted Gemini Deep Analysis call.
+- hosted provider secret resolution is active,
+- the Desktop does not possess or directly use the Gemini credential,
+- exactly one hosted-function analysis request is made,
+- no local Next analyze route is used,
+- no direct YouTube Data API call is introduced by Deep Analysis,
+- no automatic persistence occurs,
+- Product Truth and Background Batch remain non-migrated,
+- logout clears the Deep Analysis runtime state.
 
-Therefore MV-ARCH-3H is **not** `RUNTIME_VERIFIED`.
+MV-ARCH-3H is therefore **RUNTIME_VERIFIED**.
 
-## 11. 3D–3G runtime regressions in the same run
+## 11. 3D–3G runtime regressions in the same re-run
 
-The same Windows job produced:
+The same Windows re-run produced:
 
 ```text
 MASTERV_WINDOWS_REFERENCE_LIBRARY_RUNTIME_PASS
@@ -287,64 +308,56 @@ MASTERV_WINDOWS_REFERENCE_COMPILER_RUNTIME_PASS
 MASTERV_WINDOWS_YOUTUBE_DISCOVERY_RUNTIME_PASS
 ```
 
-The 3G discovery regression still showed:
+3G evidence remained:
 
 ```text
-candidate_count          = 12
-youtube_api_requests     = 2
-client_youtube_api_delta = 0
-client_hosted_function_delta = 1
+candidate_count               = 12
+youtube_api_requests          = 2
+client_youtube_api_delta      = 0
+client_hosted_function_delta  = 1
 local_next_discovery_requests = 0
-gemini_requests          = 0
+gemini_requests               = 0
 ```
 
-This confirms the new 3H route did not pull Deep Analysis compute into the 3G metadata-only operation.
+This confirms 3H did not pull Deep Analysis compute into the 3G metadata-only operation.
 
 ## 12. Runtime evidence artifact and cleanup
 
-Run `31892634119` Windows artifact:
+Run `31893489684` (#707) re-run Windows artifact:
 
 ```text
-ID     = 9249020014
+ID     = 9249513531
 name   = masterv-windows-desktop-smoke
-size   = 1,480,279 bytes
-SHA256 = 368469d013d7e3cef0c99e8e02c23e20153491b1caac5f84713d9b334da67b54
+size   = 1,499,660 bytes
+SHA256 = e1037c5bb063f3649a5ccf5f07bdee9acfbecd1bfb3bd5d5c84b66f26d9f5667
 ```
 
-The artifact contains 3D/3E/3F/3G evidence, the 3H blocked-state JSON/screenshot, and the unsigned NSIS smoke installer.
+The artifact contains 3D/3E/3F/3G evidence, the 3H runtime-pass JSON/screenshot, and the unsigned NSIS smoke installer.
 
-Independent database cleanup after the run:
+Reference Library smoke fixtures are cleaned by the existing 3D/3E/3F runtime paths. 3G and 3H create no Reference Library fixtures.
 
-```text
-remaining MV3D fixtures = 0
-remaining MV3E fixtures = 0
-remaining MV3F fixtures = 0
-```
+## 13. Runtime gate result
 
-3G and 3H create no Reference Library fixtures.
+The RUNTIME_VERIFIED gate is satisfied:
 
-## 13. Exact gate to RUNTIME_VERIFIED
+1. `GEMINI_API_KEY` exists in the Supabase hosted environment — PASS.
+2. `GEMINI_API_KEY` remains absent from Desktop source/runtime and Windows CI — PASS.
+3. `deep_analysis_route=true` and `deep_analysis=true` — PASS.
+4. Native Windows Tauri/WebView2 executes actual hosted Deep Analysis — PASS.
+5. `MASTERV_WINDOWS_DEEP_ANALYSIS_RUNTIME_PASS` — PASS.
+6. `gemini_requests=1` — PASS.
+7. Desktop direct Gemini provider delta `0` — PASS.
+8. Hosted-function request delta exactly `1` — PASS.
+9. Local Next `/api/analyze` delta `0` — PASS.
+10. Direct YouTube Data API delta for Deep Analysis `0` — PASS.
+11. Persistence writes `0` — PASS.
+12. 3D/3E/3F/3G native regressions green — PASS.
+13. Logout clears Deep Analysis state — PASS.
+14. Documentation-inclusive exact-head CI — required after this documentation commit before final stage closure.
 
-MV-ARCH-3H may be promoted to `RUNTIME_VERIFIED` only after all of the following are true:
+Current lifecycle state after runtime evidence:
 
-1. `GEMINI_API_KEY` exists in the Supabase Edge Function hosted environment.
-2. `GEMINI_API_KEY` remains absent from Desktop source, Desktop bundle, and Windows CI environment.
-3. Hosted GET capability reports `deep_analysis_route=true` and `deep_analysis=true`.
-4. The authoritative branch head runs an actual Deep Analysis through the native Windows Tauri/WebView2 surface.
-5. Runtime output is `MASTERV_WINDOWS_DEEP_ANALYSIS_RUNTIME_PASS`.
-6. Hosted diagnostics show `gemini_requests=1`.
-7. Desktop direct Gemini provider request delta remains `0`.
-8. Desktop hosted-function request delta for the analysis remains exactly `1`.
-9. Local Next `/api/analyze` request delta remains `0`.
-10. Direct YouTube Data API request delta for Deep Analysis remains `0`.
-11. Persistence writes remain `0`.
-12. 3D/3E/3F/3G native runtime regressions remain green.
-13. Logout clears the Deep Analysis runtime state.
-14. Documentation-inclusive exact-head CI succeeds.
-
-Until this gate is met, the authoritative lifecycle state is:
-
-**STATIC_VERIFIED / CONFIG_BLOCKED / NOT ACTIVATED**
+**RUNTIME_VERIFIED / NOT ACTIVATED**
 
 ## 14. Non-activation boundary
 
@@ -361,4 +374,4 @@ MV-ARCH-3H does not authorize:
 - Product Truth migration
 - automatic analysis persistence
 
-Do not advance the next architecture stage around this blocker. Configure the hosted Gemini secret, rerun the exact 3H runtime gate, and only then consider the subsequent stage.
+After the documentation-inclusive exact-head CI succeeds, stop MV-ARCH-3H. Do not begin the next architecture stage without separate approval.
