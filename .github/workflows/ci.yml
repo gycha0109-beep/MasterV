@@ -39,6 +39,7 @@ jobs:
       - run: npm run test:supabase-auth
       - run: npm run test:runtime-api
       - run: npm run test:desktop-shell
+      - run: npm run test:desktop-reference-library
       - run: npm run test:reference-library-browser-script
       - run: npm run test:search-ux-browser-script
       - run: npm run build
@@ -65,6 +66,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - run: npm install
       - run: npm run test:desktop-shell
+      - run: npm run test:desktop-reference-library
       - run: npm run desktop:build
 
   desktop-windows-runtime:
@@ -94,7 +96,7 @@ jobs:
           if ($env:YOUTUBE_DATA_API_KEY) { throw "YouTube credential must not be present in desktop runtime smoke" }
       - name: Build native Windows Tauri executable
         run: npm run desktop:build
-      - name: Run native WebView2 attach-mode auth and hosted-boundary smoke
+      - name: Run native WebView2 Reference Library runtime smoke
         run: npm run test:desktop-windows-runtime
       - name: Generate platform icons for installer smoke
         run: npm run tauri -- icon src-tauri/icons/icon.png

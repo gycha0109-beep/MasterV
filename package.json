@@ -33,6 +33,7 @@
     "test:supabase-auth": "tsx scripts/supabase-auth-contract.ts",
     "test:runtime-api": "tsx scripts/runtime-api-contract.ts",
     "test:desktop-shell": "node scripts/desktop-shell-contract.mjs",
+    "test:desktop-reference-library": "node scripts/desktop-reference-library-contract.mjs",
     "test:desktop-windows-runtime": "node scripts/desktop-windows-runtime-smoke.mjs",
     "test:reference-library-browser-script": "node --check scripts/reference-library-browser-smoke.mjs",
     "test:search-ux-browser-script": "node --check scripts/search-ux-browser-smoke.mjs",
