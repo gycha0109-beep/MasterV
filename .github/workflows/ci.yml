@@ -47,6 +47,7 @@ jobs:
       - run: npm run test:hosted-production-guidance
       - run: npm run test:hosted-background-batch
       - run: npm run test:desktop-build-determinism
+      - run: npm run test:desktop-installed-quality-contract
       - run: npm run test:reference-library-browser-script
       - run: npm run test:search-ux-browser-script
       - run: npm run build
@@ -83,6 +84,7 @@ jobs:
       - run: npm run test:hosted-production-guidance
       - run: npm run test:hosted-background-batch
       - run: npm run test:desktop-build-determinism
+      - run: npm run test:desktop-installed-quality-contract
       - name: Verify locked Cargo graph
         run: cargo metadata --locked --manifest-path src-tauri/Cargo.toml --no-deps > /dev/null
       - run: npm run desktop:build
@@ -90,9 +92,10 @@ jobs:
         run: git diff --exit-code -- package-lock.json src-tauri/Cargo.lock
 
   desktop-windows-runtime:
+    name: desktop-windows-quality
     if: ${{ github.event_name == 'pull_request' }}
     runs-on: windows-2025
-    timeout-minutes: 45
+    timeout-minutes: 55
     env:
       NEXT_PUBLIC_SUPABASE_URL: https://euqkjrmrhhvnyzasppnd.supabase.co
       NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: sb_publishable_WUdzeBz9jsYwQXP_YeyD4w_OdkRcLp2
@@ -139,7 +142,21 @@ jobs:
         run: npm run desktop:bundle:windows-smoke
       - name: Verify installer build did not mutate lockfiles
         run: git diff --exit-code -- package-lock.json src-tauri/Cargo.lock
-      - name: Run native WebView2 Hosted Deep Analysis runtime smoke
+      - name: Install and audit unsigned NSIS quality candidate
+        run: npm run test:desktop-installed-prepare-windows
+      - name: Run installed WebView2 Reference Detail Compare quality smoke
+        run: npm run test:desktop-reference-detail-compare-windows
+      - name: Run installed WebView2 Canonical Reference Compiler quality smoke
+        run: npm run test:desktop-reference-compiler-windows
+      - name: Run installed WebView2 Hosted YouTube Discovery quality smoke
+        run: npm run test:desktop-youtube-discovery-windows
+      - name: Run installed WebView2 Guarded Background Batch quality smoke
+        run: npm run test:desktop-background-batch-windows
+      - name: Run installed restart session and uninstall quality smoke
+        run: npm run test:desktop-installed-session-uninstall-windows
+      - name: Observe Hosted Deep Analysis provider health
+        id: provider_3h
+        continue-on-error: true
         shell: pwsh
         run: |
           $maxAttempts = 3
@@ -147,7 +164,7 @@ jobs:
             $lines = @()
             & npm run test:desktop-deep-analysis-windows 2>&1 | Tee-Object -Variable lines | Write-Host
             $exitCode = $LASTEXITCODE
-            if ($exitCode -eq 0) { break }
+            if ($exitCode -eq 0) { exit 0 }
             $text = ($lines | Out-String)
             $retryable = $text -match '요청 한도에 도달했습니다|재시도 힌트|\b429\b'
             if (-not $retryable -or $attempt -eq $maxAttempts) { exit $exitCode }
@@ -157,7 +174,10 @@ jobs:
             Write-Host "MASTERV_CI_PROVIDER_RATE_LIMIT_RETRY smoke=3H attempt=$attempt wait_seconds=$waitSeconds"
             Start-Sleep -Seconds $waitSeconds
           }
-      - name: Run native WebView2 Product Truth Production Guidance runtime smoke
+      - name: Observe Product Truth Production Guidance provider health
+        id: provider_3i
+        if: ${{ steps.provider_3h.outcome == 'success' }}
+        continue-on-error: true
         shell: pwsh
         run: |
           Start-Sleep -Seconds 10
@@ -166,7 +186,7 @@ jobs:
             $lines = @()
             & npm run test:desktop-production-guidance-windows 2>&1 | Tee-Object -Variable lines | Write-Host
             $exitCode = $LASTEXITCODE
-            if ($exitCode -eq 0) { break }
+            if ($exitCode -eq 0) { exit 0 }
             $text = ($lines | Out-String)
             $retryable = $text -match '요청 한도에 도달했습니다|재시도 힌트|\b429\b|3I prerequisite Deep Analysis failed:\s*at main'
             if (-not $retryable -or $attempt -eq $maxAttempts) { exit $exitCode }
@@ -176,6 +196,26 @@ jobs:
             Write-Host "MASTERV_CI_PROVIDER_RATE_LIMIT_RETRY smoke=3I attempt=$attempt wait_seconds=$waitSeconds"
             Start-Sleep -Seconds $waitSeconds
           }
+      - name: Record provider health separately from product quality
+        if: always()
+        shell: pwsh
+        env:
+          DEEP_OUTCOME: ${{ steps.provider_3h.outcome }}
+          GUIDANCE_OUTCOME: ${{ steps.provider_3i.outcome }}
+        run: |
+          New-Item -ItemType Directory -Force -Path artifacts/desktop-installed-quality | Out-Null
+          $green = ($env:DEEP_OUTCOME -eq 'success' -and $env:GUIDANCE_OUTCOME -eq 'success')
+          $status = if ($green) { 'PROVIDER_HEALTH_GREEN' } else { 'PROVIDER_HEALTH_BLOCKED' }
+          $payload = [ordered]@{
+            status = $status
+            deep_analysis = $env:DEEP_OUTCOME
+            production_guidance = $env:GUIDANCE_OUTCOME
+            product_quality_authority = 'separate'
+            activation_allowed = $false
+          }
+          $payload | ConvertTo-Json | Set-Content -Encoding utf8 artifacts/desktop-installed-quality/provider-health.json
+          if (-not $green) { Write-Warning "$status deep=$env:DEEP_OUTCOME guidance=$env:GUIDANCE_OUTCOME" }
+          Write-Host ($payload | ConvertTo-Json -Compress)
       - name: Upload Windows desktop runtime evidence
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
@@ -189,5 +229,6 @@ jobs:
             artifacts/desktop-deep-analysis
             artifacts/desktop-production-guidance
             artifacts/desktop-background-batch
+            artifacts/desktop-installed-quality
             src-tauri/target/release/bundle/nsis/*.exe
           if-no-files-found: warn
