@@ -99,12 +99,12 @@ foreach ($p in @('HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Run','HKL
     }
   }
 }
-$hits -join "`n"
+$hits -join [Environment]::NewLine
 `);
 assert(!autorun, `Unexpected MasterV autorun entry: ${autorun}`);
-const services = ps(`(Get-Service -ErrorAction SilentlyContinue | Where-Object { $_.Name -match '(?i)masterv' -or $_.DisplayName -match '(?i)masterv' } | Select-Object -ExpandProperty Name) -join "`n"`);
+const services = ps(`(Get-Service -ErrorAction SilentlyContinue | Where-Object { $_.Name -match '(?i)masterv' -or $_.DisplayName -match '(?i)masterv' } | Select-Object -ExpandProperty Name) -join [Environment]::NewLine`);
 assert(!services, `Unexpected MasterV service found: ${services}`);
-const tasks = ps(`(Get-ScheduledTask -ErrorAction SilentlyContinue | Where-Object { $_.TaskName -match '(?i)masterv' -or $_.TaskPath -match '(?i)masterv' } | ForEach-Object { "$($_.TaskPath)$($_.TaskName)" }) -join "`n"`);
+const tasks = ps(`(Get-ScheduledTask -ErrorAction SilentlyContinue | Where-Object { $_.TaskName -match '(?i)masterv' -or $_.TaskPath -match '(?i)masterv' } | ForEach-Object { "$($_.TaskPath)$($_.TaskName)" }) -join [Environment]::NewLine`);
 assert(!tasks, `Unexpected MasterV scheduled task found: ${tasks}`);
 
 const evidenceDir = path.resolve("artifacts", "desktop-installed-quality");
