@@ -1,0 +1,8 @@
+{
+  "imports": {
+    "@google/genai": "npm:@google/genai@2.17.1",
+    "@supabase/server": "npm:@supabase/server@1.4.1",
+    "@/lib/source-identity": "https://raw.githubusercontent.com/gycha0109-beep/MasterV/6d79fa1996a1f6ff2b39ad7de414c676dce9a7f7/lib/source-identity.ts",
+    "@masterv/background-batch": "https://raw.githubusercontent.com/gycha0109-beep/MasterV/6d79fa1996a1f6ff2b39ad7de414c676dce9a7f7/lib/background-batch.ts"
+  }
+}
