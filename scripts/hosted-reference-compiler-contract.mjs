@@ -33,7 +33,7 @@ const functionText = fs.readFileSync("supabase/functions/masterv-api-boundary/in
 assert(functionText.includes('import { compareVideoAnalyses } from "@masterv/reference-compare"'), "hosted function must import canonical comparison compiler");
 assert(functionText.includes('import { compileEvidenceRules } from "@masterv/evidence-rules"'), "hosted function must import canonical evidence compiler");
 assert(functionText.includes('req.method === "POST"'), "hosted compiler POST boundary missing");
-assert(functionText.includes('body.operation !== "reference_workflow"'), "hosted compiler operation guard missing");
+assert(functionText.includes('body.operation === "reference_workflow"'), "hosted compiler operation dispatch missing");
 assert(functionText.includes('const workspaceId = `user:${userId}`'), "hosted workspace must derive from authenticated JWT subject");
 assert(functionText.includes('/rest/v1/reference_library_entries'), "hosted compiler must read persisted Reference Library rows");
 assert(functionText.includes('params.set("workspace_id", `eq.${workspaceId}`)'), "hosted persisted read must scope workspace");
@@ -41,13 +41,21 @@ assert(functionText.includes('params.set("source_id", `eq.${sourceId}`)'), "host
 assert(functionText.includes('comparison: "canonical"'), "hosted response must identify canonical comparison authority");
 assert(functionText.includes('evidence: "canonical"'), "hosted response must identify canonical evidence authority");
 assert(!functionText.includes("service_role"), "hosted compiler must not introduce service-role authority");
-assert(!functionText.includes("GEMINI_API_KEY"), "hosted compiler must not depend on Gemini credentials");
-assert(!functionText.includes("YOUTUBE_DATA_API_KEY"), "hosted compiler must not depend on YouTube credentials");
+assert(!functionText.includes("GEMINI_API_KEY"), "hosted API boundary must not depend on Gemini credentials in 3F/3G");
+
+const referenceStart = functionText.indexOf("async function compileReferenceWorkflow");
+const referenceEnd = functionText.indexOf("async function discoverYouTube", referenceStart);
+const referenceBlock = functionText.slice(referenceStart, referenceEnd);
+assert(referenceStart >= 0 && referenceEnd > referenceStart, "reference compiler function block missing");
+assert(!referenceBlock.includes("YOUTUBE_DATA_API_KEY"), "reference compiler operation must remain provider-credential independent");
+assert(!referenceBlock.includes("discoverYouTubeCandidatesWithKey"), "reference compiler operation must remain independent from YouTube discovery");
 
 const appText = fs.readFileSync("desktop/app.js", "utf8");
 assert(appText.includes("async function compileHostedReferenceWorkflow"), "desktop hosted compiler client missing");
 const hostedStart = appText.indexOf("async function compileHostedReferenceWorkflow");
-const hostedEnd = appText.indexOf("async function loadReferenceLibrary", hostedStart);
+const hostedEnd = appText.indexOf("async function discoverHostedYouTube", hostedStart) >= 0
+  ? appText.indexOf("async function discoverHostedYouTube", hostedStart)
+  : appText.indexOf("async function loadReferenceLibrary", hostedStart);
 const hostedBlock = appText.slice(hostedStart, hostedEnd);
 assert(hostedBlock.includes('method: "POST"'), "desktop compiler request must use POST");
 assert(hostedBlock.includes('operation: "reference_workflow"'), "desktop compiler operation missing");
@@ -77,5 +85,5 @@ console.log(JSON.stringify({
   desktop_compare_raw_analysis_fetch: false,
   comparison_compiler: "canonical",
   evidence_compiler: "canonical",
-  provider_credentials_required: false
+  reference_operation_provider_credentials_required: false
 }));

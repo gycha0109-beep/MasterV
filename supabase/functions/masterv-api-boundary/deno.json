@@ -4,6 +4,10 @@
     "@/lib/derived-metrics": "https://raw.githubusercontent.com/gycha0109-beep/MasterV/796e0469b20159f6057d625d0f03d33478a8767e/lib/derived-metrics.ts",
     "@/lib/reference-compare": "https://raw.githubusercontent.com/gycha0109-beep/MasterV/796e0469b20159f6057d625d0f03d33478a8767e/lib/reference-compare.ts",
     "@masterv/reference-compare": "https://raw.githubusercontent.com/gycha0109-beep/MasterV/796e0469b20159f6057d625d0f03d33478a8767e/lib/reference-compare.ts",
-    "@masterv/evidence-rules": "https://raw.githubusercontent.com/gycha0109-beep/MasterV/796e0469b20159f6057d625d0f03d33478a8767e/lib/evidence-rules.ts"
+    "@masterv/evidence-rules": "https://raw.githubusercontent.com/gycha0109-beep/MasterV/796e0469b20159f6057d625d0f03d33478a8767e/lib/evidence-rules.ts",
+    "@/lib/discovery": "https://raw.githubusercontent.com/gycha0109-beep/MasterV/b8a0d4dd34e5080919d75b23b08c12d3e2293efb/lib/discovery.ts",
+    "@/lib/source-identity": "https://raw.githubusercontent.com/gycha0109-beep/MasterV/b8a0d4dd34e5080919d75b23b08c12d3e2293efb/lib/source-identity.ts",
+    "@/lib/tiered-analysis": "https://raw.githubusercontent.com/gycha0109-beep/MasterV/b8a0d4dd34e5080919d75b23b08c12d3e2293efb/lib/tiered-analysis.ts",
+    "@masterv/youtube-discovery-core": "https://raw.githubusercontent.com/gycha0109-beep/MasterV/b8a0d4dd34e5080919d75b23b08c12d3e2293efb/lib/youtube-discovery-core.ts"
   }
 }

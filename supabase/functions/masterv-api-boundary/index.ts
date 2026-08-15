@@ -1,6 +1,11 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
+import type { SearchOptions } from "@/lib/discovery";
 import { compareVideoAnalyses } from "@masterv/reference-compare";
 import { compileEvidenceRules } from "@masterv/evidence-rules";
+import {
+  discoverYouTubeCandidatesWithKey,
+  YouTubeDiscoveryError
+} from "@masterv/youtube-discovery-core";
 
 const headers = {
   "Content-Type": "application/json",
@@ -10,6 +15,26 @@ const headers = {
 };
 
 const MAX_REFERENCE_SELECTION = 8;
+const MAX_DISCOVERY_QUERY_LENGTH = 200;
+const DISCOVERY_OPTION_KEYS = new Set([
+  "max_results",
+  "shortlist_limit",
+  "min_duration_seconds",
+  "max_duration_seconds",
+  "published_after",
+  "region_code",
+  "relevance_language",
+  "max_per_creator"
+]);
+const DISCOVERY_NUMBER_KEYS = new Set([
+  "max_results",
+  "shortlist_limit",
+  "min_duration_seconds",
+  "max_duration_seconds",
+  "max_per_creator"
+]);
+const QUOTA_REASONS = new Set(["quotaExceeded", "dailyLimitExceeded", "rateLimitExceeded"]);
+const CONFIG_REASONS = new Set(["keyInvalid", "accessNotConfigured", "ipRefererBlocked"]);
 
 function json(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), { status, headers });
@@ -37,6 +62,41 @@ function normalizedSourceIds(value: unknown) {
   if (sourceIds.length > MAX_REFERENCE_SELECTION) throw new Error(`reference workflow supports at most ${MAX_REFERENCE_SELECTION} source_ids`);
   if (new Set(sourceIds).size !== sourceIds.length) throw new Error("source_ids must be unique");
   return sourceIds;
+}
+
+function normalizedDiscoveryInput(body: { query?: unknown; options?: unknown }) {
+  if (typeof body.query !== "string") throw new Error("query must be a string");
+  const query = body.query.trim();
+  if (!query) throw new Error("query must not be empty");
+  if (query.length > MAX_DISCOVERY_QUERY_LENGTH) throw new Error(`query must be at most ${MAX_DISCOVERY_QUERY_LENGTH} characters`);
+
+  if (body.options === undefined) return { query, options: {} as SearchOptions };
+  if (!body.options || typeof body.options !== "object" || Array.isArray(body.options)) {
+    throw new Error("options must be an object");
+  }
+
+  const options = body.options as Record<string, unknown>;
+  for (const key of Object.keys(options)) {
+    if (!DISCOVERY_OPTION_KEYS.has(key)) throw new Error(`unsupported discovery option: ${key}`);
+  }
+
+  const normalized: Record<string, string | number> = {};
+  for (const [key, value] of Object.entries(options)) {
+    if (value === undefined || value === null || value === "") continue;
+    if (DISCOVERY_NUMBER_KEYS.has(key)) {
+      if (typeof value !== "number" || !Number.isFinite(value)) throw new Error(`${key} must be a finite number`);
+      normalized[key] = value;
+      continue;
+    }
+    if (typeof value !== "string") throw new Error(`${key} must be a string`);
+    const trimmed = value.trim();
+    if (!trimmed) continue;
+    if (key === "region_code" && !/^[A-Za-z]{2}$/.test(trimmed)) throw new Error("region_code must be a 2-letter code");
+    if (key === "relevance_language" && !/^[A-Za-z]{2,3}(?:-[A-Za-z0-9]{2,8})?$/.test(trimmed)) throw new Error("relevance_language is invalid");
+    if (key === "published_after" && Number.isNaN(Date.parse(trimmed))) throw new Error("published_after must be a valid date-time");
+    normalized[key] = trimmed;
+  }
+  return { query, options: normalized as SearchOptions };
 }
 
 async function loadReference(req: Request, workspaceId: string, sourceId: string) {
@@ -70,12 +130,7 @@ async function loadReference(req: Request, workspaceId: string, sourceId: string
   return rows[0];
 }
 
-async function compileReferenceWorkflow(req: Request) {
-  const body = await req.json() as { operation?: unknown; source_ids?: unknown };
-  if (body.operation !== "reference_workflow") {
-    return json({ error: "Unsupported operation" }, 400);
-  }
-
+async function compileReferenceWorkflow(req: Request, body: { source_ids?: unknown }) {
   let userId: string;
   let sourceIds: string[];
   try {
@@ -119,10 +174,55 @@ async function compileReferenceWorkflow(req: Request) {
   }
 }
 
+async function discoverYouTube(body: { query?: unknown; options?: unknown }) {
+  let input: ReturnType<typeof normalizedDiscoveryInput>;
+  try {
+    input = normalizedDiscoveryInput(body);
+  } catch (error) {
+    return json({ error: error instanceof Error ? error.message : String(error), code: "YOUTUBE_DISCOVERY_INVALID_REQUEST" }, 400);
+  }
+
+  const apiKey = Deno.env.get("YOUTUBE_DATA_API_KEY")?.trim() ?? "";
+  if (!apiKey) {
+    return json({ error: "YouTube Discovery API is not configured in hosted runtime.", code: "YOUTUBE_DISCOVERY_NOT_CONFIGURED" }, 503);
+  }
+
+  try {
+    const result = await discoverYouTubeCandidatesWithKey(input.query, input.options, { api_key: apiKey });
+    return json({
+      service: "masterv-hosted-api",
+      contract_version: "mv-hosted-api-v1",
+      authenticated: true,
+      operation: "youtube_discovery",
+      provider: result.provider,
+      provider_authority: "hosted-secret",
+      analysis_authority: "metadata-only",
+      query: result.query,
+      candidates: result.candidates,
+      diagnostics: result.diagnostics
+    });
+  } catch (error) {
+    if (error instanceof YouTubeDiscoveryError) {
+      const status = error.reason && QUOTA_REASONS.has(error.reason)
+        ? 429
+        : error.reason && CONFIG_REASONS.has(error.reason)
+          ? 503
+          : 502;
+      return json({
+        error: error.message,
+        code: status === 429 ? "YOUTUBE_DISCOVERY_QUOTA" : "YOUTUBE_DISCOVERY_UPSTREAM",
+        reason: error.reason
+      }, status);
+    }
+    return json({ error: error instanceof Error ? error.message : String(error), code: "YOUTUBE_DISCOVERY_FAILED" }, 500);
+  }
+}
+
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response(null, { status: 204, headers });
 
   if (req.method === "GET") {
+    const youtubeDiscoveryReady = Boolean(Deno.env.get("YOUTUBE_DATA_API_KEY")?.trim());
     return json({
       service: "masterv-hosted-api",
       contract_version: "mv-hosted-api-v1",
@@ -131,12 +231,23 @@ Deno.serve(async (req: Request) => {
         boundary_probe: true,
         reference_compiler: true,
         analyze: false,
-        youtube_discovery: false,
+        youtube_discovery_route: true,
+        youtube_discovery: youtubeDiscoveryReady,
         product_truth: false
       }
     });
   }
 
-  if (req.method === "POST") return await compileReferenceWorkflow(req);
+  if (req.method === "POST") {
+    let body: { operation?: unknown; source_ids?: unknown; query?: unknown; options?: unknown };
+    try {
+      body = await req.json();
+    } catch {
+      return json({ error: "Request body must be valid JSON" }, 400);
+    }
+    if (body.operation === "reference_workflow") return await compileReferenceWorkflow(req, body);
+    if (body.operation === "youtube_discovery") return await discoverYouTube(body);
+    return json({ error: "Unsupported operation" }, 400);
+  }
   return json({ error: "Method not allowed" }, 405);
 });

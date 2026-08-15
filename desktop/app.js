@@ -33,6 +33,17 @@
   const capAnalyze = document.getElementById("cap-analyze");
   const capYoutube = document.getElementById("cap-youtube");
   const capProductTruth = document.getElementById("cap-product-truth");
+  const discoveryPanel = document.getElementById("discovery-panel");
+  const discoveryForm = document.getElementById("discovery-form");
+  const discoveryQuery = document.getElementById("discovery-query");
+  const discoveryRegion = document.getElementById("discovery-region");
+  const discoveryLanguage = document.getElementById("discovery-language");
+  const discoveryDuration = document.getElementById("discovery-duration");
+  const discoverySearch = document.getElementById("discovery-search");
+  const discoveryStatus = document.getElementById("discovery-status");
+  const discoveryCount = document.getElementById("discovery-count");
+  const discoveryProvider = document.getElementById("discovery-provider");
+  const discoveryResults = document.getElementById("discovery-results");
   const libraryPanel = document.getElementById("reference-library-panel");
   const libraryStatus = document.getElementById("library-status");
   const libraryWorkspace = document.getElementById("library-workspace");
@@ -54,11 +65,16 @@
   let session = null;
   let workspaceId = null;
   let detailSourceId = null;
+  let youtubeDiscoveryReady = false;
   const selectedSourceIds = new Set();
 
   libraryPanel.dataset.projection = REFERENCE_LIBRARY_LIST_PROJECTION.join(",");
   detailPanel.dataset.projection = REFERENCE_LIBRARY_DETAIL_PROJECTION.join(",");
   comparePanel.dataset.compiler = "hosted-canonical";
+  discoveryPanel.dataset.providerAuthority = "hosted-secret";
+  discoveryPanel.dataset.providerCredentialsInClient = "false";
+  discoveryPanel.dataset.analysisAuthority = "metadata-only";
+  discoveryPanel.dataset.youtubeApiRequests = "0";
 
   function configured() {
     return Boolean(config.supabase_url && config.supabase_publishable_key && config.api_base_url);
@@ -76,7 +92,15 @@
 
   function resetCapabilities() {
     [capBoundary, capReferenceCompiler, capAnalyze, capYoutube, capProductTruth].forEach((target) => setCapability(target, null));
+    youtubeDiscoveryReady = false;
+    updateDiscoveryControl();
     apiStatus.textContent = "NOT CHECKED";
+  }
+
+  function setDiscoveryStatus(text, tone = "") {
+    discoveryStatus.textContent = text;
+    discoveryStatus.classList.toggle("ok", tone === "ok");
+    discoveryStatus.classList.toggle("error", tone === "error");
   }
 
   function setLibraryStatus(text, tone = "") {
@@ -95,6 +119,22 @@
     compareStatus.textContent = text;
     compareStatus.classList.toggle("ok", tone === "ok");
     compareStatus.classList.toggle("error", tone === "error");
+  }
+
+  function updateDiscoveryControl() {
+    if (!discoverySearch || !discoveryQuery) return;
+    discoverySearch.disabled = !session || !youtubeDiscoveryReady || !discoveryQuery.value.trim();
+  }
+
+  function clearDiscoveryState({ hide = true, clearQuery = false } = {}) {
+    if (hide) discoveryPanel.hidden = true;
+    discoveryResults.replaceChildren();
+    discoveryCount.textContent = "0";
+    discoveryProvider.textContent = "HOSTED";
+    discoveryPanel.dataset.youtubeApiRequests = "0";
+    if (clearQuery) discoveryQuery.value = "";
+    setDiscoveryStatus(session ? (youtubeDiscoveryReady ? "READY" : "NOT CONFIGURED") : "SIGNED OUT", session && youtubeDiscoveryReady ? "ok" : "");
+    updateDiscoveryControl();
   }
 
   function clearReferenceDetailState() {
@@ -158,6 +198,11 @@
 
   function formatPercent(value) {
     return typeof value === "number" && Number.isFinite(value) ? `${value}%` : "—";
+  }
+
+  function formatViews(value) {
+    const number = Number(value);
+    return Number.isFinite(number) ? new Intl.NumberFormat("ko-KR").format(number) : "미확인";
   }
 
   function updateCompareControls() {
@@ -239,6 +284,51 @@
       item.append(selector, content, actions);
       libraryList.append(item);
     }
+  }
+
+  function renderDiscoveryCandidates(result) {
+    discoveryResults.replaceChildren();
+    const candidates = Array.isArray(result.candidates) ? result.candidates : [];
+    discoveryCount.textContent = String(candidates.length);
+    discoveryProvider.textContent = "HOSTED SECRET";
+    discoveryPanel.dataset.youtubeApiRequests = String(result.diagnostics?.youtube_api_requests ?? 0);
+
+    if (candidates.length === 0) {
+      const empty = document.createElement("p");
+      empty.className = "library-state discovery-empty";
+      empty.textContent = "조건에 맞는 YouTube 후보가 없습니다. 검색어 또는 필터를 조정해 주세요.";
+      discoveryResults.append(empty);
+      setDiscoveryStatus("READY", "ok");
+      return;
+    }
+
+    candidates.forEach((candidate, index) => {
+      const card = document.createElement("article");
+      card.className = "discovery-card";
+      card.dataset.discoverySourceId = candidate.source_id;
+      const rank = document.createElement("span");
+      rank.className = "discovery-rank";
+      rank.textContent = `candidate #${index + 1}`;
+      const title = document.createElement("h3");
+      title.textContent = candidate.title || candidate.source_id;
+      const meta = document.createElement("div");
+      meta.className = "discovery-meta";
+      const creator = document.createElement("span");
+      creator.textContent = candidate.creator || "채널 미확인";
+      const duration = document.createElement("span");
+      duration.textContent = typeof candidate.duration_seconds === "number" ? `${candidate.duration_seconds}초` : "길이 미확인";
+      const views = document.createElement("span");
+      views.textContent = `조회 ${formatViews(candidate.native_metrics?.view_count)}`;
+      const published = document.createElement("span");
+      published.textContent = candidate.published_at ? formatUpdatedAt(candidate.published_at) : "게시일 미확인";
+      meta.append(creator, duration, views, published);
+      const url = document.createElement("p");
+      url.className = "discovery-url";
+      url.textContent = candidate.canonical_url;
+      card.append(rank, title, meta, url);
+      discoveryResults.append(card);
+    });
+    setDiscoveryStatus("READY", "ok");
   }
 
   async function parseError(response) {
@@ -357,6 +447,26 @@
     return body;
   }
 
+  async function discoverHostedYouTube(activeSession, query, options) {
+    const response = await fetch(`${config.api_base_url}/masterv-api-boundary`, {
+      method: "POST",
+      headers: authHeaders(activeSession, { "Content-Type": "application/json", Accept: "application/json" }),
+      body: JSON.stringify({ operation: "youtube_discovery", query, options })
+    });
+    if (!response.ok) throw new Error(`Hosted YouTube discovery ${await parseError(response)}`);
+    const body = await response.json();
+    if (body.contract_version !== config.api_contract_version || body.operation !== "youtube_discovery" || body.provider !== "youtube") {
+      throw new Error("Hosted YouTube discovery contract mismatch");
+    }
+    if (body.provider_authority !== "hosted-secret" || body.analysis_authority !== "metadata-only") {
+      throw new Error("Hosted YouTube discovery authority mismatch");
+    }
+    if (!Array.isArray(body.candidates) || body.diagnostics?.gemini_requests !== 0) {
+      throw new Error("Hosted YouTube discovery response is incomplete");
+    }
+    return body;
+  }
+
   async function loadReferenceLibrary() {
     if (!session || !workspaceId) throw new Error("Reference Library session is not ready");
     setLibraryLoading();
@@ -366,6 +476,37 @@
       return records;
     } catch (error) {
       renderLibraryError(error instanceof Error ? error.message : String(error));
+      throw error;
+    }
+  }
+
+  async function loadYouTubeDiscovery() {
+    if (!session || !youtubeDiscoveryReady) throw new Error("Hosted YouTube discovery is not ready");
+    const query = discoveryQuery.value.trim();
+    if (!query) throw new Error("검색어를 입력해 주세요.");
+    const options = {
+      max_results: 50,
+      shortlist_limit: 12,
+      min_duration_seconds: 1,
+      max_duration_seconds: Number(discoveryDuration.value || 180),
+      max_per_creator: 2
+    };
+    if (discoveryRegion.value) options.region_code = discoveryRegion.value;
+    if (discoveryLanguage.value) options.relevance_language = discoveryLanguage.value;
+
+    discoveryResults.replaceChildren();
+    discoveryCount.textContent = "0";
+    setDiscoveryStatus("SEARCHING");
+    try {
+      const result = await discoverHostedYouTube(session, query, options);
+      renderDiscoveryCandidates(result);
+      return result;
+    } catch (error) {
+      setDiscoveryStatus("ERROR", "error");
+      const errorText = document.createElement("p");
+      errorText.className = "library-state error-text discovery-empty";
+      errorText.textContent = error instanceof Error ? error.message : String(error);
+      discoveryResults.replaceChildren(errorText);
       throw error;
     }
   }
@@ -568,6 +709,10 @@
     setCapability(capAnalyze, hosted.capabilities?.analyze);
     setCapability(capYoutube, hosted.capabilities?.youtube_discovery);
     setCapability(capProductTruth, hosted.capabilities?.product_truth);
+    youtubeDiscoveryReady = hosted.capabilities?.youtube_discovery === true;
+    discoveryPanel.hidden = false;
+    setDiscoveryStatus(youtubeDiscoveryReady ? "READY" : "NOT CONFIGURED", youtubeDiscoveryReady ? "ok" : "error");
+    updateDiscoveryControl();
     logoutButton.hidden = false;
 
     setLibraryLoading("WORKSPACE");
@@ -575,7 +720,7 @@
       workspaceId = await bootstrapPersonalReferenceWorkspace(session);
       libraryWorkspace.textContent = workspaceId;
       await loadReferenceLibrary();
-      setMessage("인증된 hosted API와 Reference Library에 연결되었습니다.", true);
+      setMessage(youtubeDiscoveryReady ? "인증된 hosted API, YouTube Discovery, Reference Library에 연결되었습니다." : "인증된 hosted API와 Reference Library에 연결되었습니다. YouTube Discovery hosted secret은 아직 설정되지 않았습니다.", true);
     } catch (error) {
       renderLibraryError(error instanceof Error ? error.message : String(error));
       setMessage("Hosted API는 연결되었지만 Reference Library 초기화에 실패했습니다.");
@@ -584,20 +729,23 @@
 
   function logout() {
     session = null;
+    youtubeDiscoveryReady = false;
     authStatus.textContent = "SIGNED OUT";
     authStatus.classList.remove("ok");
     apiStatus.classList.remove("ok");
     resetCapabilities();
+    clearDiscoveryState({ hide: true, clearQuery: true });
     clearReferenceLibraryState();
     logoutButton.hidden = true;
     passwordInput.value = "";
-    setMessage("세션과 Reference Library 상세/비교 화면을 이 프로세스 메모리에서 제거했습니다.", true);
+    setMessage("세션과 Search/Discovery, Reference Library 상세/비교 화면을 이 프로세스 메모리에서 제거했습니다.", true);
   }
 
   form.addEventListener("submit", async (event) => {
     event.preventDefault();
     setMessage("");
     resetCapabilities();
+    clearDiscoveryState({ hide: true });
     clearReferenceLibraryState();
     if (!configured()) {
       setMessage("이 Desktop 빌드에는 Supabase/Hosted API public config가 주입되지 않았습니다.");
@@ -609,10 +757,12 @@
       await connect(emailInput.value, passwordInput.value);
     } catch (error) {
       session = null;
+      youtubeDiscoveryReady = false;
       authStatus.textContent = "SIGNED OUT";
       authStatus.classList.remove("ok");
       apiStatus.textContent = "FAILED";
       apiStatus.classList.remove("ok");
+      clearDiscoveryState({ hide: true });
       clearReferenceLibraryState();
       setMessage(error instanceof Error ? error.message : String(error));
     } finally {
@@ -621,6 +771,23 @@
   });
 
   logoutButton.addEventListener("click", logout);
+
+  discoveryQuery.addEventListener("input", updateDiscoveryControl);
+
+  discoveryForm.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    if (!session || !youtubeDiscoveryReady) return;
+    discoverySearch.disabled = true;
+    try {
+      const result = await loadYouTubeDiscovery();
+      setMessage(`Hosted YouTube metadata discovery로 ${result.candidates.length}개 후보를 불러왔습니다.`, true);
+      discoveryPanel.scrollIntoView({ block: "start" });
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : String(error));
+    } finally {
+      updateDiscoveryControl();
+    }
+  });
 
   libraryRefresh.addEventListener("click", async () => {
     if (!session || !workspaceId) return;
@@ -706,6 +873,7 @@
     }
   });
 
+  clearDiscoveryState({ hide: true });
   clearReferenceLibraryState();
   if (!configured()) {
     setMessage("Desktop shell static build 완료. Runtime public config는 아직 연결되지 않았습니다.");
