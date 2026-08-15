@@ -109,12 +109,12 @@ $paths=@('HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\*','HK
 `));
 assert(registryCount === 0, `MasterV uninstall registry entry remains: ${registryCount}`);
 const autorunAfter = powershell(`
-$hits=@(); foreach($p in @('HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Run','HKLM:\\Software\\Microsoft\\Windows\\CurrentVersion\\Run')){if(Test-Path $p){$i=Get-ItemProperty $p;foreach($x in $i.PSObject.Properties){if($x.Name -notmatch '^PS' -and ("$($x.Name) $($x.Value)") -match '(?i)masterv'){$hits+="$($x.Name)=$($x.Value)"}}}}; $hits -join "`n"
+$hits=@(); foreach($p in @('HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Run','HKLM:\\Software\\Microsoft\\Windows\\CurrentVersion\\Run')){if(Test-Path $p){$i=Get-ItemProperty $p;foreach($x in $i.PSObject.Properties){if($x.Name -notmatch '^PS' -and ("$($x.Name) $($x.Value)") -match '(?i)masterv'){$hits+="$($x.Name)=$($x.Value)"}}}}; $hits -join [Environment]::NewLine
 `);
 assert(!autorunAfter, `MasterV autorun residue remains after uninstall: ${autorunAfter}`);
-const servicesAfter = powershell(`(Get-Service -ErrorAction SilentlyContinue | Where-Object { $_.Name -match '(?i)masterv' -or $_.DisplayName -match '(?i)masterv' } | Select-Object -ExpandProperty Name) -join "`n"`);
+const servicesAfter = powershell(`(Get-Service -ErrorAction SilentlyContinue | Where-Object { $_.Name -match '(?i)masterv' -or $_.DisplayName -match '(?i)masterv' } | Select-Object -ExpandProperty Name) -join [Environment]::NewLine`);
 assert(!servicesAfter, `MasterV service residue remains after uninstall: ${servicesAfter}`);
-const tasksAfter = powershell(`(Get-ScheduledTask -ErrorAction SilentlyContinue | Where-Object { $_.TaskName -match '(?i)masterv' -or $_.TaskPath -match '(?i)masterv' } | ForEach-Object { "$($_.TaskPath)$($_.TaskName)" }) -join "`n"`);
+const tasksAfter = powershell(`(Get-ScheduledTask -ErrorAction SilentlyContinue | Where-Object { $_.TaskName -match '(?i)masterv' -or $_.TaskPath -match '(?i)masterv' } | ForEach-Object { "$($_.TaskPath)$($_.TaskName)" }) -join [Environment]::NewLine`);
 assert(!tasksAfter, `MasterV scheduled-task residue remains after uninstall: ${tasksAfter}`);
 
 const installDirExists = fs.existsSync(installDir);
