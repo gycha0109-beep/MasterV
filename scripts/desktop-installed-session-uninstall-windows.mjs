@@ -49,6 +49,27 @@ function powershell(script, timeout = 90_000) {
   return (result.stdout || "").trim();
 }
 
+function masterVUninstallRegistryCount() {
+  const value = powershell(`
+$paths=@('HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\*','HKLM:\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\*','HKLM:\\Software\\WOW6432Node\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\*')
+@((Get-ItemProperty $paths -ErrorAction SilentlyContinue | Where-Object { $_.DisplayName -eq 'MasterV' })).Count
+`);
+  const count = Number(value);
+  assert(Number.isFinite(count), `MasterV uninstall registry count was not numeric: ${value}`);
+  return count;
+}
+
+async function waitForUninstallCleanup(binary, timeout = 60_000) {
+  const deadline = Date.now() + timeout;
+  let registryCount = masterVUninstallRegistryCount();
+  while (Date.now() < deadline) {
+    if (!fs.existsSync(binary) && registryCount === 0) return { registryCount, elapsedMs: timeout - Math.max(0, deadline - Date.now()) };
+    await delay(1000);
+    registryCount = masterVUninstallRegistryCount();
+  }
+  return { registryCount, elapsedMs: timeout };
+}
+
 if (process.platform !== "win32") throw new Error("3L installed session/uninstall smoke must run on Windows");
 const binary = required("MASTERV_DESKTOP_APP_BINARY");
 const installDir = required("MASTERV_DESKTOP_INSTALL_DIR");
@@ -99,15 +120,10 @@ try {
 const uninstallResult = spawnSync(uninstaller, ["/S"], { encoding: "utf8", timeout: 180_000, windowsHide: true });
 assert(uninstallResult.status === 0, `MasterV silent uninstall failed (${uninstallResult.status}): ${uninstallResult.stderr || uninstallResult.stdout}`);
 
-const deadline = Date.now() + 60_000;
-while (Date.now() < deadline && fs.existsSync(binary)) await delay(1000);
-assert(!fs.existsSync(binary), `Installed executable still exists after uninstall: ${binary}`);
+const uninstallCleanup = await waitForUninstallCleanup(binary, 60_000);
+assert(!fs.existsSync(binary), `Installed executable still exists after bounded uninstall cleanup: ${binary}`);
+assert(uninstallCleanup.registryCount === 0, `MasterV uninstall registry entry remains after bounded cleanup: ${uninstallCleanup.registryCount}`);
 
-const registryCount = Number(powershell(`
-$paths=@('HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\*','HKLM:\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\*','HKLM:\\Software\\WOW6432Node\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\*')
-@((Get-ItemProperty $paths -ErrorAction SilentlyContinue | Where-Object { $_.DisplayName -eq 'MasterV' })).Count
-`));
-assert(registryCount === 0, `MasterV uninstall registry entry remains: ${registryCount}`);
 const autorunAfter = powershell(`
 $hits=@(); foreach($p in @('HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Run','HKLM:\\Software\\Microsoft\\Windows\\CurrentVersion\\Run')){if(Test-Path $p){$i=Get-ItemProperty $p;foreach($x in $i.PSObject.Properties){if($x.Name -notmatch '^PS' -and ("$($x.Name) $($x.Value)") -match '(?i)masterv'){$hits+="$($x.Name)=$($x.Value)"}}}}; $hits -join [Environment]::NewLine
 `);
@@ -117,10 +133,15 @@ assert(!servicesAfter, `MasterV service residue remains after uninstall: ${servi
 const tasksAfter = powershell(`(Get-ScheduledTask -ErrorAction SilentlyContinue | Where-Object { $_.TaskName -match '(?i)masterv' -or $_.TaskPath -match '(?i)masterv' } | ForEach-Object { "$($_.TaskPath)$($_.TaskName)" }) -join [Environment]::NewLine`);
 assert(!tasksAfter, `MasterV scheduled-task residue remains after uninstall: ${tasksAfter}`);
 
-const installDirExists = fs.existsSync(installDir);
+let installDirExists = fs.existsSync(installDir);
 if (installDirExists) {
-  const residualFiles = fs.readdirSync(installDir);
-  assert(residualFiles.length === 0, `Installer-created directory contains residual files after uninstall: ${residualFiles.join(", ")}`);
+  const directoryDeadline = Date.now() + 15_000;
+  while (Date.now() < directoryDeadline && fs.existsSync(installDir) && fs.readdirSync(installDir).length > 0) await delay(500);
+  installDirExists = fs.existsSync(installDir);
+  if (installDirExists) {
+    const residualFiles = fs.readdirSync(installDir);
+    assert(residualFiles.length === 0, `Installer-created directory contains residual files after uninstall: ${residualFiles.join(", ")}`);
+  }
 }
 fs.rmSync(sharedDataDir, { recursive: true, force: true });
 
@@ -136,8 +157,9 @@ const evidence = {
   direct_youtube_data_api_requests: 0,
   local_next_api_requests: 0,
   uninstall: "PASS",
+  uninstall_cleanup_wait_ms: uninstallCleanup.elapsedMs,
   installed_executable_removed: !fs.existsSync(binary),
-  uninstall_registry_removed: registryCount === 0,
+  uninstall_registry_removed: uninstallCleanup.registryCount === 0,
   autorun_residue: false,
   service_residue: false,
   scheduled_task_residue: false,
