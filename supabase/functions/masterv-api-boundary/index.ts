@@ -348,8 +348,9 @@ async function compileProductionGuidance(req: Request, body: { analysis?: unknow
     const initialGuide = compileSingleVideoProductionGuide(input.analysis, derivedMetrics, input.productTruth);
     let guide = initialGuide;
     let geminiRequests = 0;
+    const shouldInterpret = initialGuide.interpretation_required && initialGuide.reference_mechanisms.length > 0;
 
-    if (initialGuide.interpretation_required) {
+    if (shouldInterpret) {
       const interpretation = await interpretProductTruthAgainstReferenceWithKey({
         verified_facts: input.productTruth.verified_facts,
         reference_mechanisms: initialGuide.reference_mechanisms
