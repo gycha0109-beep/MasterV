@@ -10,10 +10,7 @@
   <body>
     <main class="shell">
       <header class="topbar">
-        <div>
-          <p class="eyebrow">REFERENCE INTELLIGENCE</p>
-          <h1>MasterV Desktop</h1>
-        </div>
+        <div><p class="eyebrow">REFERENCE INTELLIGENCE</p><h1>MasterV Desktop</h1></div>
         <span id="surface-badge" class="badge">desktop</span>
       </header>
 
@@ -32,17 +29,10 @@
 
       <section class="grid">
         <article class="card">
-          <p class="eyebrow">ACCOUNT</p>
-          <h2>로그인</h2>
+          <p class="eyebrow">ACCOUNT</p><h2>로그인</h2>
           <form id="login-form">
-            <label>
-              이메일
-              <input id="email" type="email" autocomplete="username" required />
-            </label>
-            <label>
-              비밀번호
-              <input id="password" type="password" autocomplete="current-password" minlength="6" required />
-            </label>
+            <label>이메일<input id="email" type="email" autocomplete="username" required /></label>
+            <label>비밀번호<input id="password" type="password" autocomplete="current-password" minlength="6" required /></label>
             <button id="login-button" type="submit">MasterV 연결</button>
           </form>
           <button id="logout-button" class="secondary" type="button" hidden>로그아웃</button>
@@ -50,27 +40,26 @@
         </article>
 
         <article class="card">
-          <p class="eyebrow">HOSTED CAPABILITIES</p>
-          <h2>서버 경계 상태</h2>
+          <p class="eyebrow">HOSTED CAPABILITIES</p><h2>서버 경계 상태</h2>
           <dl class="capabilities">
             <div><dt>Boundary probe</dt><dd id="cap-boundary">—</dd></div>
+            <div><dt>Reference Compare/Evidence</dt><dd id="cap-reference-compiler">—</dd></div>
             <div><dt>Analyze</dt><dd id="cap-analyze">—</dd></div>
             <div><dt>YouTube discovery</dt><dd id="cap-youtube">—</dd></div>
             <div><dt>Product Truth</dt><dd id="cap-product-truth">—</dd></div>
           </dl>
-          <p class="muted small">Desktop은 hosted boundary를 사용합니다. Deep analysis, YouTube discovery, Product Truth가 desktop route로 이전됐다고 표시하지 않습니다.</p>
+          <p class="muted small">Compare/Evidence만 canonical hosted compiler 경계로 연결합니다. Deep analysis, YouTube discovery, Product Truth가 desktop route로 이전됐다고 표시하지 않습니다.</p>
         </article>
       </section>
 
       <section id="reference-library-panel" class="card library" aria-label="Reference Library" hidden>
         <div class="library-heading">
           <div>
-            <p class="eyebrow">REFERENCE LIBRARY / 보관함</p>
-            <h2>저장된 레퍼런스</h2>
-            <p class="muted small">목록은 metadata만 조회합니다. full analysis는 상세 또는 비교를 요청한 항목에 한해 지연 로드합니다.</p>
+            <p class="eyebrow">REFERENCE LIBRARY / 보관함</p><h2>저장된 레퍼런스</h2>
+            <p class="muted small">목록은 metadata만 조회합니다. full analysis는 단일 상세를 명시적으로 열 때만 Desktop으로 지연 로드하며, 비교는 hosted compiler가 persisted rows를 직접 읽습니다.</p>
           </div>
           <div class="library-heading-actions">
-            <button id="library-compare" class="compact" type="button" disabled>선택 비교</button>
+            <button id="library-compare" class="compact" type="button" disabled>Canonical 비교</button>
             <button id="library-refresh" class="secondary compact" type="button">새로고침</button>
           </div>
         </div>
@@ -86,24 +75,20 @@
       <section id="reference-detail-panel" class="card reference-detail" aria-label="Reference Detail" hidden>
         <div class="surface-heading">
           <div>
-            <p class="eyebrow">REFERENCE DETAIL</p>
-            <h2>레퍼런스 상세</h2>
+            <p class="eyebrow">REFERENCE DETAIL</p><h2>레퍼런스 상세</h2>
             <p class="muted small">이 화면을 열 때만 선택 항목의 persisted analysis를 workspace-scoped RLS 아래 조회합니다.</p>
           </div>
           <button id="reference-detail-close" class="secondary compact" type="button">닫기</button>
         </div>
-        <div class="library-summary">
-          <span>상태 <strong id="reference-detail-status">IDLE</strong></span>
-        </div>
+        <div class="library-summary"><span>상태 <strong id="reference-detail-status">IDLE</strong></span></div>
         <div id="reference-detail-content"></div>
       </section>
 
       <section id="reference-compare-panel" class="card reference-compare" aria-label="Reference Compare" hidden>
         <div class="surface-heading">
           <div>
-            <p class="eyebrow">REFERENCE COMPARE</p>
-            <h2>선택 레퍼런스 비교</h2>
-            <p class="muted small">2개 이상 선택한 persisted analysis의 핵심 사실을 나란히 확인합니다.</p>
+            <p class="eyebrow">REFERENCE COMPARE / EVIDENCE</p><h2>Canonical 비교 · 근거 규칙</h2>
+            <p class="muted small">2개 이상 선택하면 authenticated hosted boundary가 JWT-derived workspace의 persisted analyses를 RLS 아래 읽고 canonical Compare/Evidence compiler를 실행합니다.</p>
           </div>
           <button id="reference-compare-clear" class="secondary compact" type="button">선택 초기화</button>
         </div>
@@ -117,13 +102,13 @@
       <section class="card roadmap">
         <p class="eyebrow">SURFACE MIGRATION</p>
         <div class="roadmap-row"><span>Reference Library list / delete</span><strong>verified</strong></div>
-        <div class="roadmap-row"><span>Reference Detail / Compare</span><strong>current</strong></div>
+        <div class="roadmap-row"><span>Reference Detail</span><strong>verified</strong></div>
+        <div class="roadmap-row"><span>Canonical Compare / Evidence</span><strong>current</strong></div>
         <div class="roadmap-row"><span>Search / Discovery</span><strong>hosted route required</strong></div>
         <div class="roadmap-row"><span>Deep Analysis</span><strong>compute placement pending</strong></div>
         <div class="roadmap-row"><span>Production Guidance</span><strong>after analysis route</strong></div>
       </section>
     </main>
-
     <script src="./config.js"></script>
     <script src="./app.js"></script>
   </body>

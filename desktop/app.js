@@ -29,6 +29,7 @@
   const logoutButton = document.getElementById("logout-button");
   const message = document.getElementById("message");
   const capBoundary = document.getElementById("cap-boundary");
+  const capReferenceCompiler = document.getElementById("cap-reference-compiler");
   const capAnalyze = document.getElementById("cap-analyze");
   const capYoutube = document.getElementById("cap-youtube");
   const capProductTruth = document.getElementById("cap-product-truth");
@@ -57,6 +58,7 @@
 
   libraryPanel.dataset.projection = REFERENCE_LIBRARY_LIST_PROJECTION.join(",");
   detailPanel.dataset.projection = REFERENCE_LIBRARY_DETAIL_PROJECTION.join(",");
+  comparePanel.dataset.compiler = "hosted-canonical";
 
   function configured() {
     return Boolean(config.supabase_url && config.supabase_publishable_key && config.api_base_url);
@@ -68,11 +70,12 @@
   }
 
   function setCapability(target, value) {
+    if (!target) return;
     target.textContent = value === true ? "READY" : value === false ? "PENDING" : "—";
   }
 
   function resetCapabilities() {
-    [capBoundary, capAnalyze, capYoutube, capProductTruth].forEach((target) => setCapability(target, null));
+    [capBoundary, capReferenceCompiler, capAnalyze, capYoutube, capProductTruth].forEach((target) => setCapability(target, null));
     apiStatus.textContent = "NOT CHECKED";
   }
 
@@ -146,14 +149,15 @@
   function formatUpdatedAt(value) {
     const date = new Date(value);
     if (Number.isNaN(date.getTime())) return value || "—";
-    return new Intl.DateTimeFormat("ko-KR", {
-      dateStyle: "medium",
-      timeStyle: "short"
-    }).format(date);
+    return new Intl.DateTimeFormat("ko-KR", { dateStyle: "medium", timeStyle: "short" }).format(date);
   }
 
   function formatSeconds(value) {
     return typeof value === "number" && Number.isFinite(value) ? `${value}s` : "—";
+  }
+
+  function formatPercent(value) {
+    return typeof value === "number" && Number.isFinite(value) ? `${value}%` : "—";
   }
 
   function updateCompareControls() {
@@ -202,15 +206,12 @@
 
       const content = document.createElement("div");
       content.className = "library-item-main";
-
       const title = document.createElement("strong");
       title.className = "library-label";
       title.textContent = record.label;
-
       const url = document.createElement("div");
       url.className = "library-url";
       url.textContent = record.canonical_url;
-
       const meta = document.createElement("div");
       meta.className = "library-meta";
       const provenance = document.createElement("span");
@@ -220,24 +221,20 @@
       const updated = document.createElement("span");
       updated.textContent = `updated ${formatUpdatedAt(record.updated_at)}`;
       meta.append(provenance, revision, updated);
-
       content.append(title, url, meta);
 
       const actions = document.createElement("div");
       actions.className = "library-item-actions";
-
       const detail = document.createElement("button");
       detail.type = "button";
       detail.className = "ghost";
       detail.dataset.detailSourceId = record.source_id;
       detail.textContent = "상세";
-
       const remove = document.createElement("button");
       remove.type = "button";
       remove.className = "danger ghost";
       remove.dataset.deleteSourceId = record.source_id;
       remove.textContent = "삭제";
-
       actions.append(detail, remove);
       item.append(selector, content, actions);
       libraryList.append(item);
@@ -264,10 +261,7 @@
   async function login(email, password) {
     const response = await fetch(`${config.supabase_url}/auth/v1/token?grant_type=password`, {
       method: "POST",
-      headers: {
-        apikey: config.supabase_publishable_key,
-        "Content-Type": "application/json"
-      },
+      headers: { apikey: config.supabase_publishable_key, "Content-Type": "application/json" },
       body: JSON.stringify({ email: email.trim().toLowerCase(), password })
     });
     if (!response.ok) throw new Error(await parseError(response));
@@ -301,11 +295,7 @@
         "Content-Type": "application/json",
         Prefer: "resolution=ignore-duplicates,return=minimal"
       }),
-      body: JSON.stringify({
-        workspace_id: personalWorkspaceId,
-        user_id: activeSession.user.id,
-        role: "owner"
-      })
+      body: JSON.stringify({ workspace_id: personalWorkspaceId, user_id: activeSession.user.id, role: "owner" })
     });
     if (!response.ok) throw new Error(`Workspace bootstrap ${await parseError(response)}`);
     return personalWorkspaceId;
@@ -344,6 +334,29 @@
     return body[0];
   }
 
+  async function compileHostedReferenceWorkflow(activeSession, sourceIds) {
+    const response = await fetch(`${config.api_base_url}/masterv-api-boundary`, {
+      method: "POST",
+      headers: authHeaders(activeSession, { "Content-Type": "application/json", Accept: "application/json" }),
+      body: JSON.stringify({ operation: "reference_workflow", source_ids: sourceIds })
+    });
+    if (!response.ok) throw new Error(`Hosted reference compiler ${await parseError(response)}`);
+    const body = await response.json();
+    if (body.contract_version !== config.api_contract_version || body.operation !== "reference_workflow") {
+      throw new Error("Hosted reference compiler contract mismatch");
+    }
+    if (body.compiler?.comparison !== "canonical" || body.compiler?.evidence !== "canonical") {
+      throw new Error("Hosted reference compiler authority mismatch");
+    }
+    if (body.authority?.workspace !== "jwt-derived" || body.authority?.persistence !== "user-jwt-rls") {
+      throw new Error("Hosted reference compiler authorization authority mismatch");
+    }
+    if (!body.comparison || !body.evidence_rules) {
+      throw new Error("Hosted reference compiler response is incomplete");
+    }
+    return body;
+  }
+
   async function loadReferenceLibrary() {
     if (!session || !workspaceId) throw new Error("Reference Library session is not ready");
     setLibraryLoading();
@@ -352,8 +365,7 @@
       renderReferenceLibrary(records);
       return records;
     } catch (error) {
-      const text = error instanceof Error ? error.message : String(error);
-      renderLibraryError(text);
+      renderLibraryError(error instanceof Error ? error.message : String(error));
       throw error;
     }
   }
@@ -373,7 +385,6 @@
     detailSourceId = record.source_id;
     detailPanel.hidden = false;
     detailContent.replaceChildren();
-
     const heading = document.createElement("div");
     heading.className = "detail-heading-block";
     const title = document.createElement("h3");
@@ -385,7 +396,6 @@
     summary.className = "detail-summary";
     summary.textContent = analysis.summary || "요약 정보가 없습니다.";
     heading.append(title, url, summary);
-
     const facts = document.createElement("div");
     facts.className = "detail-facts";
     appendFact(facts, "Structure", analysis.structure_label || "—");
@@ -396,7 +406,6 @@
     appendFact(facts, "Observation segments", String(Array.isArray(analysis.observation_segments) ? analysis.observation_segments.length : 0));
     appendFact(facts, "Provenance", record.analysis_provenance || "—");
     appendFact(facts, "Revision", String(record.revision ?? "—"));
-
     detailContent.append(heading, facts);
     setDetailStatus("READY", "ok");
   }
@@ -420,44 +429,89 @@
     }
   }
 
-  function renderReferenceComparison(records) {
+  function renderReferenceComparison(result) {
+    const comparison = result.comparison;
+    const ruleSet = result.evidence_rules;
     comparePanel.hidden = false;
     compareContent.replaceChildren();
-    compareCount.textContent = String(records.length);
+    compareCount.textContent = String(comparison.sample_size ?? 0);
 
-    const intro = document.createElement("p");
-    intro.className = "muted small";
-    intro.textContent = "선택된 persisted analysis의 핵심 사실을 나란히 표시합니다. aggregate comparison compiler는 이 Desktop stage에서 별도 복제하지 않습니다.";
-    compareContent.append(intro);
+    const authority = document.createElement("p");
+    authority.className = "muted small";
+    authority.dataset.compilerAuthority = "canonical";
+    authority.textContent = "Hosted canonical Compare/Evidence compiler 결과입니다. raw persisted analysis는 비교를 위해 Desktop으로 전송하지 않습니다.";
+    compareContent.append(authority);
 
+    const aggregateTitle = document.createElement("h3");
+    aggregateTitle.textContent = "Aggregate comparison";
+    const aggregateFacts = document.createElement("div");
+    aggregateFacts.className = "detail-facts";
+    appendFact(aggregateFacts, "Sample", String(comparison.sample_size ?? 0));
+    appendFact(aggregateFacts, "Product first median", formatSeconds(comparison.product?.median_first_seen_seconds));
+    appendFact(aggregateFacts, "Product visible avg", formatPercent(comparison.product?.avg_visible_percent));
+    appendFact(aggregateFacts, "Demo avg", formatPercent(comparison.demonstration?.avg_combined_percent));
+    appendFact(aggregateFacts, "CTA present", formatPercent(comparison.cta?.present_percent));
+    appendFact(aggregateFacts, "Common patterns", String(Array.isArray(comparison.common_patterns) ? comparison.common_patterns.length : 0));
+    compareContent.append(aggregateTitle, aggregateFacts);
+
+    const videoTitle = document.createElement("h3");
+    videoTitle.textContent = "Selected references";
     const grid = document.createElement("div");
     grid.className = "compare-grid";
-    for (const record of records) {
-      const analysis = record.analysis || {};
+    for (const video of comparison.videos || []) {
       const card = document.createElement("article");
       card.className = "compare-card";
-      card.dataset.compareResultSourceId = record.source_id;
-
+      card.dataset.compareResultSourceId = video.id;
       const title = document.createElement("h3");
-      title.textContent = record.label;
-      const summary = document.createElement("p");
-      summary.className = "compare-summary";
-      summary.textContent = analysis.summary || "요약 정보가 없습니다.";
-
+      title.textContent = video.label;
       const facts = document.createElement("div");
       facts.className = "compare-facts";
-      appendFact(facts, "Structure", analysis.structure_label || "—");
-      appendFact(facts, "Duration", formatSeconds(analysis.duration_seconds));
-      appendFact(facts, "Hook", analysis.hook?.type || "—");
-      appendFact(facts, "Product first", formatSeconds(analysis.product_presentation?.first_seen_seconds));
-      appendFact(facts, "CTA", analysis.persuasion?.cta || "—");
-      appendFact(facts, "Segments", String(Array.isArray(analysis.observation_segments) ? analysis.observation_segments.length : 0));
-
-      card.append(title, summary, facts);
+      appendFact(facts, "Structure", video.structure_label || "—");
+      appendFact(facts, "Duration", formatSeconds(video.duration_seconds));
+      appendFact(facts, "Product first", formatSeconds(video.product_first_seen_seconds));
+      appendFact(facts, "Product visible", formatPercent(video.product_visible_percent));
+      appendFact(facts, "Demonstration", formatPercent(video.demonstration_percent));
+      appendFact(facts, "CTA first", formatSeconds(video.cta_first_seen_seconds));
+      card.append(title, facts);
       grid.append(card);
     }
+    compareContent.append(videoTitle, grid);
 
-    compareContent.append(grid);
+    const evidenceTitle = document.createElement("h3");
+    evidenceTitle.textContent = "Deterministic evidence rules";
+    evidenceTitle.dataset.evidenceRules = "canonical";
+    const evidenceGrid = document.createElement("div");
+    evidenceGrid.className = "compare-grid";
+    for (const rule of ruleSet.rules || []) {
+      const card = document.createElement("article");
+      card.className = "compare-card evidence-rule-card";
+      card.dataset.evidenceRuleId = rule.id;
+      const title = document.createElement("h3");
+      title.textContent = rule.title;
+      const instruction = document.createElement("p");
+      instruction.className = "compare-summary";
+      instruction.textContent = rule.instruction;
+      const facts = document.createElement("div");
+      facts.className = "compare-facts";
+      appendFact(facts, "Support", `${rule.support_count}/${rule.sample_size} (${rule.support_percent}%)`);
+      appendFact(facts, "Confidence", rule.confidence);
+      appendFact(facts, "Status", rule.status);
+      appendFact(facts, "Default", rule.default_selected ? "selected" : "optional");
+      card.append(title, instruction, facts);
+      evidenceGrid.append(card);
+    }
+    compareContent.append(evidenceTitle, evidenceGrid);
+
+    if (Array.isArray(ruleSet.notes) && ruleSet.notes.length) {
+      const notes = document.createElement("ul");
+      notes.className = "muted small";
+      for (const text of ruleSet.notes) {
+        const item = document.createElement("li");
+        item.textContent = text;
+        notes.append(item);
+      }
+      compareContent.append(notes);
+    }
     setCompareStatus("READY", "ok");
   }
 
@@ -465,18 +519,14 @@
     if (!session || !workspaceId) throw new Error("Reference Library session is not ready");
     const sourceIds = [...selectedSourceIds];
     if (sourceIds.length < 2) throw new Error("비교하려면 레퍼런스를 2개 이상 선택해야 합니다.");
-
     comparePanel.hidden = false;
     compareContent.replaceChildren();
     compareCount.textContent = String(sourceIds.length);
     setCompareStatus("LOADING");
-
     try {
-      const records = await Promise.all(
-        sourceIds.map((sourceId) => fetchReferenceDetail(session, workspaceId, sourceId))
-      );
-      renderReferenceComparison(records);
-      return records;
+      const result = await compileHostedReferenceWorkflow(session, sourceIds);
+      renderReferenceComparison(result);
+      return result;
     } catch (error) {
       setCompareStatus("ERROR", "error");
       const errorText = document.createElement("p");
@@ -514,6 +564,7 @@
     apiStatus.textContent = "CONNECTED";
     apiStatus.classList.add("ok");
     setCapability(capBoundary, hosted.capabilities?.boundary_probe);
+    setCapability(capReferenceCompiler, hosted.capabilities?.reference_compiler);
     setCapability(capAnalyze, hosted.capabilities?.analyze);
     setCapability(capYoutube, hosted.capabilities?.youtube_discovery);
     setCapability(capProductTruth, hosted.capabilities?.product_truth);
@@ -589,7 +640,7 @@
     try {
       await loadReferenceComparison();
       comparePanel.scrollIntoView({ block: "start" });
-      setMessage("선택한 레퍼런스의 persisted analysis를 비교 화면에 불러왔습니다.", true);
+      setMessage("선택한 레퍼런스를 hosted canonical Compare/Evidence compiler로 처리했습니다.", true);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : String(error));
     } finally {
