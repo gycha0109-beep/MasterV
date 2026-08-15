@@ -12,6 +12,12 @@ export function required(name) {
   return value;
 }
 
+export function resolveMasterVBinary(fallbackPath) {
+  const installed = process.env.MASTERV_DESKTOP_APP_BINARY?.trim() || "";
+  if (installed && fs.existsSync(installed)) return path.resolve(installed);
+  return path.resolve(fallbackPath);
+}
+
 async function freePort() {
   return await new Promise((resolve, reject) => {
     const server = net.createServer();
@@ -89,20 +95,23 @@ export async function execute(driverPort, sessionId, script, args = []) {
   return (await webdriverRequest(driverPort, "POST", `/session/${sessionId}/execute/sync`, { script, args })).value;
 }
 
-export async function attachMasterV(appBinaryPath, evidenceDir, runtimeLabel) {
+export async function attachMasterV(appBinaryPath, evidenceDir, runtimeLabel, options = {}) {
+  const resolvedBinary = resolveMasterVBinary(appBinaryPath);
+  assert(fs.existsSync(resolvedBinary), `MasterV binary missing: ${resolvedBinary}`);
   const runtimeRoot = path.join(process.env.RUNNER_TEMP?.trim() || os.tmpdir(), `${runtimeLabel}-${process.pid}`);
-  const dataDir = path.join(runtimeRoot, "webview2");
-  fs.rmSync(runtimeRoot, { recursive: true, force: true });
+  const dataDir = options.dataDir ? path.resolve(options.dataDir) : path.join(runtimeRoot, "webview2");
+  if (!options.reuseDataDir) fs.rmSync(dataDir, { recursive: true, force: true });
   fs.mkdirSync(dataDir, { recursive: true });
+  fs.mkdirSync(runtimeRoot, { recursive: true });
   fs.mkdirSync(evidenceDir, { recursive: true });
   const webviewVersion = detectWebView2Version();
   const driverPath = ensureEdgeDriver(webviewVersion, runtimeRoot);
   const debugPort = await freePort();
   const driverPort = await freePort();
-  const appLog = fs.openSync(path.join(evidenceDir, "masterv-process.log"), "w");
-  const driverLog = fs.openSync(path.join(evidenceDir, "msedgedriver.log"), "w");
-  const appProcess = spawn(appBinaryPath, [], {
-    cwd: path.dirname(appBinaryPath),
+  const appLog = fs.openSync(path.join(evidenceDir, `${runtimeLabel}-masterv-process.log`), "w");
+  const driverLog = fs.openSync(path.join(evidenceDir, `${runtimeLabel}-msedgedriver.log`), "w");
+  const appProcess = spawn(resolvedBinary, [], {
+    cwd: path.dirname(resolvedBinary),
     env: { ...process.env, MASTERV_DESKTOP_TEST_REMOTE_DEBUGGING_PORT: String(debugPort), MASTERV_DESKTOP_TEST_WEBVIEW_DATA_DIR: dataDir },
     stdio: ["ignore", appLog, appLog], windowsHide: false
   });
@@ -113,6 +122,8 @@ export async function attachMasterV(appBinaryPath, evidenceDir, runtimeLabel) {
   const sessionId = created.value?.sessionId || created.sessionId;
   assert(sessionId, "WebDriver session id missing");
   return {
+    appBinaryPath: resolvedBinary,
+    dataDir,
     driverPort, sessionId, webviewVersion, cdpBrowser: cdp.Browser || null,
     async close() {
       await webdriverRequest(driverPort, "DELETE", `/session/${sessionId}`).catch(() => undefined);
