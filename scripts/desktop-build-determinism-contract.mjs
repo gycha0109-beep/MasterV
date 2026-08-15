@@ -66,9 +66,11 @@ assert(ci.includes(`dtolnay/rust-toolchain@${rustToolchainSha}`) && /toolchain:\
 
 const batchIndex = ci.indexOf("Run native WebView2 Guarded Background Batch runtime smoke");
 const installerIndex = ci.indexOf("Build unsigned NSIS installer smoke");
-const deepIndex = ci.indexOf("Run native WebView2 Hosted Deep Analysis runtime smoke");
-assert(batchIndex >= 0 && installerIndex > batchIndex && deepIndex > installerIndex, "unsigned installer determinism must be verified before live Gemini regression smoke");
-assert(!ci.includes("TAURI_SIGNING_PRIVATE_KEY"), "3K must not introduce signing credentials");
+const legacyDeepIndex = ci.indexOf("Run native WebView2 Hosted Deep Analysis runtime smoke");
+const providerDeepIndex = ci.indexOf("Observe Hosted Deep Analysis provider health");
+const deepIndex = legacyDeepIndex >= 0 ? legacyDeepIndex : providerDeepIndex;
+assert(batchIndex >= 0 && installerIndex > batchIndex && deepIndex > installerIndex, "unsigned installer determinism must be verified before live Gemini regression/provider-health smoke");
+assert(!ci.includes("TAURI_SIGNING_PRIVATE_KEY:"), "3K must not configure signing credentials");
 assert(!/\bupdater\b/i.test(ci), "3K must not activate an updater");
 
 console.log(JSON.stringify({
