@@ -7,7 +7,7 @@
     "build": "next build",
     "start": "next start",
     "typecheck": "tsc --noEmit",
-    "desktop:prepare": "node scripts/build-desktop-static.mjs && node scripts/copy-desktop-deep-analysis.mjs",
+    "desktop:prepare": "node scripts/build-desktop-static.mjs && node scripts/copy-desktop-deep-analysis.mjs && node scripts/copy-desktop-background-batch.mjs",
     "desktop:build": "tauri build",
     "desktop:bundle:windows-smoke": "tauri bundle --bundles nsis --config src-tauri/tauri.windows-smoke.conf.json",
     "tauri": "tauri",
@@ -39,6 +39,7 @@
     "test:hosted-youtube-discovery": "node scripts/hosted-youtube-discovery-contract.mjs",
     "test:hosted-deep-analysis": "node scripts/hosted-deep-analysis-contract.mjs",
     "test:hosted-production-guidance": "node scripts/hosted-production-guidance-contract.mjs",
+    "test:hosted-background-batch": "node scripts/hosted-background-batch-contract.mjs",
     "test:desktop-windows-runtime": "node scripts/desktop-windows-runtime-smoke.mjs",
     "test:desktop-reference-detail-compare-windows": "node scripts/desktop-reference-detail-compare-windows-smoke.mjs",
     "test:desktop-reference-compiler-windows": "node scripts/desktop-reference-compiler-windows-smoke.mjs",
@@ -56,7 +57,7 @@
     "smoke:search-ux-browser": "node scripts/search-ux-browser-smoke.mjs",
     "pilot:real-products": "tsx scripts/real-product-pilot.ts",
     "calibrate:coarse-bundles": "tsx scripts/coarse-bundle-calibration.ts",
-    "evaluate:coarse-bundles": "tsx scripts/evaluate-coarse-bundle-calibration.ts"
+    "evaluate:coarse-bundle-calibration": "tsx scripts/evaluate-coarse-bundle-calibration.ts"
   },
   "dependencies": {
     "@google/genai": "^2.14.0",
