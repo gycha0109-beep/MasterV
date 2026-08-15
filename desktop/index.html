@@ -48,8 +48,9 @@
             <div><dt>Hosted Deep Analysis</dt><dd id="cap-deep-analysis">—</dd></div>
             <div><dt>YouTube discovery</dt><dd id="cap-youtube">—</dd></div>
             <div><dt>Product Truth / Guidance</dt><dd id="cap-product-truth">—</dd></div>
+            <div><dt>Background Batch</dt><dd id="cap-background-batch">—</dd></div>
           </dl>
-          <p class="muted small">Compare/Evidence, YouTube metadata discovery, Deep Analysis, Product Truth semantic matching과 Production Guidance는 authenticated hosted boundary를 사용합니다. Legacy Next Analyze는 Desktop 런타임 의존성이 아닙니다.</p>
+          <p class="muted small">Compare/Evidence, YouTube metadata discovery, Deep Analysis, Product Truth semantic matching과 Production Guidance는 authenticated hosted boundary를 사용합니다. Background Batch는 별도 guarded boundary와 durable ledger를 사용하며 provider live gate가 닫힌 동안 submit되지 않습니다.</p>
         </article>
       </section>
 
@@ -129,6 +130,29 @@
         <div id="production-guidance-content"></div>
       </section>
 
+      <section id="background-batch-panel" class="card library" aria-label="Background Batch" hidden>
+        <div class="surface-heading">
+          <div>
+            <p class="eyebrow">BACKGROUND BATCH / GUARDED ORCHESTRATION</p><h2>비동기 분석 작업</h2>
+            <p class="muted small">Batch create는 비멱등이므로 request-id reservation을 먼저 durable ledger에 기록하고 자동 재시도하지 않습니다. 현재 provider precondition과 live verification gate가 확인되기 전에는 Desktop submit이 차단됩니다. 결과를 Reference Library에 자동 저장하지 않습니다.</p>
+          </div>
+          <span class="badge">guarded / blocked</span>
+        </div>
+        <form id="background-batch-form" class="discovery-form">
+          <label class="discovery-query">YouTube URL<input id="background-batch-url" type="url" maxlength="500" placeholder="https://www.youtube.com/watch?v=..." required /></label>
+          <button id="background-batch-submit" type="submit" disabled>Background Batch 제출</button>
+          <button id="background-batch-refresh" class="secondary" type="button" disabled>작업 새로고침</button>
+        </form>
+        <div class="library-summary" aria-live="polite">
+          <span>상태 <strong id="background-batch-status">SIGNED OUT</strong></span>
+          <span>Provider precondition <strong id="background-batch-provider-precondition">—</strong></span>
+          <span>Live Batch <strong id="background-batch-live-verified">—</strong></span>
+          <span>Desktop submit <strong id="background-batch-activation">OFF</strong></span>
+          <span>작업 <strong id="background-batch-count">0</strong></span>
+        </div>
+        <div id="background-batch-list" class="library-list"></div>
+      </section>
+
       <section id="reference-library-panel" class="card library" aria-label="Reference Library" hidden>
         <div class="library-heading">
           <div>
@@ -174,12 +198,13 @@
         <div class="roadmap-row"><span>Canonical Compare / Evidence</span><strong>verified</strong></div>
         <div class="roadmap-row"><span>Search / Discovery</span><strong>verified</strong></div>
         <div class="roadmap-row"><span>Deep Analysis</span><strong>verified</strong></div>
-        <div class="roadmap-row"><span>Product Truth / Production Guidance</span><strong>current</strong></div>
-        <div class="roadmap-row"><span>Background Batch</span><strong>not migrated</strong></div>
+        <div class="roadmap-row"><span>Product Truth / Production Guidance</span><strong>verified</strong></div>
+        <div class="roadmap-row"><span>Background Batch</span><strong>current / blocked</strong></div>
       </section>
     </main>
     <script src="./config.js"></script>
     <script src="./deep-analysis.js"></script>
+    <script src="./background-batch.js"></script>
     <script src="./app.js"></script>
   </body>
 </html>
