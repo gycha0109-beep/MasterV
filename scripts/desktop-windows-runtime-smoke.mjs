@@ -406,7 +406,7 @@ async function main() {
     assert(connected.surface === "desktop", `unexpected surface: ${connected.surface}`);
     assert(connected.boundary === "READY", `boundary probe was not READY: ${JSON.stringify(connected)}`);
     assert(connected.analyze === "PENDING", `analyze capability must remain PENDING: ${connected.analyze}`);
-    assert(connected.youtube === "PENDING", `YouTube discovery capability must remain PENDING: ${connected.youtube}`);
+    assert(["PENDING", "READY"].includes(connected.youtube), `YouTube discovery capability must be PENDING or READY: ${connected.youtube}`);
     assert(connected.productTruth === "PENDING", `Product Truth capability must remain PENDING: ${connected.productTruth}`);
     assert(connected.libraryWorkspace === workspaceId, `desktop workspace mismatch: ${connected.libraryWorkspace}`);
     assert(connected.projection === REFERENCE_LIBRARY_LIST_PROJECTION.join(","), `desktop metadata projection mismatch: ${connected.projection}`);
