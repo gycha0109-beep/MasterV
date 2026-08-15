@@ -41,14 +41,15 @@ assert(functionText.includes('params.set("source_id", `eq.${sourceId}`)'), "host
 assert(functionText.includes('comparison: "canonical"'), "hosted response must identify canonical comparison authority");
 assert(functionText.includes('evidence: "canonical"'), "hosted response must identify canonical evidence authority");
 assert(!functionText.includes("service_role"), "hosted compiler must not introduce service-role authority");
-assert(!functionText.includes("GEMINI_API_KEY"), "hosted API boundary must not depend on Gemini credentials in 3F/3G");
 
 const referenceStart = functionText.indexOf("async function compileReferenceWorkflow");
 const referenceEnd = functionText.indexOf("async function discoverYouTube", referenceStart);
 const referenceBlock = functionText.slice(referenceStart, referenceEnd);
 assert(referenceStart >= 0 && referenceEnd > referenceStart, "reference compiler function block missing");
-assert(!referenceBlock.includes("YOUTUBE_DATA_API_KEY"), "reference compiler operation must remain provider-credential independent");
+assert(!referenceBlock.includes("YOUTUBE_DATA_API_KEY"), "reference compiler operation must remain independent from YouTube credentials");
+assert(!referenceBlock.includes("GEMINI_API_KEY"), "reference compiler operation must remain independent from Gemini credentials");
 assert(!referenceBlock.includes("discoverYouTubeCandidatesWithKey"), "reference compiler operation must remain independent from YouTube discovery");
+assert(!referenceBlock.includes("analyzeYouTubeVideoWithKey"), "reference compiler operation must remain independent from Deep Analysis compute");
 
 const appText = fs.readFileSync("desktop/app.js", "utf8");
 assert(appText.includes("async function compileHostedReferenceWorkflow"), "desktop hosted compiler client missing");
