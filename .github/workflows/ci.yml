@@ -116,12 +116,45 @@ jobs:
         run: npm run test:desktop-reference-compiler-windows
       - name: Run native WebView2 Hosted YouTube Discovery runtime smoke
         run: npm run test:desktop-youtube-discovery-windows
-      - name: Run native WebView2 Hosted Deep Analysis runtime smoke
-        run: npm run test:desktop-deep-analysis-windows
-      - name: Run native WebView2 Product Truth Production Guidance runtime smoke
-        run: npm run test:desktop-production-guidance-windows
       - name: Run native WebView2 Guarded Background Batch runtime smoke
         run: npm run test:desktop-background-batch-windows
+      - name: Run native WebView2 Hosted Deep Analysis runtime smoke
+        shell: pwsh
+        run: |
+          $maxAttempts = 3
+          for ($attempt = 1; $attempt -le $maxAttempts; $attempt++) {
+            $lines = @()
+            & npm run test:desktop-deep-analysis-windows 2>&1 | Tee-Object -Variable lines | Write-Host
+            $exitCode = $LASTEXITCODE
+            if ($exitCode -eq 0) { break }
+            $text = ($lines | Out-String)
+            $retryable = $text -match '요청 한도에 도달했습니다|재시도 힌트|\b429\b'
+            if (-not $retryable -or $attempt -eq $maxAttempts) { exit $exitCode }
+            $waitSeconds = 15
+            if ($text -match '([0-9]+)초 재시도 힌트') { $waitSeconds = [int]$Matches[1] + 3 }
+            $waitSeconds = [Math]::Min([Math]::Max($waitSeconds, 10), 65)
+            Write-Host "MASTERV_CI_PROVIDER_RATE_LIMIT_RETRY smoke=3H attempt=$attempt wait_seconds=$waitSeconds"
+            Start-Sleep -Seconds $waitSeconds
+          }
+      - name: Run native WebView2 Product Truth Production Guidance runtime smoke
+        shell: pwsh
+        run: |
+          Start-Sleep -Seconds 10
+          $maxAttempts = 3
+          for ($attempt = 1; $attempt -le $maxAttempts; $attempt++) {
+            $lines = @()
+            & npm run test:desktop-production-guidance-windows 2>&1 | Tee-Object -Variable lines | Write-Host
+            $exitCode = $LASTEXITCODE
+            if ($exitCode -eq 0) { break }
+            $text = ($lines | Out-String)
+            $retryable = $text -match '요청 한도에 도달했습니다|재시도 힌트|\b429\b|3I prerequisite Deep Analysis failed:\s*at main'
+            if (-not $retryable -or $attempt -eq $maxAttempts) { exit $exitCode }
+            $waitSeconds = 15
+            if ($text -match '([0-9]+)초 재시도 힌트') { $waitSeconds = [int]$Matches[1] + 3 }
+            $waitSeconds = [Math]::Min([Math]::Max($waitSeconds, 10), 65)
+            Write-Host "MASTERV_CI_PROVIDER_RATE_LIMIT_RETRY smoke=3I attempt=$attempt wait_seconds=$waitSeconds"
+            Start-Sleep -Seconds $waitSeconds
+          }
       - name: Generate platform icons for installer smoke
         run: npm run tauri -- icon src-tauri/icons/icon.png
       - name: Build unsigned NSIS installer smoke
