@@ -1,7 +1,12 @@
+import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 
 function assert(condition, message) { if (!condition) throw new Error(message); }
 const read = (p) => fs.readFileSync(p, "utf8");
+function assertNodeSyntax(path) {
+  const result = spawnSync(process.execPath, ["--check", path], { encoding: "utf8" });
+  assert(result.status === 0, `${path} must parse under the pinned Node runtime: ${result.stderr || result.stdout}`);
+}
 
 const pkg = JSON.parse(read("package.json"));
 const ci = read(".github/workflows/ci.yml");
@@ -10,6 +15,9 @@ const prepare = read("scripts/desktop-installed-prepare-windows.mjs");
 const lifecycle = read("scripts/desktop-installed-session-uninstall-windows.mjs");
 const defaultTauri = JSON.parse(read("src-tauri/tauri.conf.json"));
 const smokeTauri = JSON.parse(read("src-tauri/tauri.windows-smoke.conf.json"));
+
+assertNodeSyntax("scripts/desktop-installed-prepare-windows.mjs");
+assertNodeSyntax("scripts/desktop-installed-session-uninstall-windows.mjs");
 
 assert(pkg.scripts?.["test:desktop-installed-quality-contract"] === "node scripts/desktop-installed-quality-contract.mjs", "3L static contract package wiring missing");
 assert(pkg.scripts?.["test:desktop-installed-prepare-windows"] === "node scripts/desktop-installed-prepare-windows.mjs", "3L installer preparation package wiring missing");
@@ -64,6 +72,7 @@ console.log(JSON.stringify({
   restart_auth_persistence_required: false,
   uninstall_required: true,
   provider_health_isolated: true,
+  syntax_guarded: true,
   quality_target: "QUALITY_VALIDATED",
   activation: false
 }));
