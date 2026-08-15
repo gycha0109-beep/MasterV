@@ -1,7 +1,6 @@
 (() => {
   const config = window.MASTERV_DESKTOP_CONFIG || {};
   const originalFetch = window.fetch.bind(window);
-  const batchBoundaryPath = "/functions/v1/masterv-background-batch-boundary";
   const panel = document.getElementById("background-batch-panel");
   const cap = document.getElementById("cap-background-batch");
   const form = document.getElementById("background-batch-form");
@@ -247,15 +246,10 @@
     if (tokenChanged) {
       accessToken = token;
       panel.hidden = false;
+      setStatus("CHECK REQUIRED");
+      updateControls();
     }
-    const response = await originalFetch(input, init);
-    if (tokenChanged && !url.includes(batchBoundaryPath)) {
-      queueMicrotask(async () => {
-        await refreshCapability();
-        await refreshJobs();
-      });
-    }
-    return response;
+    return await originalFetch(input, init);
   };
 
   form.addEventListener("submit", (event) => {
@@ -263,7 +257,12 @@
     void submitJob();
   });
   urlInput.addEventListener("input", updateControls);
-  refresh.addEventListener("click", () => void refreshJobs());
+  refresh.addEventListener("click", () => {
+    void (async () => {
+      await refreshCapability();
+      await refreshJobs();
+    })();
+  });
   list.addEventListener("click", (event) => {
     const button = event.target.closest("[data-batch-check-request-id]");
     if (button) void checkJob(button.dataset.batchCheckRequestId);
