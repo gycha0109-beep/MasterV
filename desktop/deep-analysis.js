@@ -143,6 +143,18 @@
     return typeof input === "string" ? input : input instanceof URL ? input.toString() : input instanceof Request ? input.url : "";
   }
 
+  function requestMethod(input, init) {
+    return String(init?.method || (input instanceof Request ? input.method : "GET")).toUpperCase();
+  }
+
+  function applyCapabilityBody(body) {
+    if (body?.contract_version !== config.api_contract_version || body?.capabilities?.deep_analysis_route !== true) return false;
+    setCapability(body.capabilities.deep_analysis === true);
+    const productionRouteReady = body.capabilities?.product_truth_route === true && body.capabilities?.production_guidance_route === true;
+    setProductionCapability(productionRouteReady && body.capabilities.product_truth === true && body.capabilities.production_guidance === true);
+    return true;
+  }
+
   async function refreshCapability() {
     if (!accessToken || capabilityProbeInFlight || !config.api_base_url || !config.supabase_publishable_key) return;
     capabilityProbeInFlight = true;
@@ -157,12 +169,7 @@
       });
       if (!response.ok) throw new Error(`Hosted Deep Analysis capability probe failed (${response.status})`);
       const body = await response.json();
-      if (body.contract_version !== config.api_contract_version || body.capabilities?.deep_analysis_route !== true) {
-        throw new Error("Hosted Deep Analysis capability contract mismatch");
-      }
-      setCapability(body.capabilities.deep_analysis === true);
-      const productionRouteReady = body.capabilities?.product_truth_route === true && body.capabilities?.production_guidance_route === true;
-      setProductionCapability(productionRouteReady && body.capabilities.product_truth === true && body.capabilities.production_guidance === true);
+      if (!applyCapabilityBody(body)) throw new Error("Hosted Deep Analysis capability contract mismatch");
     } catch {
       setCapability(false);
       setProductionCapability(false);
@@ -173,15 +180,25 @@
 
   window.fetch = async function masterVDesktopFetch(input, init) {
     const url = requestUrl(input);
-    if (url.includes(boundaryPath) || url.endsWith("/masterv-api-boundary")) {
-      const token = authorizationFrom(input, init);
-      if (token && token !== accessToken) {
-        accessToken = token;
-        panel.hidden = false;
+    const boundaryRequest = url.includes(boundaryPath) || url.endsWith("/masterv-api-boundary");
+    const token = boundaryRequest ? authorizationFrom(input, init) : "";
+    const tokenChanged = Boolean(token && token !== accessToken);
+    if (tokenChanged) {
+      accessToken = token;
+      panel.hidden = false;
+    }
+
+    const response = await originalFetch(input, init);
+    if (boundaryRequest && tokenChanged) {
+      if (requestMethod(input, init) === "GET" && response.ok) {
+        response.clone().json().then((body) => {
+          if (!applyCapabilityBody(body)) queueMicrotask(() => refreshCapability());
+        }).catch(() => queueMicrotask(() => refreshCapability()));
+      } else {
         queueMicrotask(() => refreshCapability());
       }
     }
-    return originalFetch(input, init);
+    return response;
   };
 
   function fact(container, label, value) {
