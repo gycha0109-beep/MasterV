@@ -1,0 +1,32 @@
+name: Dependency Lock Bootstrap
+
+on:
+  pull_request:
+    paths:
+      - package.json
+      - src-tauri/Cargo.toml
+      - .github/workflows/dependency-lock-bootstrap.yml
+
+jobs:
+  generate-lockfiles:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24.19.0
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.97.1
+      - name: Generate npm lockfile
+        run: npm install --package-lock-only --ignore-scripts
+      - name: Generate Cargo lockfile
+        run: cargo generate-lockfile --manifest-path src-tauri/Cargo.toml
+      - name: Upload generated lockfiles
+        uses: actions/upload-artifact@v4
+        with:
+          name: masterv-dependency-lock-bootstrap
+          path: |
+            package-lock.json
+            src-tauri/Cargo.lock
+          if-no-files-found: error
