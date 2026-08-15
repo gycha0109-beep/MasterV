@@ -84,11 +84,13 @@ for (const id of ["cap-background-batch", "background-batch-panel", "background-
 assert(htmlText.includes('src="./background-batch.js"'), "Desktop Background Batch script wiring missing");
 assert(htmlText.includes("Background Batch</span><strong>current / blocked"), "3J roadmap blocked marker missing");
 
-const buildText = fs.readFileSync("scripts/build-desktop-static.mjs", "utf8");
-assert(buildText.includes('"background-batch.js"'), "Desktop static build must copy Background Batch script");
+const copyText = fs.readFileSync("scripts/copy-desktop-background-batch.mjs", "utf8");
+assert(copyText.includes('"desktop", "background-batch.js"'), "Background Batch source asset copy missing");
+assert(copyText.includes('"desktop-dist", "background-batch.js"'), "Background Batch output asset copy missing");
 
 const packageJson = JSON.parse(fs.readFileSync("package.json", "utf8"));
 assert(packageJson.scripts?.["test:hosted-background-batch"] === "node scripts/hosted-background-batch-contract.mjs", "hosted Background Batch contract script missing");
+assert(packageJson.scripts?.["desktop:prepare"]?.includes("copy-desktop-background-batch.mjs"), "Desktop prepare must copy Background Batch asset");
 
 const ciText = fs.readFileSync(".github/workflows/ci.yml", "utf8");
 assert((ciText.match(/npm run test:hosted-background-batch/g) || []).length >= 2, "Background Batch static contract must run in validate and desktop-shell");
