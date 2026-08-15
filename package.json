@@ -40,6 +40,7 @@
     "test:hosted-deep-analysis": "node scripts/hosted-deep-analysis-contract.mjs",
     "test:hosted-production-guidance": "node scripts/hosted-production-guidance-contract.mjs",
     "test:hosted-background-batch": "node scripts/hosted-background-batch-contract.mjs",
+    "test:desktop-build-determinism": "node scripts/desktop-build-determinism-contract.mjs",
     "test:desktop-windows-runtime": "node scripts/desktop-windows-runtime-smoke.mjs",
     "test:desktop-reference-detail-compare-windows": "node scripts/desktop-reference-detail-compare-windows-smoke.mjs",
     "test:desktop-reference-compiler-windows": "node scripts/desktop-reference-compiler-windows-smoke.mjs",
