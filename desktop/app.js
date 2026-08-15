@@ -9,6 +9,16 @@
     "first_saved_at",
     "updated_at"
   ];
+  const REFERENCE_LIBRARY_DETAIL_PROJECTION = [
+    "source_id",
+    "canonical_url",
+    "label",
+    "analysis_provenance",
+    "revision",
+    "first_saved_at",
+    "updated_at",
+    "analysis"
+  ];
 
   const authStatus = document.getElementById("auth-status");
   const apiStatus = document.getElementById("api-status");
@@ -26,13 +36,27 @@
   const libraryStatus = document.getElementById("library-status");
   const libraryWorkspace = document.getElementById("library-workspace");
   const libraryCount = document.getElementById("library-count");
+  const librarySelectedCount = document.getElementById("library-selected-count");
   const libraryList = document.getElementById("reference-library-list");
   const libraryRefresh = document.getElementById("library-refresh");
+  const libraryCompare = document.getElementById("library-compare");
+  const detailPanel = document.getElementById("reference-detail-panel");
+  const detailStatus = document.getElementById("reference-detail-status");
+  const detailContent = document.getElementById("reference-detail-content");
+  const detailClose = document.getElementById("reference-detail-close");
+  const comparePanel = document.getElementById("reference-compare-panel");
+  const compareStatus = document.getElementById("reference-compare-status");
+  const compareCount = document.getElementById("reference-compare-count");
+  const compareContent = document.getElementById("reference-compare-content");
+  const compareClear = document.getElementById("reference-compare-clear");
 
   let session = null;
   let workspaceId = null;
+  let detailSourceId = null;
+  const selectedSourceIds = new Set();
 
   libraryPanel.dataset.projection = REFERENCE_LIBRARY_LIST_PROJECTION.join(",");
+  detailPanel.dataset.projection = REFERENCE_LIBRARY_DETAIL_PROJECTION.join(",");
 
   function configured() {
     return Boolean(config.supabase_url && config.supabase_publishable_key && config.api_base_url);
@@ -58,12 +82,43 @@
     libraryStatus.classList.toggle("error", tone === "error");
   }
 
+  function setDetailStatus(text, tone = "") {
+    detailStatus.textContent = text;
+    detailStatus.classList.toggle("ok", tone === "ok");
+    detailStatus.classList.toggle("error", tone === "error");
+  }
+
+  function setCompareStatus(text, tone = "") {
+    compareStatus.textContent = text;
+    compareStatus.classList.toggle("ok", tone === "ok");
+    compareStatus.classList.toggle("error", tone === "error");
+  }
+
+  function clearReferenceDetailState() {
+    detailSourceId = null;
+    detailPanel.hidden = true;
+    detailContent.replaceChildren();
+    setDetailStatus("IDLE");
+  }
+
+  function clearReferenceCompareState({ clearSelection = true } = {}) {
+    comparePanel.hidden = true;
+    compareContent.replaceChildren();
+    compareCount.textContent = "0";
+    setCompareStatus("IDLE");
+    if (clearSelection) selectedSourceIds.clear();
+    updateCompareControls();
+  }
+
   function clearReferenceLibraryState() {
     workspaceId = null;
     libraryPanel.hidden = true;
     libraryWorkspace.textContent = "—";
     libraryCount.textContent = "0";
     libraryList.replaceChildren();
+    selectedSourceIds.clear();
+    clearReferenceDetailState();
+    clearReferenceCompareState({ clearSelection: false });
     setLibraryStatus("SIGNED OUT");
   }
 
@@ -97,10 +152,29 @@
     }).format(date);
   }
 
+  function formatSeconds(value) {
+    return typeof value === "number" && Number.isFinite(value) ? `${value}s` : "—";
+  }
+
+  function updateCompareControls() {
+    librarySelectedCount.textContent = String(selectedSourceIds.size);
+    libraryCompare.disabled = selectedSourceIds.size < 2;
+  }
+
+  function pruneSelection(records) {
+    const available = new Set(records.map((record) => record.source_id));
+    for (const sourceId of selectedSourceIds) {
+      if (!available.has(sourceId)) selectedSourceIds.delete(sourceId);
+    }
+    if (detailSourceId && !available.has(detailSourceId)) clearReferenceDetailState();
+    updateCompareControls();
+  }
+
   function renderReferenceLibrary(records) {
     libraryList.replaceChildren();
     libraryCount.textContent = String(records.length);
     setLibraryStatus("READY", "ok");
+    pruneSelection(records);
 
     if (records.length === 0) {
       const empty = document.createElement("p");
@@ -114,6 +188,17 @@
       const item = document.createElement("article");
       item.className = "library-item";
       item.dataset.sourceId = record.source_id;
+
+      const selector = document.createElement("label");
+      selector.className = "compare-selector";
+      selector.title = "비교 대상으로 선택";
+      const checkbox = document.createElement("input");
+      checkbox.type = "checkbox";
+      checkbox.checked = selectedSourceIds.has(record.source_id);
+      checkbox.dataset.compareSourceId = record.source_id;
+      const selectorText = document.createElement("span");
+      selectorText.textContent = "비교";
+      selector.append(checkbox, selectorText);
 
       const content = document.createElement("div");
       content.className = "library-item-main";
@@ -138,13 +223,23 @@
 
       content.append(title, url, meta);
 
+      const actions = document.createElement("div");
+      actions.className = "library-item-actions";
+
+      const detail = document.createElement("button");
+      detail.type = "button";
+      detail.className = "ghost";
+      detail.dataset.detailSourceId = record.source_id;
+      detail.textContent = "상세";
+
       const remove = document.createElement("button");
       remove.type = "button";
       remove.className = "danger ghost";
       remove.dataset.deleteSourceId = record.source_id;
       remove.textContent = "삭제";
 
-      item.append(content, remove);
+      actions.append(detail, remove);
+      item.append(selector, content, actions);
       libraryList.append(item);
     }
   }
@@ -231,6 +326,24 @@
     return body;
   }
 
+  async function fetchReferenceDetail(activeSession, activeWorkspaceId, sourceId) {
+    const params = new URLSearchParams();
+    params.set("select", REFERENCE_LIBRARY_DETAIL_PROJECTION.join(","));
+    params.set("workspace_id", `eq.${activeWorkspaceId}`);
+    params.set("source_id", `eq.${sourceId}`);
+    params.set("limit", "1");
+    const response = await fetch(`${config.supabase_url}/rest/v1/reference_library_entries?${params.toString()}`, {
+      method: "GET",
+      headers: authHeaders(activeSession, { Accept: "application/json" })
+    });
+    if (!response.ok) throw new Error(`Reference detail ${await parseError(response)}`);
+    const body = await response.json();
+    if (!Array.isArray(body) || body.length !== 1 || !body[0]?.analysis) {
+      throw new Error("Reference detail response is missing persisted analysis");
+    }
+    return body[0];
+  }
+
   async function loadReferenceLibrary() {
     if (!session || !workspaceId) throw new Error("Reference Library session is not ready");
     setLibraryLoading();
@@ -245,6 +358,135 @@
     }
   }
 
+  function appendFact(container, label, value) {
+    const item = document.createElement("div");
+    const term = document.createElement("span");
+    term.textContent = label;
+    const data = document.createElement("strong");
+    data.textContent = value ?? "—";
+    item.append(term, data);
+    container.append(item);
+  }
+
+  function renderReferenceDetail(record) {
+    const analysis = record.analysis || {};
+    detailSourceId = record.source_id;
+    detailPanel.hidden = false;
+    detailContent.replaceChildren();
+
+    const heading = document.createElement("div");
+    heading.className = "detail-heading-block";
+    const title = document.createElement("h3");
+    title.textContent = record.label;
+    const url = document.createElement("p");
+    url.className = "library-url";
+    url.textContent = record.canonical_url;
+    const summary = document.createElement("p");
+    summary.className = "detail-summary";
+    summary.textContent = analysis.summary || "요약 정보가 없습니다.";
+    heading.append(title, url, summary);
+
+    const facts = document.createElement("div");
+    facts.className = "detail-facts";
+    appendFact(facts, "Structure", analysis.structure_label || "—");
+    appendFact(facts, "Duration", formatSeconds(analysis.duration_seconds));
+    appendFact(facts, "Hook", analysis.hook?.type || "—");
+    appendFact(facts, "Product first seen", formatSeconds(analysis.product_presentation?.first_seen_seconds));
+    appendFact(facts, "CTA", analysis.persuasion?.cta || "—");
+    appendFact(facts, "Observation segments", String(Array.isArray(analysis.observation_segments) ? analysis.observation_segments.length : 0));
+    appendFact(facts, "Provenance", record.analysis_provenance || "—");
+    appendFact(facts, "Revision", String(record.revision ?? "—"));
+
+    detailContent.append(heading, facts);
+    setDetailStatus("READY", "ok");
+  }
+
+  async function loadReferenceDetail(sourceId) {
+    if (!session || !workspaceId) throw new Error("Reference Library session is not ready");
+    detailPanel.hidden = false;
+    detailContent.replaceChildren();
+    setDetailStatus("LOADING");
+    try {
+      const record = await fetchReferenceDetail(session, workspaceId, sourceId);
+      renderReferenceDetail(record);
+      return record;
+    } catch (error) {
+      setDetailStatus("ERROR", "error");
+      const errorText = document.createElement("p");
+      errorText.className = "library-state error-text";
+      errorText.textContent = error instanceof Error ? error.message : String(error);
+      detailContent.replaceChildren(errorText);
+      throw error;
+    }
+  }
+
+  function renderReferenceComparison(records) {
+    comparePanel.hidden = false;
+    compareContent.replaceChildren();
+    compareCount.textContent = String(records.length);
+
+    const intro = document.createElement("p");
+    intro.className = "muted small";
+    intro.textContent = "선택된 persisted analysis의 핵심 사실을 나란히 표시합니다. aggregate comparison compiler는 이 Desktop stage에서 별도 복제하지 않습니다.";
+    compareContent.append(intro);
+
+    const grid = document.createElement("div");
+    grid.className = "compare-grid";
+    for (const record of records) {
+      const analysis = record.analysis || {};
+      const card = document.createElement("article");
+      card.className = "compare-card";
+      card.dataset.compareResultSourceId = record.source_id;
+
+      const title = document.createElement("h3");
+      title.textContent = record.label;
+      const summary = document.createElement("p");
+      summary.className = "compare-summary";
+      summary.textContent = analysis.summary || "요약 정보가 없습니다.";
+
+      const facts = document.createElement("div");
+      facts.className = "compare-facts";
+      appendFact(facts, "Structure", analysis.structure_label || "—");
+      appendFact(facts, "Duration", formatSeconds(analysis.duration_seconds));
+      appendFact(facts, "Hook", analysis.hook?.type || "—");
+      appendFact(facts, "Product first", formatSeconds(analysis.product_presentation?.first_seen_seconds));
+      appendFact(facts, "CTA", analysis.persuasion?.cta || "—");
+      appendFact(facts, "Segments", String(Array.isArray(analysis.observation_segments) ? analysis.observation_segments.length : 0));
+
+      card.append(title, summary, facts);
+      grid.append(card);
+    }
+
+    compareContent.append(grid);
+    setCompareStatus("READY", "ok");
+  }
+
+  async function loadReferenceComparison() {
+    if (!session || !workspaceId) throw new Error("Reference Library session is not ready");
+    const sourceIds = [...selectedSourceIds];
+    if (sourceIds.length < 2) throw new Error("비교하려면 레퍼런스를 2개 이상 선택해야 합니다.");
+
+    comparePanel.hidden = false;
+    compareContent.replaceChildren();
+    compareCount.textContent = String(sourceIds.length);
+    setCompareStatus("LOADING");
+
+    try {
+      const records = await Promise.all(
+        sourceIds.map((sourceId) => fetchReferenceDetail(session, workspaceId, sourceId))
+      );
+      renderReferenceComparison(records);
+      return records;
+    } catch (error) {
+      setCompareStatus("ERROR", "error");
+      const errorText = document.createElement("p");
+      errorText.className = "library-state error-text";
+      errorText.textContent = error instanceof Error ? error.message : String(error);
+      compareContent.replaceChildren(errorText);
+      throw error;
+    }
+  }
+
   async function deleteReferenceLibraryEntry(sourceId) {
     if (!session || !workspaceId) throw new Error("Reference Library session is not ready");
     const params = new URLSearchParams();
@@ -255,10 +497,13 @@
       headers: authHeaders(session, { Prefer: "return=minimal" })
     });
     if (!response.ok) throw new Error(`Reference Library delete ${await parseError(response)}`);
+    selectedSourceIds.delete(sourceId);
+    if (detailSourceId === sourceId) clearReferenceDetailState();
     const records = await loadReferenceLibrary();
     if (records.some((record) => record.source_id === sourceId)) {
       throw new Error("Reference Library delete did not converge with persisted state");
     }
+    if (selectedSourceIds.size < 2) clearReferenceCompareState({ clearSelection: false });
   }
 
   async function connect(email, password) {
@@ -295,7 +540,7 @@
     clearReferenceLibraryState();
     logoutButton.hidden = true;
     passwordInput.value = "";
-    setMessage("세션과 보관함 화면을 이 프로세스 메모리에서 제거했습니다.", true);
+    setMessage("세션과 Reference Library 상세/비교 화면을 이 프로세스 메모리에서 제거했습니다.", true);
   }
 
   form.addEventListener("submit", async (event) => {
@@ -339,12 +584,63 @@
     }
   });
 
+  libraryCompare.addEventListener("click", async () => {
+    libraryCompare.disabled = true;
+    try {
+      await loadReferenceComparison();
+      comparePanel.scrollIntoView({ block: "start" });
+      setMessage("선택한 레퍼런스의 persisted analysis를 비교 화면에 불러왔습니다.", true);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : String(error));
+    } finally {
+      updateCompareControls();
+    }
+  });
+
+  compareClear.addEventListener("click", () => {
+    clearReferenceCompareState();
+    for (const checkbox of libraryList.querySelectorAll("[data-compare-source-id]")) {
+      if (checkbox instanceof HTMLInputElement) checkbox.checked = false;
+    }
+    setMessage("비교 선택을 초기화했습니다.", true);
+  });
+
+  detailClose.addEventListener("click", clearReferenceDetailState);
+
+  libraryList.addEventListener("change", (event) => {
+    const target = event.target;
+    if (!(target instanceof HTMLInputElement) || !target.dataset.compareSourceId) return;
+    const sourceId = target.dataset.compareSourceId;
+    if (target.checked) selectedSourceIds.add(sourceId);
+    else selectedSourceIds.delete(sourceId);
+    if (selectedSourceIds.size < 2) clearReferenceCompareState({ clearSelection: false });
+    updateCompareControls();
+  });
+
   libraryList.addEventListener("click", async (event) => {
-    const target = event.target instanceof Element ? event.target.closest("[data-delete-source-id]") : null;
-    if (!(target instanceof HTMLButtonElement)) return;
-    const sourceId = target.dataset.deleteSourceId;
+    const element = event.target instanceof Element ? event.target : null;
+    const detailTarget = element?.closest("[data-detail-source-id]");
+    if (detailTarget instanceof HTMLButtonElement) {
+      const sourceId = detailTarget.dataset.detailSourceId;
+      if (!sourceId) return;
+      detailTarget.disabled = true;
+      try {
+        await loadReferenceDetail(sourceId);
+        detailPanel.scrollIntoView({ block: "start" });
+        setMessage("선택한 레퍼런스의 persisted analysis를 상세 화면에 불러왔습니다.", true);
+      } catch (error) {
+        setMessage(error instanceof Error ? error.message : String(error));
+      } finally {
+        detailTarget.disabled = false;
+      }
+      return;
+    }
+
+    const deleteTarget = element?.closest("[data-delete-source-id]");
+    if (!(deleteTarget instanceof HTMLButtonElement)) return;
+    const sourceId = deleteTarget.dataset.deleteSourceId;
     if (!sourceId) return;
-    target.disabled = true;
+    deleteTarget.disabled = true;
     setLibraryStatus("DELETING");
     try {
       await deleteReferenceLibraryEntry(sourceId);

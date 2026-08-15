@@ -13,9 +13,10 @@ button { cursor: pointer; }
 
 .shell { width: min(1180px, calc(100% - 40px)); margin: 0 auto; padding: 32px 0 48px; }
 .topbar { display: flex; justify-content: space-between; align-items: center; gap: 24px; margin-bottom: 24px; }
-h1, h2, p { margin-top: 0; }
+h1, h2, h3, p { margin-top: 0; }
 h1 { margin-bottom: 0; font-size: clamp(28px, 4vw, 42px); }
 h2 { margin-bottom: 10px; line-height: 1.25; }
+h3 { margin-bottom: 8px; }
 .eyebrow { margin-bottom: 8px; font-size: 12px; font-weight: 800; letter-spacing: .14em; color: #9fb7ff; }
 .muted { color: #9da9bd; line-height: 1.6; }
 .small { font-size: 13px; }
@@ -27,14 +28,14 @@ h2 { margin-bottom: 10px; line-height: 1.25; }
 .status-row, .roadmap-row { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 12px 0; border-bottom: 1px solid #232c3d; }
 .status-row:last-child, .roadmap-row:last-child { border-bottom: 0; }
 .status-row strong, .roadmap-row strong { color: #f3c873; font-size: 12px; letter-spacing: .04em; text-transform: uppercase; }
-.status-row strong.ok, #library-status.ok { color: #7de3ae; }
-#library-status.error { color: #ff9e9e; }
+.status-row strong.ok, #library-status.ok, #reference-detail-status.ok, #reference-compare-status.ok { color: #7de3ae; }
+#library-status.error, #reference-detail-status.error, #reference-compare-status.error { color: #ff9e9e; }
 form { display: grid; gap: 14px; }
 label { display: grid; gap: 7px; font-size: 13px; color: #c9d2e2; }
 input { width: 100%; border: 1px solid #33405a; border-radius: 12px; padding: 12px 14px; color: #f7f9fc; background: #0d1320; outline: none; }
 input:focus { border-color: #718ee5; box-shadow: 0 0 0 3px rgba(113,142,229,.13); }
 button { border: 0; border-radius: 12px; padding: 12px 16px; color: #07101b; background: #9fb7ff; font-weight: 800; }
-button:disabled { opacity: .55; cursor: wait; }
+button:disabled { opacity: .55; cursor: not-allowed; }
 button.secondary { margin-top: 12px; width: 100%; color: #d6ddea; background: #222c3d; }
 button.compact { margin-top: 0; width: auto; min-width: 108px; }
 button.ghost { width: auto; min-width: 72px; padding: 10px 14px; background: #222c3d; color: #e2e8f3; }
@@ -46,24 +47,45 @@ button.danger { border: 1px solid #5b3138; color: #ffc0c0; background: #2b191d; 
 .capabilities div:last-child { border-bottom: 0; }
 .capabilities dt { color: #b9c4d6; }
 .capabilities dd { margin: 0; font-weight: 800; color: #f3c873; }
-.library { margin-bottom: 20px; }
-.library-heading { display: flex; justify-content: space-between; align-items: flex-start; gap: 20px; }
+
+.library, .reference-detail, .reference-compare { margin-bottom: 20px; }
+.library-heading, .surface-heading { display: flex; justify-content: space-between; align-items: flex-start; gap: 20px; }
+.library-heading-actions { display: flex; gap: 10px; align-items: center; }
 .library-summary { display: flex; flex-wrap: wrap; gap: 10px 18px; margin: 18px 0; padding: 12px 14px; border: 1px solid #29354b; border-radius: 14px; background: #0d1320; color: #aebbd0; font-size: 12px; }
 .library-summary strong { color: #dfe7f7; font-weight: 800; overflow-wrap: anywhere; }
 .library-list { display: grid; gap: 12px; }
 .library-state { margin: 0; padding: 22px 18px; border: 1px dashed #35415a; border-radius: 14px; color: #a9b5c8; text-align: center; }
 .error-text { color: #ffb4b4; }
-.library-item { display: flex; justify-content: space-between; align-items: center; gap: 18px; padding: 16px; border: 1px solid #29354b; border-radius: 16px; background: #0d1320; }
+.library-item { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 16px; padding: 16px; border: 1px solid #29354b; border-radius: 16px; background: #0d1320; }
+.compare-selector { display: flex; align-items: center; gap: 7px; color: #9da9bd; cursor: pointer; }
+.compare-selector input { width: 18px; height: 18px; padding: 0; accent-color: currentColor; }
+.compare-selector span { font-size: 11px; text-transform: uppercase; letter-spacing: .05em; }
 .library-item-main { min-width: 0; display: grid; gap: 7px; }
+.library-item-actions { display: flex; gap: 8px; align-items: center; }
 .library-label { color: #f7f9fc; font-size: 15px; }
 .library-url { color: #9fb7ff; font-size: 12px; overflow-wrap: anywhere; }
 .library-meta { display: flex; flex-wrap: wrap; gap: 7px 12px; color: #8f9db2; font-size: 11px; text-transform: uppercase; letter-spacing: .03em; }
+
+.detail-heading-block { margin-bottom: 18px; }
+.detail-summary, .compare-summary { color: #d7deeb; line-height: 1.65; margin-bottom: 0; }
+.detail-facts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.detail-facts > div, .compare-facts > div { display: grid; gap: 5px; padding: 12px 14px; border: 1px solid #29354b; border-radius: 12px; background: #0d1320; }
+.detail-facts span, .compare-facts span { color: #8f9db2; font-size: 11px; text-transform: uppercase; letter-spacing: .04em; }
+.detail-facts strong, .compare-facts strong { color: #edf2fb; font-size: 13px; overflow-wrap: anywhere; }
+
+.compare-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; margin-top: 16px; }
+.compare-card { padding: 16px; border: 1px solid #2d3950; border-radius: 16px; background: #0d1320; }
+.compare-card h3 { color: #f7f9fc; }
+.compare-facts { display: grid; gap: 8px; margin-top: 14px; }
 .roadmap { display: grid; }
 
 @media (max-width: 760px) {
   .shell { width: min(100% - 24px, 1180px); padding-top: 20px; }
-  .hero, .grid { grid-template-columns: 1fr; }
-  .topbar, .library-heading, .library-item { align-items: flex-start; }
-  .library-heading, .library-item { flex-direction: column; }
+  .hero, .grid, .compare-grid, .detail-facts { grid-template-columns: 1fr; }
+  .topbar, .library-heading, .surface-heading, .library-item { align-items: flex-start; }
+  .library-heading, .surface-heading { flex-direction: column; }
+  .library-heading-actions { width: 100%; flex-direction: column; }
+  .library-item { grid-template-columns: 1fr; }
+  .library-item-actions { width: 100%; }
   button.compact, button.ghost { width: 100%; }
 }

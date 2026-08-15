@@ -40,6 +40,7 @@ jobs:
       - run: npm run test:runtime-api
       - run: npm run test:desktop-shell
       - run: npm run test:desktop-reference-library
+      - run: npm run test:desktop-reference-detail-compare
       - run: npm run test:reference-library-browser-script
       - run: npm run test:search-ux-browser-script
       - run: npm run build
@@ -67,6 +68,7 @@ jobs:
       - run: npm install
       - run: npm run test:desktop-shell
       - run: npm run test:desktop-reference-library
+      - run: npm run test:desktop-reference-detail-compare
       - run: npm run desktop:build
 
   desktop-windows-runtime:
@@ -98,6 +100,8 @@ jobs:
         run: npm run desktop:build
       - name: Run native WebView2 Reference Library runtime smoke
         run: npm run test:desktop-windows-runtime
+      - name: Run native WebView2 Reference Detail Compare runtime smoke
+        run: npm run test:desktop-reference-detail-compare-windows
       - name: Generate platform icons for installer smoke
         run: npm run tauri -- icon src-tauri/icons/icon.png
       - name: Build unsigned NSIS installer smoke
@@ -109,5 +113,6 @@ jobs:
           name: masterv-windows-desktop-smoke
           path: |
             artifacts/desktop-windows-runtime
+            artifacts/desktop-reference-detail-compare
             src-tauri/target/release/bundle/nsis/*.exe
           if-no-files-found: warn
