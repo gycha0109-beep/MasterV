@@ -18,7 +18,7 @@ on:
 
 jobs:
   calibration:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     timeout-minutes: 30
     env:
       GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
@@ -26,18 +26,18 @@ jobs:
       FIXTURE_OFFSET: ${{ inputs.fixture_offset || '0' }}
       FIXTURE_LIMIT: ${{ inputs.fixture_limit || '8' }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
         with:
-          node-version: 24
-      - run: npm install
+          node-version: 24.19.0
+      - run: npm ci
       - name: Verify secret exists
         run: test -n "$GEMINI_API_KEY"
       - name: Run staged coarse bundle calibration
         run: npm run calibrate:coarse-bundles
       - name: Upload calibration report
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: coarse-bundle-calibration-report
           path: artifacts/coarse-bundle-calibration.json
