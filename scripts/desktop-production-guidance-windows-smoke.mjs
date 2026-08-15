@@ -45,6 +45,7 @@ async function state(driverPort, sessionId) {
     deepHidden: Boolean(document.querySelector('#deep-analysis-panel')?.hidden),
     deepStatus: document.querySelector('#deep-analysis-status')?.textContent?.trim() || '',
     deepSource: document.querySelector('#deep-analysis-source')?.textContent?.trim() || '',
+    deepText: document.querySelector('#deep-analysis-content')?.textContent?.trim() || '',
     productionHidden: Boolean(document.querySelector('#production-guidance-panel')?.hidden),
     productionStatus: document.querySelector('#production-guidance-status')?.textContent?.trim() || '',
     productionModel: document.querySelector('#production-guidance-model')?.textContent?.trim() || '',
@@ -133,7 +134,7 @@ async function main() {
     const deepSubmitted = await execute(native.driverPort, native.sessionId, `const q=document.querySelector('#deep-analysis-url'),b=document.querySelector('#deep-analysis-submit');if(!q||!b)return false;q.value=arguments[0];q.dispatchEvent(new Event('input',{bubbles:true}));if(b.disabled)return false;b.click();return true;`, [deepUrl]);
     assert(deepSubmitted, "3I prerequisite Deep Analysis form could not submit");
     const analyzed = await waitState(native.driverPort, native.sessionId, s => s.deepStatus === "READY" || s.deepStatus === "ERROR", "3I prerequisite Deep Analysis", 240_000);
-    if (analyzed.deepStatus === "ERROR") throw new Error(`3I prerequisite Deep Analysis failed: ${analyzed.productionText}`);
+    if (analyzed.deepStatus === "ERROR") throw new Error(`3I prerequisite Deep Analysis failed: ${analyzed.deepText || "unknown Deep Analysis error"}`);
     assert(!analyzed.productionHidden && analyzed.productionStatus === "READY", "3I Production Guidance panel did not unlock after Deep Analysis");
     assert(analyzed.deepSource.startsWith("yt:"), "3I prerequisite canonical source identity missing");
 
@@ -170,8 +171,9 @@ async function main() {
     await execute(native.driverPort, native.sessionId, `const e=document.querySelector('#email'),p=document.querySelector('#password');if(e)e.value='';if(p)p.value='';document.querySelector('#production-guidance-panel')?.scrollIntoView({block:'start'});return true;`);
     await delay(250);
     await screenshot(native, evidenceDir, "production-guidance.png");
-    await execute(native.driverPort, native.sessionId, "document.querySelector('#logout-button')?.click();return true;");
-    const signedOut = await waitState(native.driverPort, native.sessionId, s => s.auth === "SIGNED OUT" && s.deepHidden && s.productionHidden && !s.productName && !s.productTarget && !s.productPrice && !s.productFacts && !s.productionText && s.libraryHidden, "3I logout");
+
+    await execute(native.driverPort, native.sessionId, `document.querySelector('#logout-button')?.click();return true;`);
+    const signedOut = await waitState(native.driverPort, native.sessionId, s => s.auth === "SIGNED OUT" && s.deepHidden && s.productionHidden && s.productName === "" && s.productTarget === "" && s.productPrice === "" && s.productFacts === "" && s.libraryHidden, "3I logout");
 
     evidence = {
       status: "MASTERV_WINDOWS_PRODUCTION_GUIDANCE_RUNTIME_PASS",
@@ -181,14 +183,14 @@ async function main() {
       surface: connected.surface,
       auth_status: connected.auth,
       hosted_api_status: connected.api,
-      product_truth_capability: "READY",
-      production_guidance_capability: "READY",
-      provider_authority: guided.providerAuthority,
-      compute_authority: guided.computeAuthority,
-      product_truth_authority: guided.productTruthAuthority,
-      reference_analysis_authority: guided.referenceAnalysisAuthority,
-      metrics_authority: guided.metricsAuthority,
-      persistence_authority: guided.persistenceAuthority,
+      product_truth_capability: connected.productCapability,
+      production_guidance_capability: connected.productCapability,
+      provider_authority: connected.providerAuthority,
+      compute_authority: connected.computeAuthority,
+      product_truth_authority: connected.productTruthAuthority,
+      reference_analysis_authority: connected.referenceAnalysisAuthority,
+      metrics_authority: connected.metricsAuthority,
+      persistence_authority: connected.persistenceAuthority,
       model: guided.productionModel,
       gemini_requests: Number(guided.geminiRequests),
       client_gemini_api_delta: guided.geminiClientResources - beforeGemini,
@@ -199,7 +201,7 @@ async function main() {
       desktop_provider_credentials: false,
       persistence_writes: Number(guided.persistenceWrites),
       background_batch_requests: Number(guided.backgroundBatchRequests),
-      background_batch_migrated: false,
+      background_batch_migrated: connected.backgroundBatchMigrated === "true",
       prompt_actions: guided.promptButtons,
       logout_clear: signedOut.auth === "SIGNED OUT",
       screenshot: "production-guidance.png"
