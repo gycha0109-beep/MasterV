@@ -39,6 +39,9 @@ assert(workflow.includes("npm run test:desktop-shareable-package"), "3O workflow
 assert(workflow.includes("npm run desktop:bundle:windows-release-candidate"), "3O must reuse the 3M unsigned NSIS release-candidate bundle path");
 assert(workflow.includes("Get-AuthenticodeSignature") && workflow.includes("NotSigned"), "3O must prove the share candidate remains unsigned");
 assert(workflow.includes("npm run desktop:prepare:shareable-package-windows"), "3O workflow must materialize the handoff package");
+assert(workflow.includes("- name: Verify packaged copy Authenticode state"), "3O must verify the copied handoff installer, not only the source bundle");
+assert(workflow.includes("MASTERV_PACKAGED_AUTHENTICODE_CHECK_PASS"), "3O packaged-copy Authenticode proof marker is missing");
+assert(workflow.includes("packaged-authenticode-evidence.json"), "3O packaged-copy Authenticode evidence must be persisted");
 assert(workflow.includes("npm run test:desktop-installed-prepare-windows"), "3O must install the exact candidate it packages");
 assert(workflow.includes("npm run test:desktop-installed-session-uninstall-windows"), "3O must verify installed restart/logout/uninstall lifecycle");
 assert(workflow.includes("npm run test:desktop-shareable-package-audit-windows"), "3O must close package evidence after installed runtime verification");
@@ -46,6 +49,7 @@ assert(workflow.includes("git diff --exit-code -- package-lock.json src-tauri/Ca
 assert(workflow.includes("actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02"), "3O artifact action must remain SHA-pinned");
 assert(workflow.includes("name: masterv-windows-private-share-package"), "3O artifact must use the private-share identity");
 assert(workflow.includes("artifacts/desktop-shareable-package"), "3O package and evidence must be uploaded as CI artifact only");
+assert(/- name: Upload private share package and verification evidence[\s\S]*?if:\s*always\(\)/.test(workflow), "3O must retain package/audit evidence even when the final audit fails");
 
 for (const forbidden of [
   "SUPABASE_SERVICE_ROLE_KEY",
@@ -85,6 +89,8 @@ for (const token of [
 }
 
 for (const token of [
+  "packaged-authenticode-evidence.json",
+  "MASTERV_PACKAGED_AUTHENTICODE_CHECK_PASS",
   "MASTERV_DESKTOP_SHAREABLE_PACKAGE_PASS",
   "MASTERV_PRIVATE_SHARE_PACKAGE_VERIFIED",
   "installed_runtime_verified: true",
@@ -105,6 +111,8 @@ console.log(JSON.stringify({
   manual_exact_sha_path: true,
   pr_readiness_path: true,
   installed_runtime_verification: true,
+  packaged_copy_authenticode_verified: true,
+  forensic_evidence_retained_on_failure: true,
   signing_configured: false,
   private_distribution_ready_after_runtime_audit: true,
   public_release: false,
