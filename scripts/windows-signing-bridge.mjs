@@ -13,7 +13,10 @@ assert(targetArgument.length > 0, "Signing target path is required");
 const target = path.resolve(targetArgument);
 assert(fs.existsSync(target), `Signing target does not exist: ${target}`);
 const extension = path.extname(target).toLowerCase();
-assert(extension === ".exe" || extension === ".dll", `Unexpected signing target extension: ${extension || "none"}`);
+const header = fs.readFileSync(target).subarray(0, 2);
+const portableExecutable = header.length === 2 && header[0] === 0x4d && header[1] === 0x5a;
+assert(portableExecutable, `Signing target must be a Windows PE image: ${path.basename(target)}`);
+assert(extension === ".exe" || extension === ".dll" || extension === ".tmp", `Unexpected signing target extension: ${extension || "none"}`);
 
 const logPath = process.env.MASTERV_SIGNING_INVOCATION_LOG || "";
 assert(path.isAbsolute(logPath), "MASTERV_SIGNING_INVOCATION_LOG must be an absolute path because Tauri may invoke the signer from nested NSIS working directories");
@@ -26,6 +29,7 @@ const basename = path.basename(target);
 let targetClass = "windows-binary";
 if (/^masterv-desktop\.exe$/i.test(basename)) targetClass = "app-executable";
 else if (/^MasterV_.+_x64-setup\.exe$/i.test(basename)) targetClass = "nsis-installer";
+else if (extension === ".tmp") targetClass = "nsis-uninstaller-temp";
 else if (extension === ".dll") targetClass = "nsis-plugin-or-dll";
 else if (extension === ".exe") targetClass = "nsis-uninstaller-or-executable";
 
@@ -35,6 +39,7 @@ const record = {
   target: basename,
   target_class: targetClass,
   extension,
+  portable_executable: portableExecutable,
   signing_provider_configured: false,
   signing_identity_configured: false,
   credentials_consumed: false,

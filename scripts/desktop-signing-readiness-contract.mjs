@@ -31,6 +31,8 @@ assert(prepare.includes("provider_selected: false") && prepare.includes("live_si
 assert(bridge.includes('mode === "dry-run"'), "3N signing bridge must only accept dry-run mode at this stage");
 assert(bridge.includes("MASTERV_SIGNING_PROVIDER_REQUIRED"), "3N signing bridge must fail closed when a live provider is requested");
 assert(bridge.includes("MASTERV_WINDOWS_SIGNING_BRIDGE_DRY_RUN"), "3N signing bridge dry-run marker missing");
+assert(bridge.includes("portableExecutable") && bridge.includes("0x4d") && bridge.includes("0x5a"), "3N signing bridge must require Windows PE targets");
+assert(bridge.includes('extension === ".tmp"') && bridge.includes('targetClass = "nsis-uninstaller-temp"'), "3N signing bridge must cover the Tauri/NSIS temporary uninstaller PE path");
 assert(bridge.includes("external_signer_invoked: false") && bridge.includes("signature_written: false"), "3N signing bridge must record that no signature was written");
 for (const forbidden of ["node:child_process", "spawn(", "spawnSync(", "exec(", "execFile(", "artifact-signing-cli", "signtool", "azure", "client_secret", "certificateThumbprint"]) {
   assert(!bridge.toLowerCase().includes(forbidden.toLowerCase()), `3N bridge must not implement a live provider yet: ${forbidden}`);
@@ -84,6 +86,8 @@ for (const token of [
   "MASTERV_DESKTOP_SIGNING_INTEGRATION_PASS",
   "signing_hook_invocations",
   "observed_target_classes",
+  "nsis-uninstaller-temp",
+  "portable_executable === true",
   "installer_signature_status",
   "app_signature_status",
   "provider_selected: false",

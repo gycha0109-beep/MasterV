@@ -14,10 +14,12 @@ assert(packageJson.version === tauriConfig.version, "package.json and Tauri vers
 const logPath = process.env.MASTERV_SIGNING_INVOCATION_LOG || "";
 assert(path.isAbsolute(logPath) && fs.existsSync(logPath), "Signing invocation log is missing");
 const invocations = fs.readFileSync(logPath, "utf8").trim().split(/\r?\n/).filter(Boolean).map((line) => JSON.parse(line));
-assert(invocations.length >= 2, `Expected multiple Tauri signing hook invocations, found ${invocations.length}`);
+assert(invocations.length >= 8, `Expected the complete Tauri/NSIS signing hook set, found ${invocations.length}`);
 assert(invocations.every((entry) => entry.status === "MASTERV_WINDOWS_SIGNING_BRIDGE_DRY_RUN"), "Unexpected signing bridge status");
+assert(invocations.every((entry) => entry.portable_executable === true), "Every Tauri signing target must be a Windows PE image");
 assert(invocations.every((entry) => entry.mode === "dry-run" && entry.external_signer_invoked === false && entry.signature_written === false), "3N must not invoke a live signer or write signatures");
 assert(invocations.some((entry) => entry.target_class === "app-executable"), "Tauri signing hook did not observe the MasterV application executable");
+assert(invocations.some((entry) => entry.target_class === "nsis-uninstaller-temp"), "Tauri signing hook did not observe the temporary NSIS uninstaller PE");
 assert(invocations.some((entry) => entry.target_class === "nsis-installer"), "Tauri signing hook did not observe the final NSIS installer");
 
 const bundleDir = path.join(root, "src-tauri/target/release/bundle/nsis");
