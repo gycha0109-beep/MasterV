@@ -1,7 +1,6 @@
 import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
-import { spawnSync } from "node:child_process";
 
 function assert(condition, message) {
   if (!condition) throw new Error(message);
@@ -11,15 +10,8 @@ function sha256(file) {
   return crypto.createHash("sha256").update(fs.readFileSync(file)).digest("hex");
 }
 
-function authenticodeStatus(file) {
-  const escaped = file.replace(/'/g, "''");
-  const result = spawnSync(
-    "powershell.exe",
-    ["-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", `(Get-AuthenticodeSignature -LiteralPath '${escaped}').Status.ToString()`],
-    { encoding: "utf8", timeout: 30_000 }
-  );
-  if (result.status !== 0) throw new Error(`Authenticode audit failed (${result.status}): ${result.stderr || result.stdout}`);
-  return (result.stdout || "").trim();
+function readJson(file) {
+  return JSON.parse(fs.readFileSync(file, "utf8").replace(/^\uFEFF/, ""));
 }
 
 if (process.platform !== "win32") throw new Error("3O shareable package audit must run on Windows");
@@ -39,8 +31,8 @@ function checkpoint(phase, values = {}) {
 }
 
 try {
-  const packageJson = JSON.parse(fs.readFileSync(path.join(root, "package.json"), "utf8"));
-  const tauriConfig = JSON.parse(fs.readFileSync(path.join(root, "src-tauri/tauri.conf.json"), "utf8"));
+  const packageJson = readJson(path.join(root, "package.json"));
+  const tauriConfig = readJson(path.join(root, "src-tauri/tauri.conf.json"));
   const version = tauriConfig.version;
   checkpoint("version", { version, package_version: packageJson.version });
   assert(packageJson.version === version, "package.json and Tauri versions must match");
@@ -55,18 +47,23 @@ try {
   assert(JSON.stringify(actualFiles) === JSON.stringify(expectedFiles), `Unexpected private share package contents: ${actualFiles.join(", ")}`);
 
   const manifestPath = path.join(packageDir, "release-manifest.json");
-  const manifest = JSON.parse(fs.readFileSync(manifestPath, "utf8"));
+  const manifest = readJson(manifestPath);
   const installerPath = path.join(packageDir, manifest.installer || "");
   assert(fs.existsSync(installerPath), `Packaged installer missing: ${manifest.installer || "missing"}`);
   const packagedSha = sha256(installerPath);
-  const signatureStatus = authenticodeStatus(installerPath);
+  const signatureEvidencePath = path.join(outputRoot, "packaged-authenticode-evidence.json");
+  assert(fs.existsSync(signatureEvidencePath), "Packaged Authenticode evidence is missing");
+  const signatureEvidence = readJson(signatureEvidencePath);
   checkpoint("package-identity", {
     manifest,
     packaged_installer_sha256: packagedSha,
-    packaged_signature_status: signatureStatus
+    packaged_authenticode_evidence: signatureEvidence
   });
   assert(packagedSha === manifest.installer_sha256, "Packaged installer SHA256 differs from manifest");
-  assert(signatureStatus === "NotSigned", `Packaged installer must remain Authenticode NotSigned, got ${signatureStatus}`);
+  assert(signatureEvidence.status === "MASTERV_PACKAGED_AUTHENTICODE_CHECK_PASS", `Packaged Authenticode check did not pass: ${signatureEvidence.status}`);
+  assert(signatureEvidence.installer === manifest.installer, `Packaged Authenticode installer identity differs: evidence=${signatureEvidence.installer} manifest=${manifest.installer}`);
+  assert(signatureEvidence.sha256 === packagedSha, `Packaged Authenticode SHA differs: evidence=${signatureEvidence.sha256} packaged=${packagedSha}`);
+  assert(signatureEvidence.signature_status === "NotSigned", `Packaged installer must remain Authenticode NotSigned, got ${signatureEvidence.signature_status}`);
 
   const shaLine = fs.readFileSync(path.join(packageDir, "SHA256.txt"), "utf8").trim();
   assert(shaLine === `${packagedSha}  ${manifest.installer}`, `SHA256.txt does not match packaged installer: ${JSON.stringify(shaLine)}`);
@@ -78,8 +75,8 @@ try {
   const qualityEvidencePath = path.join(root, "artifacts/desktop-installed-quality/installed-quality-evidence.json");
   assert(fs.existsSync(installEvidencePath), "Installed preparation evidence is missing");
   assert(fs.existsSync(qualityEvidencePath), "Installed lifecycle evidence is missing");
-  const installEvidence = JSON.parse(fs.readFileSync(installEvidencePath, "utf8"));
-  const qualityEvidence = JSON.parse(fs.readFileSync(qualityEvidencePath, "utf8"));
+  const installEvidence = readJson(installEvidencePath);
+  const qualityEvidence = readJson(qualityEvidencePath);
   checkpoint("installed-evidence", { install_evidence: installEvidence, quality_evidence: qualityEvidence });
   assert(installEvidence.status === "MASTERV_WINDOWS_INSTALLED_PREPARE_PASS", `Installed preparation did not pass: ${installEvidence.status}`);
   assert(installEvidence.installer_sha256 === packagedSha, `Installed candidate hash differs from packaged installer hash: installed=${installEvidence.installer_sha256} packaged=${packagedSha}`);

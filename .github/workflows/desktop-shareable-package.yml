@@ -96,6 +96,22 @@ jobs:
           "MASTERV_SHARE_SIGNATURE_STATUS=$status" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
       - name: Materialize private share handoff package
         run: npm run desktop:prepare:shareable-package-windows
+      - name: Verify packaged copy Authenticode state
+        shell: pwsh
+        run: |
+          $packaged = @(Get-ChildItem artifacts/desktop-shareable-package/MasterV-v*/MasterV_*_x64-setup.exe)
+          if ($packaged.Count -ne 1) { throw "Expected exactly one packaged NSIS setup executable, found $($packaged.Count)" }
+          $signature = Get-AuthenticodeSignature $packaged[0].FullName
+          $status = $signature.Status.ToString()
+          if ($status -ne 'NotSigned') { throw "3O packaged copy must remain unsigned; Authenticode status=$status" }
+          $sha = (Get-FileHash -LiteralPath $packaged[0].FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+          $record = [ordered]@{
+            status = 'MASTERV_PACKAGED_AUTHENTICODE_CHECK_PASS'
+            installer = $packaged[0].Name
+            sha256 = $sha
+            signature_status = $status
+          } | ConvertTo-Json
+          $record | Set-Content -LiteralPath artifacts/desktop-shareable-package/packaged-authenticode-evidence.json -Encoding utf8
       - name: Install and audit the exact packaged candidate
         run: npm run test:desktop-installed-prepare-windows
       - name: Verify installed restart, logout, and uninstall lifecycle
