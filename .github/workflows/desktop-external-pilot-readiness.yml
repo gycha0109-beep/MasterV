@@ -1,0 +1,65 @@
+name: Desktop External Pilot Readiness
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  external-pilot-readiness:
+    runs-on: windows-2025
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: 24.19.0
+      - run: npm ci
+      - run: npm run test:desktop-build-determinism
+      - run: node scripts/desktop-external-pilot-contract.mjs
+      - name: Parse-check external pilot PowerShell runner
+        shell: pwsh
+        run: |
+          $tokens = $null
+          $errors = $null
+          [System.Management.Automation.Language.Parser]::ParseFile(
+            (Resolve-Path 'pilot/windows-private-v0.1.0/MasterV-External-Pilot.ps1'),
+            [ref]$tokens,
+            [ref]$errors
+          ) | Out-Null
+          if ($errors.Count -gt 0) {
+            $errors | ForEach-Object { Write-Error $_.Message }
+            throw 'External pilot PowerShell runner parse check failed'
+          }
+      - name: Record readiness without claiming external execution
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path artifacts/desktop-external-pilot-readiness | Out-Null
+          $candidate = Get-Content -Raw pilot/windows-private-v0.1.0/PILOT-CANDIDATE.json | ConvertFrom-Json
+          $payload = [ordered]@{
+            status = 'MASTERV_EXTERNAL_PILOT_READINESS_PASS'
+            candidate_source_sha = $candidate.candidate_source_sha
+            candidate_checkout_sha = $candidate.candidate_checkout_sha
+            installer = $candidate.installer
+            installer_sha256 = $candidate.installer_sha256
+            signature_status = $candidate.signature_status
+            runner_parse_verified = $true
+            external_execution_performed = $false
+            pilot_verified = $false
+            user_execution_required = $true
+            evidence_upload_automatic = $false
+            public_release = $false
+            publish_allowed = $false
+            updater_enabled = $false
+            activation_allowed = $false
+            background_batch_activation_allowed = $false
+          }
+          $payload | ConvertTo-Json | Set-Content -Encoding utf8 artifacts/desktop-external-pilot-readiness/readiness.json
+          Write-Host ($payload | ConvertTo-Json -Compress)
+      - name: Upload readiness evidence only
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: masterv-windows-external-pilot-readiness
+          path: artifacts/desktop-external-pilot-readiness
+          if-no-files-found: error

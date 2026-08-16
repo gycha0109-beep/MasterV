@@ -15,7 +15,8 @@ const workflowPaths = [
   ".github/workflows/real-product-pilot.yml",
   ".github/workflows/desktop-release-readiness.yml",
   ".github/workflows/desktop-signing-readiness.yml",
-  ".github/workflows/desktop-shareable-package.yml"
+  ".github/workflows/desktop-shareable-package.yml",
+  ".github/workflows/desktop-external-pilot-readiness.yml"
 ];
 
 assert(fs.existsSync("package-lock.json"), "package-lock.json is required");
