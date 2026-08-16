@@ -1,6 +1,6 @@
 # MV-ARCH-3P — External Windows Private Pilot
 
-Status: **EXTERNAL_PILOT_PREPARATION / USER_EXECUTION_REQUIRED / NOT VERIFIED / NOT ACTIVATED**
+Status: **EXTERNAL_PILOT_PREPARED / USER_EXECUTION_REQUIRED / NOT VERIFIED / NOT ACTIVATED**
 
 ## 1. Scope
 
@@ -249,4 +249,105 @@ It cannot establish:
 EXTERNAL_PILOT_VERIFIED
 ```
 
-The implementation/readiness run IDs and final lifecycle freeze will be appended only after repository verification succeeds. The real external pilot result will be appended only after the operator returns `MasterV-external-pilot-evidence.json`.
+## 13. Implementation/readiness authority
+
+3P preparation was committed as:
+
+```text
+implementation head = 75d25be5de5090bbcc35fedb5e9988a93a1a0bb4
+commit              = feat(arch3p): prepare external Windows private pilot
+base main           = f819da2a6568534360adbd4ee4282d22f495b923
+PR synthetic merge  = 665925aa006274c2149be5510d124b0d6a199007
+```
+
+The dedicated readiness workflow completed successfully:
+
+```text
+workflow = Desktop External Pilot Readiness
+run ID   = 31977067064
+run      = #1
+result   = SUCCESS
+```
+
+The Windows runner passed, in order:
+
+```text
+npm ci
+MV-ARCH-3K determinism contract
+MV-ARCH-3P external-pilot static contract
+PowerShell parser check on windows-2025
+readiness evidence creation
+readiness-evidence-only artifact upload
+```
+
+Readiness artifact:
+
+```text
+artifact ID = 9271341215
+name        = masterv-windows-external-pilot-readiness
+SHA256      = bbdfef9b0306eaac0287825d7af94f4cb4bde6348fe4e4630f33b5e4d4b3b2cb
+```
+
+Its manifest records:
+
+```text
+status                              = MASTERV_EXTERNAL_PILOT_READINESS_PASS
+runner_parse_verified               = true
+external_execution_performed        = false
+pilot_verified                      = false
+user_execution_required             = true
+evidence_upload_automatic           = false
+public_release                      = false
+publish_allowed                     = false
+updater_enabled                      = false
+activation_allowed                   = false
+background_batch_activation_allowed  = false
+```
+
+## 14. Existing desktop authority regression
+
+The same implementation head preserved the existing Desktop authorities:
+
+```text
+Desktop Signing Readiness  #9   run 31977067036  SUCCESS
+Desktop Shareable Package  #5   run 31977067046  SUCCESS
+Desktop Release Readiness  #13  run 31977067033  SUCCESS
+CI                         #832 run 31977067034  SUCCESS
+```
+
+CI #832 again passed the Windows build/install/runtime/restart/logout/uninstall sequence. Provider health was observed separately as:
+
+```text
+status               = PROVIDER_HEALTH_GREEN
+deep_analysis        = success
+production_guidance  = success
+activation_allowed   = false
+```
+
+Hosted provider recovery therefore does not alter the 3P lifecycle or activate a product gate.
+
+## 15. Hosted poststate
+
+After the successful implementation-head regression, hosted Background Batch authority remained unchanged:
+
+```text
+background_batch_jobs           = 0
+provider_precondition_confirmed = false
+live_batch_verified_at          = null
+desktop_submit_enabled          = false
+```
+
+No activation authority was consumed.
+
+## 16. Prepared lifecycle freeze
+
+The repository-side 3P stage is now frozen at:
+
+```text
+EXTERNAL_PILOT_PREPARED
+/ USER_EXECUTION_REQUIRED
+/ NOT VERIFIED
+/ NOT ACTIVATED
+```
+
+This is intentionally not `EXTERNAL_PILOT_VERIFIED`. The next authoritative transition requires a real external Windows operator to run the locked v0.1.0 candidate and return `MasterV-external-pilot-evidence.json`.
