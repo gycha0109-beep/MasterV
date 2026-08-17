@@ -128,7 +128,7 @@ assert(desktopText.includes('persistenceAuthority = "none"'), "Desktop Productio
 assert(desktopText.includes("latestAnalysis = analysis"), "Deep Analysis result must remain process-memory transit input");
 assert(desktopText.includes("latestAnalysis = null"), "Desktop must clear transit analysis state");
 assert(desktopText.includes("compiledProductTruthSnapshot"), "Desktop stale Product Truth snapshot missing");
-assert(desktopText.includes('guidanceStale = "true"'), "Desktop stale guidance marker missing");
+assert(desktopText.includes('productionPanel.dataset.guidanceStale = stale ? "true" : "false"'), "Desktop stale guidance marker missing");
 assert(desktopText.includes("상품 정보가 변경되었습니다. 기존 프롬프트는 사용할 수 없습니다."), "Desktop stale prompt warning missing");
 assert(desktopText.includes("data-production-prompt-all") || desktopText.includes("productionPromptAll"), "Desktop whole-prompt copy control missing");
 assert(desktopText.includes("프롬프트 미리보기"), "Desktop prompt preview UX missing");
