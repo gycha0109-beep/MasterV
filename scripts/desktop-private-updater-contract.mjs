@@ -18,6 +18,8 @@ const sessionBridge = read("desktop/session-bridge.js");
 const updaterUi = read("desktop/updater.js");
 const prepare = read("scripts/prepare-desktop-updater-bootstrap.mjs");
 const workflow = read(".github/workflows/desktop-private-updater-bootstrap.yml");
+const publicKeyMatch = updater.match(/UPDATE_PUBLIC_KEY:\s*&str\s*=\s*"([^"]+)"/);
+const rustPublicKey = publicKeyMatch?.[1] || "";
 
 assert(cargo.includes('private-updater = ["dep:tauri-plugin-updater"]'), "private updater Cargo feature is missing");
 assert(cargo.includes('tauri-plugin-updater = { version = "2", optional = true }'), "Rust updater dependency must be optional");
@@ -26,6 +28,8 @@ assert(/#\[cfg\(feature\s*=\s*"private-updater"\)\]\s*let\s+builder\s*=\s*builde
 assert(main.includes("tauri_plugin_updater::Builder::new()"), "native updater plugin is not registered in updater feature path");
 assert(main.includes("desktop_update_check") && main.includes("desktop_update_install"), "native updater commands are not registered");
 assert(workflow.includes("--features private-updater"), "bootstrap workflow must explicitly activate the private-updater Cargo feature");
+assert(workflow.includes("Launch updater-enabled native runtime"), "bootstrap workflow must launch the updater-enabled runtime");
+assert(workflow.includes("Capture updater runtime crash diagnostics"), "bootstrap workflow must preserve launch crash diagnostics");
 assert(updater.includes("masterv-update-channel?current_version={{current_version}}&target={{target}}"), "private dynamic updater endpoint is missing");
 assert(updater.includes('UPDATE_TARGET: &str = "windows-x86_64"'), "private updater target is not frozen");
 assert(updater.includes("Authorization") && updater.includes("apikey"), "authenticated updater request headers are missing");
@@ -35,6 +39,10 @@ assert(bootstrap.version === "0.1.1", "bootstrap version must be 0.1.1");
 assert(bootstrap.app?.withGlobalTauri === true, "bootstrap config must expose Tauri invoke only for updater UI build");
 assert(bootstrap.bundle?.active === true, "bootstrap installer bundle must be active");
 assert(bootstrap.bundle?.createUpdaterArtifacts === false, "bootstrap installer itself must not require updater signing artifacts");
+assert(rustPublicKey.length > 0, "Rust updater public key authority is missing");
+assert(bootstrap.plugins?.updater?.pubkey === rustPublicKey, "bootstrap plugins.updater.pubkey must match the Rust public key authority");
+assert(Array.isArray(bootstrap.plugins?.updater?.endpoints) && bootstrap.plugins.updater.endpoints.length === 0, "bootstrap plugin config must not contain an unauthenticated static endpoint");
+assert(bootstrap.plugins?.updater?.windows?.installMode === "passive", "Windows updater install mode must be passive");
 assert(!baseConfig.includes("withGlobalTauri") && !baseConfig.includes("createUpdaterArtifacts"), "default desktop authority must remain updater-inactive");
 assert(!releaseConfig.includes("withGlobalTauri") && !releaseConfig.includes("createUpdaterArtifacts"), "existing release readiness config must remain updater-inactive");
 assert(sessionBridge.includes("let accessToken = null"), "session bridge must keep auth token in memory only");
@@ -51,6 +59,7 @@ console.log(JSON.stringify({
   bootstrap_version: bootstrap.version,
   channel: "private-test",
   cargo_feature: "private-updater",
+  plugin_config_present: true,
   ordinary_runtime_updater_feature: false,
   authenticated_manifest: true,
   token_persistence: false,
