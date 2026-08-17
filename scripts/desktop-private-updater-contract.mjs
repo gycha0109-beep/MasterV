@@ -21,8 +21,8 @@ const workflow = read(".github/workflows/desktop-private-updater-bootstrap.yml")
 
 assert(cargo.includes('private-updater = ["dep:tauri-plugin-updater"]'), "private updater Cargo feature is missing");
 assert(cargo.includes('tauri-plugin-updater = { version = "2", optional = true }'), "Rust updater dependency must be optional");
-assert(main.includes('#[cfg(feature = "private-updater")]\nmod updater;'), "updater module must be feature-gated");
-assert(main.includes('#[cfg(feature = "private-updater")]\n    let builder = builder'), "updater plugin registration must be feature-gated");
+assert(/#\[cfg\(feature\s*=\s*"private-updater"\)\]\s*mod\s+updater;/.test(main), "updater module must be feature-gated");
+assert(/#\[cfg\(feature\s*=\s*"private-updater"\)\]\s*let\s+builder\s*=\s*builder/.test(main), "updater plugin registration must be feature-gated");
 assert(main.includes("tauri_plugin_updater::Builder::new()"), "native updater plugin is not registered in updater feature path");
 assert(main.includes("desktop_update_check") && main.includes("desktop_update_install"), "native updater commands are not registered");
 assert(workflow.includes("--features private-updater"), "bootstrap workflow must explicitly activate the private-updater Cargo feature");
