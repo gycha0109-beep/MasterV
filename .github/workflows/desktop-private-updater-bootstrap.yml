@@ -56,7 +56,30 @@ jobs:
       - name: Build one-time updater bootstrap installer
         run: npm run tauri -- build --features private-updater --bundles nsis --config src-tauri/tauri.windows-updater-bootstrap.conf.json
       - name: Launch updater-enabled native runtime
+        id: updater_launch
+        continue-on-error: true
         run: npm run test:desktop-windows-runtime
+      - name: Capture updater runtime crash diagnostics
+        if: ${{ steps.updater_launch.outcome != 'success' }}
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path artifacts/desktop-private-updater-bootstrap/diagnostics | Out-Null
+          if (Test-Path artifacts/desktop-windows-runtime) {
+            Copy-Item artifacts/desktop-windows-runtime/* artifacts/desktop-private-updater-bootstrap/diagnostics/ -Recurse -Force
+          }
+          $events = Get-WinEvent -FilterHashtable @{LogName='Application'; StartTime=(Get-Date).AddMinutes(-10)} -ErrorAction SilentlyContinue |
+            Where-Object { $_.ProviderName -in @('Application Error','Windows Error Reporting') -or $_.Message -match 'masterv-desktop|WebView2|msedgewebview2' } |
+            Select-Object -First 50 TimeCreated, Id, LevelDisplayName, ProviderName, Message
+          $events | Format-List | Out-String -Width 4096 | Set-Content -Encoding utf8 artifacts/desktop-private-updater-bootstrap/diagnostics/windows-application-events.txt
+          [ordered]@{
+            status = 'MASTERV_DESKTOP_PRIVATE_UPDATER_NATIVE_LAUNCH_FAILED'
+            source_sha = $env:SOURCE_SHA
+            checkout_sha = $env:GITHUB_SHA
+          } | ConvertTo-Json | Set-Content -Encoding utf8 artifacts/desktop-private-updater-bootstrap/diagnostics/launch-failure.json
+      - name: Require updater-enabled native runtime
+        if: ${{ steps.updater_launch.outcome != 'success' }}
+        shell: pwsh
+        run: throw "Updater-enabled MasterV runtime did not launch; diagnostics were captured."
       - name: Verify bootstrap installer authority
         shell: pwsh
         run: |
@@ -90,5 +113,7 @@ jobs:
         if: always()
         with:
           name: masterv-windows-private-updater-bootstrap
-          path: artifacts/desktop-private-updater-bootstrap
+          path: |
+            artifacts/desktop-private-updater-bootstrap
+            artifacts/desktop-windows-runtime
           if-no-files-found: warn
