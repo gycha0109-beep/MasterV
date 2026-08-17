@@ -31,6 +31,8 @@
   let productionCapabilityReady = false;
   let capabilityProbeInFlight = false;
   let latestAnalysis = null;
+  let compiledProductTruthSnapshot = "";
+  let productionReadyStatus = "READY";
 
   panel.dataset.providerAuthority = "hosted-secret";
   panel.dataset.providerCredentialsInClient = "false";
@@ -50,6 +52,7 @@
   productionPanel.dataset.geminiRequests = "0";
   productionPanel.dataset.persistenceWrites = "0";
   productionPanel.dataset.backgroundBatchRequests = "0";
+  productionPanel.dataset.guidanceStale = "false";
 
   function setStatus(text, tone = "") {
     status.textContent = text;
@@ -91,12 +94,59 @@
     productionSubmit.disabled = !accessToken || !productionCapabilityReady || !latestAnalysis || !hasProductTruthInput();
   }
 
+  function productTruthPayload() {
+    return {
+      product_name: productName.value,
+      verified_facts: productFacts.value,
+      target_customer: productTarget.value,
+      price_offer: productPrice.value
+    };
+  }
+
+  function productTruthSnapshot() {
+    return JSON.stringify(productTruthPayload());
+  }
+
+  function setPromptActionsDisabled(disabled) {
+    for (const button of productionContent.querySelectorAll("[data-production-prompt-kind], [data-production-prompt-all]")) {
+      if (button instanceof HTMLButtonElement) button.disabled = disabled;
+    }
+  }
+
+  function syncGuidanceStaleState() {
+    if (!compiledProductTruthSnapshot) return;
+    const stale = productTruthSnapshot() !== compiledProductTruthSnapshot;
+    productionPanel.dataset.guidanceStale = stale ? "true" : "false";
+    const promptSurface = productionContent.querySelector("[data-production-prompt-surface]");
+    if (promptSurface instanceof HTMLElement) promptSurface.hidden = stale;
+    setPromptActionsDisabled(stale);
+
+    let notice = productionContent.querySelector("#production-guidance-stale-notice");
+    if (stale) {
+      if (!notice) {
+        notice = document.createElement("p");
+        notice.id = "production-guidance-stale-notice";
+        notice.className = "library-state error-text";
+        notice.textContent = "상품 정보가 변경되었습니다. 기존 프롬프트는 사용할 수 없습니다. 제작안을 다시 생성해주세요.";
+        productionContent.prepend(notice);
+      }
+      setProductionStatus("STALE", "error");
+      return;
+    }
+
+    notice?.remove();
+    setProductionStatus(productionReadyStatus, "ok");
+  }
+
   function clearProductionOutput() {
     productionContent.replaceChildren();
     productionModel.textContent = "—";
     productionPanel.dataset.geminiRequests = "0";
     productionPanel.dataset.persistenceWrites = "0";
     productionPanel.dataset.backgroundBatchRequests = "0";
+    productionPanel.dataset.guidanceStale = "false";
+    compiledProductTruthSnapshot = "";
+    productionReadyStatus = "READY";
   }
 
   function clearProductionState({ clearInputs = true, hide = true } = {}) {
@@ -131,6 +181,39 @@
     productionPanel.hidden = true;
     setCapability(null);
     setProductionCapability(null);
+  }
+
+  function organizeDeveloperDiagnostics() {
+    if (document.getElementById("developer-diagnostics")) return;
+    const capabilityCard = capDeep.closest("article.card");
+    const backgroundBatch = document.getElementById("background-batch-panel");
+    const roadmap = document.querySelector(".roadmap");
+    if (!(capabilityCard instanceof HTMLElement) || !(backgroundBatch instanceof HTMLElement) || !(roadmap instanceof HTMLElement) || !roadmap.parentElement) return;
+
+    const grid = capabilityCard.parentElement;
+    if (grid?.classList.contains("grid")) grid.style.gridTemplateColumns = "1fr";
+
+    const diagnostics = document.createElement("details");
+    diagnostics.id = "developer-diagnostics";
+    diagnostics.className = "card";
+    diagnostics.dataset.productSurface = "developer-diagnostics";
+    diagnostics.style.marginBottom = "20px";
+    const summary = document.createElement("summary");
+    summary.style.cursor = "pointer";
+    summary.style.fontWeight = "800";
+    summary.style.color = "#dfe7f7";
+    summary.textContent = "개발자 진단 / 실험 기능";
+    const note = document.createElement("p");
+    note.className = "muted small";
+    note.style.margin = "12px 0 18px";
+    note.textContent = "서버 경계, Surface Migration, 아직 차단된 Background Batch는 일반 제작 흐름과 분리해 둡니다.";
+    const body = document.createElement("div");
+    body.style.display = "grid";
+    body.style.gap = "16px";
+
+    roadmap.parentElement.insertBefore(diagnostics, roadmap);
+    diagnostics.append(summary, note, body);
+    body.append(capabilityCard, backgroundBatch, roadmap);
   }
 
   function authorizationFrom(input, init) {
@@ -255,15 +338,6 @@
     setStatus("READY", "ok");
   }
 
-  function productTruthPayload() {
-    return {
-      product_name: productName.value,
-      verified_facts: productFacts.value,
-      target_customer: productTarget.value,
-      price_offer: productPrice.value
-    };
-  }
-
   function renderListCard(container, titleText, items) {
     const card = document.createElement("article");
     card.className = "compare-card";
@@ -278,6 +352,11 @@
     }
     card.append(title, list);
     container.append(card);
+  }
+
+  function promptPreview(prompt) {
+    const singleLine = String(prompt || "").replace(/\s+/g, " ").trim();
+    return singleLine.length > 360 ? `${singleLine.slice(0, 360)}…` : singleLine;
   }
 
   function renderProductionGuidance(result) {
@@ -342,8 +421,22 @@
       productionContent.append(warningGrid);
     }
 
+    const excludedCount = Array.isArray(guide.excluded_reference_mechanisms) ? guide.excluded_reference_mechanisms.length : 0;
+    if (excludedCount > 0) {
+      const safeNotice = document.createElement("p");
+      safeNotice.className = "library-state";
+      safeNotice.textContent = `참고 메커니즘 ${excludedCount}개는 내 상품 정보와 연결이 불확실하거나 적용할 수 없어 안전하게 제외했습니다.`;
+      productionContent.append(safeNotice);
+    }
+
+    const promptSurface = document.createElement("section");
+    promptSurface.dataset.productionPromptSurface = "ready";
+    promptSurface.style.marginTop = "20px";
     const promptTitle = document.createElement("h3");
-    promptTitle.textContent = "AI 작업 프롬프트";
+    promptTitle.textContent = "AI에게 맡기기";
+    const promptExplanation = document.createElement("p");
+    promptExplanation.className = "muted small";
+    promptExplanation.textContent = "이 프롬프트는 참고영상의 제작 구조, 서버가 다시 계산한 분석 지표, 사용자가 입력한 Product Truth와 과장 방지 규칙을 조합합니다. 참고영상의 상품 주장이나 스펙을 내 상품 사실로 복사하지 않습니다.";
     const promptGrid = document.createElement("div");
     promptGrid.className = "compare-grid";
     const labels = { script: "대본 만들기", shooting: "촬영 계획", assets: "소재 목록", editing: "편집 지시" };
@@ -354,6 +447,13 @@
       card.className = "compare-card";
       const name = document.createElement("h3");
       name.textContent = label;
+      const previewLabel = document.createElement("span");
+      previewLabel.className = "eyebrow";
+      previewLabel.textContent = "프롬프트 미리보기";
+      const preview = document.createElement("p");
+      preview.className = "muted small";
+      preview.style.minHeight = "58px";
+      preview.textContent = promptPreview(prompt);
       const button = document.createElement("button");
       button.type = "button";
       button.className = "secondary compact";
@@ -364,11 +464,57 @@
         button.textContent = "복사됨";
         window.setTimeout(() => { button.textContent = "프롬프트 복사"; }, 1200);
       });
-      card.append(name, button);
+      card.append(name, previewLabel, preview, button);
       promptGrid.append(card);
     }
-    productionContent.append(promptTitle, promptGrid);
-    setProductionStatus("READY", "ok");
+    promptSurface.append(promptTitle, promptExplanation, promptGrid);
+
+    const rawPrompt = typeof guide.raw_prompt === "string" && guide.raw_prompt.trim()
+      ? guide.raw_prompt
+      : Object.values(guide.prompts || {}).filter((value) => typeof value === "string").join("\n\n---\n\n");
+    if (rawPrompt) {
+      const rawDetails = document.createElement("details");
+      rawDetails.style.marginTop = "16px";
+      const rawSummary = document.createElement("summary");
+      rawSummary.style.cursor = "pointer";
+      rawSummary.style.fontWeight = "800";
+      rawSummary.textContent = "전체 제작 프롬프트 보기";
+      const toolbar = document.createElement("div");
+      toolbar.style.display = "flex";
+      toolbar.style.justifyContent = "flex-end";
+      toolbar.style.margin = "12px 0";
+      const copyAll = document.createElement("button");
+      copyAll.type = "button";
+      copyAll.className = "secondary compact";
+      copyAll.dataset.productionPromptAll = "true";
+      copyAll.setAttribute("data-production-prompt-all", "true");
+      copyAll.textContent = "전체 복사";
+      copyAll.addEventListener("click", async () => {
+        await navigator.clipboard.writeText(rawPrompt);
+        copyAll.textContent = "복사됨";
+        window.setTimeout(() => { copyAll.textContent = "전체 복사"; }, 1200);
+      });
+      const rawBody = document.createElement("pre");
+      rawBody.style.whiteSpace = "pre-wrap";
+      rawBody.style.overflowWrap = "anywhere";
+      rawBody.style.maxHeight = "420px";
+      rawBody.style.overflow = "auto";
+      rawBody.style.padding = "14px";
+      rawBody.style.border = "1px solid #29354b";
+      rawBody.style.borderRadius = "12px";
+      rawBody.style.background = "#0d1320";
+      rawBody.style.color = "#d7deeb";
+      rawBody.textContent = rawPrompt;
+      toolbar.append(copyAll);
+      rawDetails.append(rawSummary, toolbar, rawBody);
+      promptSurface.append(rawDetails);
+    }
+
+    productionContent.append(promptSurface);
+    compiledProductTruthSnapshot = productTruthSnapshot();
+    productionPanel.dataset.guidanceStale = "false";
+    productionReadyStatus = excludedCount > 0 ? "READY WITH WARNINGS" : "READY";
+    setProductionStatus(productionReadyStatus, "ok");
   }
 
   async function parseError(response) {
@@ -479,7 +625,12 @@
     clearProductionState({ clearInputs: true, hide: true });
     updateControl();
   });
-  for (const input of [productName, productTarget, productPrice, productFacts]) input.addEventListener("input", updateProductionControl);
+  for (const input of [productName, productTarget, productPrice, productFacts]) {
+    input.addEventListener("input", () => {
+      syncGuidanceStaleState();
+      updateProductionControl();
+    });
+  }
 
   document.addEventListener("click", (event) => {
     const target = event.target instanceof Element ? event.target.closest("[data-discovery-source-id]") : null;
@@ -492,5 +643,6 @@
   });
 
   logout.addEventListener("click", clearState);
+  organizeDeveloperDiagnostics();
   clearState();
 })();

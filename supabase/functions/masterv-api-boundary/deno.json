@@ -15,7 +15,7 @@
     "@/lib/gemini-error": "https://raw.githubusercontent.com/gycha0109-beep/MasterV/99dcb2fd99bf21be668a2d7fd2e647311e5e6c47/lib/gemini-error.ts",
     "@/lib/product-truth-interpretation": "https://raw.githubusercontent.com/gycha0109-beep/MasterV/9ded32bb278f6f873166ea3d0ec6cb484122becf/lib/product-truth-interpretation.ts",
     "@/lib/reference-adaptation": "https://raw.githubusercontent.com/gycha0109-beep/MasterV/9ded32bb278f6f873166ea3d0ec6cb484122becf/lib/reference-adaptation.ts",
-    "@masterv/product-truth-interpreter-core": "https://raw.githubusercontent.com/gycha0109-beep/MasterV/9ded32bb278f6f873166ea3d0ec6cb484122becf/lib/product-truth-interpreter-core.ts",
+    "@masterv/product-truth-interpreter-core": "https://raw.githubusercontent.com/gycha0109-beep/MasterV/4b34b3b51225c7ec6177b3dad45a2bb0d2efca1c/lib/product-truth-interpreter-core.ts",
     "@masterv/single-video-production": "https://raw.githubusercontent.com/gycha0109-beep/MasterV/9ded32bb278f6f873166ea3d0ec6cb484122becf/lib/single-video-production.ts"
   }
 }
