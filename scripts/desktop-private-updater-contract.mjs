@@ -17,6 +17,7 @@ const releaseConfig = read("src-tauri/tauri.windows-release.conf.json");
 const sessionBridge = read("desktop/session-bridge.js");
 const updaterUi = read("desktop/updater.js");
 const prepare = read("scripts/prepare-desktop-updater-bootstrap.mjs");
+const installedLaunch = read("scripts/desktop-updater-installed-launch-windows.mjs");
 const workflow = read(".github/workflows/desktop-private-updater-bootstrap.yml");
 const publicKeyMatch = updater.match(/UPDATE_PUBLIC_KEY:\s*&str\s*=\s*"([^"]+)"/);
 const rustPublicKey = publicKeyMatch?.[1] || "";
@@ -30,6 +31,11 @@ assert(main.includes("desktop_update_check") && main.includes("desktop_update_in
 assert(workflow.includes("--features private-updater"), "bootstrap workflow must explicitly activate the private-updater Cargo feature");
 assert(workflow.includes("Launch updater-enabled native runtime"), "bootstrap workflow must launch the updater-enabled runtime");
 assert(workflow.includes("Capture updater runtime crash diagnostics"), "bootstrap workflow must preserve launch crash diagnostics");
+assert(workflow.includes("Verify installed updater bootstrap launch and uninstall"), "bootstrap workflow must launch the installed updater-enabled runtime");
+assert(workflow.includes("updater_installed_launch_verified = $true"), "bootstrap manifest must record installed runtime verification");
+assert(installedLaunch.includes("MASTERV_DESKTOP_PRIVATE_UPDATER_INSTALLED_LAUNCH_PASS"), "installed updater launch smoke evidence marker is missing");
+assert(installedLaunch.includes("/json/version") && installedLaunch.includes("/json/list"), "installed updater launch smoke must verify WebView2 CDP readiness");
+assert(installedLaunch.includes('spawnSync(uninstaller, ["/S"]'), "installed updater launch smoke must uninstall the bootstrap candidate");
 assert(updater.includes("masterv-update-channel?current_version={{current_version}}&target={{target}}"), "private dynamic updater endpoint is missing");
 assert(updater.includes('UPDATE_TARGET: &str = "windows-x86_64"'), "private updater target is not frozen");
 assert(updater.includes("Authorization") && updater.includes("apikey"), "authenticated updater request headers are missing");
@@ -60,6 +66,9 @@ console.log(JSON.stringify({
   channel: "private-test",
   cargo_feature: "private-updater",
   plugin_config_present: true,
+  raw_runtime_launch_required: true,
+  installed_runtime_launch_required: true,
+  installed_uninstall_required: true,
   ordinary_runtime_updater_feature: false,
   authenticated_manifest: true,
   token_persistence: false,
