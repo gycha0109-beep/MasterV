@@ -9,6 +9,7 @@ on:
       - "scripts/prepare-desktop-updater-bootstrap.mjs"
       - "scripts/desktop-private-updater-contract.mjs"
       - "scripts/desktop-private-updater-channel-smoke.mjs"
+      - "scripts/desktop-windows-runtime-smoke.mjs"
       - "src-tauri/src/main.rs"
       - "src-tauri/src/updater.rs"
       - "src-tauri/Cargo.toml"
@@ -36,7 +37,7 @@ env:
 jobs:
   bootstrap:
     runs-on: windows-2025
-    timeout-minutes: 20
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
@@ -54,6 +55,8 @@ jobs:
         run: node scripts/desktop-private-updater-channel-smoke.mjs
       - name: Build one-time updater bootstrap installer
         run: npm run tauri -- build --features private-updater --bundles nsis --config src-tauri/tauri.windows-updater-bootstrap.conf.json
+      - name: Launch updater-enabled native runtime
+        run: npm run test:desktop-windows-runtime
       - name: Verify bootstrap installer authority
         shell: pwsh
         run: |
@@ -75,6 +78,7 @@ jobs:
             installer_sha256 = $hash
             authenticode = "NotSigned"
             updater_client_integrated = $true
+            updater_native_launch_verified = $true
             updater_artifact_created = $false
             update_release_published = $false
             automatic_install = $false
