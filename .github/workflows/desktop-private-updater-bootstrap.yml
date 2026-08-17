@@ -9,6 +9,7 @@ on:
       - "scripts/prepare-desktop-updater-bootstrap.mjs"
       - "scripts/desktop-private-updater-contract.mjs"
       - "scripts/desktop-private-updater-channel-smoke.mjs"
+      - "scripts/desktop-updater-installed-launch-windows.mjs"
       - "scripts/desktop-windows-runtime-smoke.mjs"
       - "src-tauri/src/main.rs"
       - "src-tauri/src/updater.rs"
@@ -37,7 +38,7 @@ env:
 jobs:
   bootstrap:
     runs-on: windows-2025
-    timeout-minutes: 25
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
@@ -80,6 +81,8 @@ jobs:
         if: ${{ steps.updater_launch.outcome != 'success' }}
         shell: pwsh
         run: throw "Updater-enabled MasterV runtime did not launch; diagnostics were captured."
+      - name: Verify installed updater bootstrap launch and uninstall
+        run: node scripts/desktop-updater-installed-launch-windows.mjs
       - name: Verify bootstrap installer authority
         shell: pwsh
         run: |
@@ -102,6 +105,8 @@ jobs:
             authenticode = "NotSigned"
             updater_client_integrated = $true
             updater_native_launch_verified = $true
+            updater_installed_launch_verified = $true
+            updater_installed_uninstall_verified = $true
             updater_artifact_created = $false
             update_release_published = $false
             automatic_install = $false
