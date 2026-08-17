@@ -14,5 +14,14 @@
         "type": "downloadBootstrapper"
       }
     }
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEEzQjFEMEM0NUE1QzEzMUYKUldRZkUxeGF4TkN4bzUrUDhCc3JQTWFGMmpmdlQ3L3o3MUFXSDEwckpzR0JxOUtvcUcvMGkxK1MK",
+      "endpoints": [],
+      "windows": {
+        "installMode": "passive"
+      }
+    }
   }
 }
