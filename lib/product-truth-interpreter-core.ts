@@ -2,6 +2,10 @@ import { GoogleGenAI } from "@google/genai";
 import {
   normalizeRawFacts,
   productTruthInterpretationJsonSchema,
+  type ApplicationMode,
+  type InterpretationConfidence,
+  type MechanismMatchStatus,
+  type MechanismSemanticMatch,
   type ProductTruthInterpretation,
   type ReferenceMechanismCandidate
 } from "@/lib/product-truth-interpretation";
@@ -14,6 +18,12 @@ export type ProductTruthInterpreterInput = {
 export type ProductTruthInterpreterRuntimeOptions = {
   api_key: string;
   model?: string;
+};
+
+export type ProductTruthInterpretationDetailedResult = {
+  interpretation: ProductTruthInterpretation;
+  sanitized: boolean;
+  warnings: string[];
 };
 
 export const DEFAULT_PRODUCT_TRUTH_MODEL = "gemini-3.6-flash";
@@ -42,62 +52,185 @@ const INTERPRETATION_PROMPT = `
 15. rationale은 짧은 한국어로 작성한다.
 `;
 
-function validateInterpretation(
-  value: ProductTruthInterpretation,
+const MATCH_STATUSES = new Set<MechanismMatchStatus>(["matched", "unmatched", "ambiguous"]);
+const APPLICATION_MODES = new Set<ApplicationMode>(["direct_demo", "information", "comparison_candidate", "support_only", "not_applicable"]);
+const CONFIDENCES = new Set<InterpretationConfidence>(["high", "medium", "low"]);
+
+function structuralFallback(mechanism: ReferenceMechanismCandidate, rationale: string): MechanismSemanticMatch {
+  if (mechanism.requires_product_fact) {
+    return {
+      mechanism_id: mechanism.id,
+      status: "unmatched",
+      matched_facts: [],
+      application_mode: "not_applicable",
+      confidence: "low",
+      rationale
+    };
+  }
+
+  return {
+    mechanism_id: mechanism.id,
+    status: "matched",
+    matched_facts: [],
+    application_mode: mechanism.kind === "support_example" ? "support_only" : "information",
+    confidence: "low",
+    rationale
+  };
+}
+
+function asRecord(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : null;
+}
+
+function sanitizeMatch(
+  raw: unknown,
+  mechanism: ReferenceMechanismCandidate,
+  allowedFacts: Set<string>,
+  warnings: string[]
+): MechanismSemanticMatch {
+  const record = asRecord(raw);
+  if (!record) {
+    warnings.push(`invalid_match_downgraded:${mechanism.id}`);
+    return structuralFallback(mechanism, "semantic matcher 결과 형식이 올바르지 않아 안전하게 제외했습니다.");
+  }
+
+  const status = typeof record.status === "string" && MATCH_STATUSES.has(record.status as MechanismMatchStatus)
+    ? record.status as MechanismMatchStatus
+    : "ambiguous";
+  const confidence = typeof record.confidence === "string" && CONFIDENCES.has(record.confidence as InterpretationConfidence)
+    ? record.confidence as InterpretationConfidence
+    : "low";
+  const applicationMode = typeof record.application_mode === "string" && APPLICATION_MODES.has(record.application_mode as ApplicationMode)
+    ? record.application_mode as ApplicationMode
+    : "not_applicable";
+  const rationale = typeof record.rationale === "string" && record.rationale.trim()
+    ? record.rationale.trim().slice(0, 500)
+    : "semantic matcher 결과를 안전 규칙으로 정규화했습니다.";
+  const rawFacts = Array.isArray(record.matched_facts)
+    ? record.matched_facts.filter((item): item is string => typeof item === "string")
+    : [];
+  const validFacts = [...new Set(rawFacts.filter((fact) => allowedFacts.has(fact)))];
+
+  if (validFacts.length !== rawFacts.length) warnings.push(`generated_fact_removed:${mechanism.id}`);
+
+  if (status !== "matched") {
+    if (rawFacts.length > 0) warnings.push(`nonmatched_fact_link_removed:${mechanism.id}`);
+    return {
+      mechanism_id: mechanism.id,
+      status,
+      matched_facts: [],
+      application_mode: "not_applicable",
+      confidence,
+      rationale
+    };
+  }
+
+  if (mechanism.requires_product_fact && validFacts.length === 0) {
+    warnings.push(`matched_without_valid_fact_downgraded:${mechanism.id}`);
+    return structuralFallback(mechanism, "연결 가능한 사용자 원문 사실이 없어 해당 메커니즘을 제외했습니다.");
+  }
+
+  const safeMode = applicationMode === "not_applicable"
+    ? mechanism.kind === "support_example"
+      ? "support_only"
+      : mechanism.kind === "comparison"
+        ? "comparison_candidate"
+        : "information"
+    : applicationMode;
+
+  return {
+    mechanism_id: mechanism.id,
+    status: "matched",
+    matched_facts: validFacts,
+    application_mode: safeMode,
+    confidence,
+    rationale
+  };
+}
+
+export function sanitizeProductTruthInterpretation(
+  value: unknown,
   facts: string[],
   mechanisms: ReferenceMechanismCandidate[]
-) {
-  if (value.version !== "v1") throw new Error("Product Truth interpretation version이 올바르지 않습니다.");
-  if (value.source_facts.length !== facts.length || !facts.every((fact, index) => value.source_facts[index] === fact)) {
-    throw new Error("Product Truth interpreter가 사용자 원문을 변경했습니다.");
+): ProductTruthInterpretationDetailedResult {
+  const warnings: string[] = [];
+  const record = asRecord(value);
+  const expectedById = new Map(mechanisms.map((item) => [item.id, item]));
+  const rawMatches = record && Array.isArray(record.mechanism_matches) ? record.mechanism_matches : [];
+  const grouped = new Map<string, unknown[]>();
+
+  if (!record || record.version !== "v1") warnings.push("version_replaced_with_canonical_v1");
+  const rawSourceFacts = record && Array.isArray(record.source_facts)
+    ? record.source_facts.filter((item): item is string => typeof item === "string")
+    : [];
+  if (rawSourceFacts.length !== facts.length || !facts.every((fact, index) => rawSourceFacts[index] === fact)) {
+    warnings.push("source_facts_replaced_with_user_authority");
+  }
+
+  for (const rawMatch of rawMatches) {
+    const matchRecord = asRecord(rawMatch);
+    const mechanismId = matchRecord && typeof matchRecord.mechanism_id === "string" ? matchRecord.mechanism_id : "";
+    if (!mechanismId || !expectedById.has(mechanismId)) {
+      warnings.push("unknown_mechanism_ignored");
+      continue;
+    }
+    const existing = grouped.get(mechanismId) ?? [];
+    existing.push(rawMatch);
+    grouped.set(mechanismId, existing);
   }
 
   const allowedFacts = new Set(facts);
-  const expectedIds = new Set(mechanisms.map((item) => item.id));
-  const seen = new Set<string>();
-
-  for (const match of value.mechanism_matches) {
-    if (!expectedIds.has(match.mechanism_id)) throw new Error("알 수 없는 reference mechanism match가 반환되었습니다.");
-    if (seen.has(match.mechanism_id)) throw new Error("reference mechanism match가 중복되었습니다.");
-    seen.add(match.mechanism_id);
-    if (match.matched_facts.some((fact) => !allowedFacts.has(fact))) {
-      throw new Error("Product Truth interpreter가 사용자 입력에 없는 사실을 생성했습니다.");
+  const mechanismMatches = mechanisms.map((mechanism) => {
+    const candidates = grouped.get(mechanism.id) ?? [];
+    if (candidates.length === 0) {
+      warnings.push(`missing_mechanism_filled:${mechanism.id}`);
+      return structuralFallback(mechanism, "semantic matcher 결과가 누락되어 안전한 기본 상태로 보완했습니다.");
     }
-    if (match.status !== "matched" && match.matched_facts.length > 0) {
-      throw new Error("unmatched/ambiguous match에 상품 사실이 연결되었습니다.");
+    if (candidates.length > 1) {
+      warnings.push(`duplicate_mechanism_downgraded:${mechanism.id}`);
+      return structuralFallback(mechanism, "semantic matcher 결과가 중복되어 안전하게 제외했습니다.");
     }
-  }
+    return sanitizeMatch(candidates[0], mechanism, allowedFacts, warnings);
+  });
 
-  if (seen.size !== expectedIds.size || [...expectedIds].some((id) => !seen.has(id))) {
-    throw new Error("일부 reference mechanism interpretation이 누락되었습니다.");
-  }
-
-  return value;
+  const uniqueWarnings = [...new Set(warnings)];
+  return {
+    interpretation: {
+      version: "v1",
+      source_facts: [...facts],
+      mechanism_matches: mechanismMatches
+    },
+    sanitized: uniqueWarnings.length > 0,
+    warnings: uniqueWarnings
+  };
 }
 
-export async function interpretProductTruthAgainstReferenceWithKey(
+export async function interpretProductTruthAgainstReferenceDetailedWithKey(
   input: ProductTruthInterpreterInput,
   options: ProductTruthInterpreterRuntimeOptions
-): Promise<ProductTruthInterpretation> {
+): Promise<ProductTruthInterpretationDetailedResult> {
   const facts = normalizeRawFacts(input.verified_facts);
   const mechanisms = input.reference_mechanisms.slice(0, 20);
 
   if (mechanisms.length === 0) {
-    return { version: "v1", source_facts: facts, mechanism_matches: [] };
+    return {
+      interpretation: { version: "v1", source_facts: facts, mechanism_matches: [] },
+      sanitized: false,
+      warnings: []
+    };
   }
 
   if (facts.length === 0) {
     return {
-      version: "v1",
-      source_facts: [],
-      mechanism_matches: mechanisms.map((item) => ({
-        mechanism_id: item.id,
-        status: item.requires_product_fact ? "unmatched" : "matched",
-        matched_facts: [],
-        application_mode: item.requires_product_fact ? "not_applicable" : item.kind === "support_example" ? "support_only" : "information",
-        confidence: "high",
-        rationale: item.requires_product_fact ? "사용자가 입력한 확인 사실이 없습니다." : "상품 사실 매칭이 필요하지 않은 구조 메커니즘입니다."
-      }))
+      interpretation: {
+        version: "v1",
+        source_facts: [],
+        mechanism_matches: mechanisms.map((item) => structuralFallback(item, item.requires_product_fact
+          ? "사용자가 입력한 확인 사실이 없습니다."
+          : "상품 사실 매칭이 필요하지 않은 구조 메커니즘입니다."))
+      },
+      sanitized: false,
+      warnings: []
     };
   }
 
@@ -123,6 +256,14 @@ export async function interpretProductTruthAgainstReferenceWithKey(
   });
 
   if (!interaction.output_text) throw new Error("Product Truth interpreter가 결과를 반환하지 않았습니다.");
-  const parsed = JSON.parse(interaction.output_text) as ProductTruthInterpretation;
-  return validateInterpretation(parsed, facts, mechanisms);
+  const parsed = JSON.parse(interaction.output_text) as unknown;
+  return sanitizeProductTruthInterpretation(parsed, facts, mechanisms);
+}
+
+export async function interpretProductTruthAgainstReferenceWithKey(
+  input: ProductTruthInterpreterInput,
+  options: ProductTruthInterpreterRuntimeOptions
+): Promise<ProductTruthInterpretation> {
+  const result = await interpretProductTruthAgainstReferenceDetailedWithKey(input, options);
+  return result.interpretation;
 }
