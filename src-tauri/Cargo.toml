@@ -8,13 +8,14 @@ rust-version = "1.77.2"
 
 [features]
 default = []
-private-updater = ["dep:tauri-plugin-updater"]
+private-updater = ["dep:tauri-plugin-updater", "dep:serde_json"]
 
 [build-dependencies]
 tauri-build = { version = "=2.6.3", features = [] }
 
 [dependencies]
 tauri = { version = "=2.11.5", features = [] }
+serde_json = { version = "1", optional = true }
 
 [profile.release]
 panic = "abort"
