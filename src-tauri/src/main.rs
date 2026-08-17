@@ -1,11 +1,15 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+#[cfg(feature = "private-updater")]
 mod updater;
 
 use tauri::{WebviewUrl, WebviewWindowBuilder};
 
 fn main() {
-    tauri::Builder::default()
+    let builder = tauri::Builder::default();
+
+    #[cfg(feature = "private-updater")]
+    let builder = builder
         .plugin(
             tauri_plugin_updater::Builder::new()
                 .pubkey(updater::UPDATE_PUBLIC_KEY)
@@ -15,7 +19,9 @@ fn main() {
         .invoke_handler(tauri::generate_handler![
             updater::desktop_update_check,
             updater::desktop_update_install
-        ])
+        ]);
+
+    builder
         .setup(|app| {
             let mut window = WebviewWindowBuilder::new(
                 app,

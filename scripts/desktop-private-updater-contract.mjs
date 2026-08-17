@@ -17,10 +17,15 @@ const releaseConfig = read("src-tauri/tauri.windows-release.conf.json");
 const sessionBridge = read("desktop/session-bridge.js");
 const updaterUi = read("desktop/updater.js");
 const prepare = read("scripts/prepare-desktop-updater-bootstrap.mjs");
+const workflow = read(".github/workflows/desktop-private-updater-bootstrap.yml");
 
-assert(cargo.includes('tauri-plugin-updater = "2"'), "Rust updater dependency is missing");
-assert(main.includes("tauri_plugin_updater::Builder::new()"), "native updater plugin is not registered");
+assert(cargo.includes('private-updater = ["dep:tauri-plugin-updater"]'), "private updater Cargo feature is missing");
+assert(cargo.includes('tauri-plugin-updater = { version = "2", optional = true }'), "Rust updater dependency must be optional");
+assert(main.includes('#[cfg(feature = "private-updater")]\nmod updater;'), "updater module must be feature-gated");
+assert(main.includes('#[cfg(feature = "private-updater")]\n    let builder = builder'), "updater plugin registration must be feature-gated");
+assert(main.includes("tauri_plugin_updater::Builder::new()"), "native updater plugin is not registered in updater feature path");
 assert(main.includes("desktop_update_check") && main.includes("desktop_update_install"), "native updater commands are not registered");
+assert(workflow.includes("--features private-updater"), "bootstrap workflow must explicitly activate the private-updater Cargo feature");
 assert(updater.includes("masterv-update-channel?current_version={{current_version}}&target={{target}}"), "private dynamic updater endpoint is missing");
 assert(updater.includes('UPDATE_TARGET: &str = "windows-x86_64"'), "private updater target is not frozen");
 assert(updater.includes("Authorization") && updater.includes("apikey"), "authenticated updater request headers are missing");
@@ -45,6 +50,8 @@ console.log(JSON.stringify({
   status: "MASTERV_DESKTOP_PRIVATE_UPDATER_CONTRACT_PASS",
   bootstrap_version: bootstrap.version,
   channel: "private-test",
+  cargo_feature: "private-updater",
+  ordinary_runtime_updater_feature: false,
   authenticated_manifest: true,
   token_persistence: false,
   auto_install: false,

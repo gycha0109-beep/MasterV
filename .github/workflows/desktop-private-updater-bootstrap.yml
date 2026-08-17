@@ -53,7 +53,7 @@ jobs:
       - name: Verify authenticated private channel is empty before activation
         run: node scripts/desktop-private-updater-channel-smoke.mjs
       - name: Build one-time updater bootstrap installer
-        run: npm run tauri -- build --bundles nsis --config src-tauri/tauri.windows-updater-bootstrap.conf.json
+        run: npm run tauri -- build --features private-updater --bundles nsis --config src-tauri/tauri.windows-updater-bootstrap.conf.json
       - name: Verify bootstrap installer authority
         shell: pwsh
         run: |
@@ -71,6 +71,7 @@ jobs:
             source_sha = $env:SOURCE_SHA
             checkout_sha = $env:GITHUB_SHA
             channel = "private-test"
+            cargo_feature = "private-updater"
             installer_sha256 = $hash
             authenticode = "NotSigned"
             updater_client_integrated = $true
