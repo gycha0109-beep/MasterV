@@ -28,6 +28,7 @@ jobs:
           git status --short > updater-probe-status.txt
           git diff -- package.json package-lock.json src-tauri > updater-probe.diff
           find src-tauri -maxdepth 3 -type f | sort > updater-probe-files.txt
+          find node_modules/@tauri-apps/cli-linux-x64-gnu -maxdepth 2 -type f | sort > tauri-cli-files.txt
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: masterv-updater-dependency-probe
@@ -38,7 +39,9 @@ jobs:
             src-tauri/Cargo.lock
             src-tauri/tauri.conf.json
             src-tauri/capabilities/**
+            node_modules/@tauri-apps/cli-linux-x64-gnu/**
             updater-probe-status.txt
             updater-probe.diff
             updater-probe-files.txt
+            tauri-cli-files.txt
           if-no-files-found: warn
