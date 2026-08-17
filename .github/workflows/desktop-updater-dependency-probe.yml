@@ -6,14 +6,17 @@ on:
       - probe/mv-dist-2-updater-deps
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   probe:
+    if: ${{ !contains(github.event.head_commit.message, '[deps-frozen]') }}
     runs-on: ubuntu-22.04
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: true
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
         with:
           node-version: 24.19.0
@@ -23,26 +26,10 @@ jobs:
       - run: npm ci
       - name: Let Tauri CLI add updater plugin
         run: npm run tauri add updater
-      - name: Capture generated dependency/config state
+      - name: Freeze generated Rust updater dependency graph on probe branch only
         run: |
-          git status --short > updater-probe-status.txt
-          git diff -- package.json package-lock.json src-tauri > updater-probe.diff
-          find src-tauri -maxdepth 3 -type f | sort > updater-probe-files.txt
-          find node_modules/@tauri-apps/cli node_modules/@tauri-apps/cli-linux-x64-gnu -maxdepth 2 -type f | sort > tauri-cli-files.txt
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
-        with:
-          name: masterv-updater-dependency-probe
-          path: |
-            package.json
-            package-lock.json
-            src-tauri/Cargo.toml
-            src-tauri/Cargo.lock
-            src-tauri/tauri.conf.json
-            src-tauri/capabilities/**
-            node_modules/@tauri-apps/cli/**
-            node_modules/@tauri-apps/cli-linux-x64-gnu/**
-            updater-probe-status.txt
-            updater-probe.diff
-            updater-probe-files.txt
-            tauri-cli-files.txt
-          if-no-files-found: warn
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src-tauri/Cargo.toml src-tauri/Cargo.lock
+          git commit -m "chore(dist2): freeze updater rust deps [deps-frozen]"
+          git push origin HEAD:probe/mv-dist-2-updater-deps
