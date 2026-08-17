@@ -22,7 +22,8 @@ const workflow = read(".github/workflows/desktop-private-updater-bootstrap.yml")
 const publicKeyMatch = updater.match(/UPDATE_PUBLIC_KEY:\s*&str\s*=\s*"([^"]+)"/);
 const rustPublicKey = publicKeyMatch?.[1] || "";
 
-assert(cargo.includes('private-updater = ["dep:tauri-plugin-updater"]'), "private updater Cargo feature is missing");
+assert(cargo.includes('private-updater = ["dep:tauri-plugin-updater", "dep:serde_json"]'), "private updater Cargo feature must include updater and serde_json");
+assert(cargo.includes('serde_json = { version = "1", optional = true }'), "serde_json must be a direct optional dependency for updater config codegen");
 assert(cargo.includes('tauri-plugin-updater = { version = "2", optional = true }'), "Rust updater dependency must be optional");
 assert(/#\[cfg\(feature\s*=\s*"private-updater"\)\]\s*mod\s+updater;/.test(main), "updater module must be feature-gated");
 assert(/#\[cfg\(feature\s*=\s*"private-updater"\)\]\s*let\s+builder\s*=\s*builder/.test(main), "updater plugin registration must be feature-gated");
@@ -66,6 +67,7 @@ console.log(JSON.stringify({
   channel: "private-test",
   cargo_feature: "private-updater",
   plugin_config_present: true,
+  direct_serde_json_for_codegen: true,
   raw_runtime_launch_required: true,
   installed_runtime_launch_required: true,
   installed_uninstall_required: true,
