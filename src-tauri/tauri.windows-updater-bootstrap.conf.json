@@ -1,0 +1,18 @@
+{
+  "version": "0.1.1",
+  "build": {
+    "beforeBuildCommand": "npm run desktop:prepare && node scripts/prepare-desktop-updater-bootstrap.mjs"
+  },
+  "app": {
+    "withGlobalTauri": true
+  },
+  "bundle": {
+    "active": true,
+    "createUpdaterArtifacts": false,
+    "windows": {
+      "webviewInstallMode": {
+        "type": "downloadBootstrapper"
+      }
+    }
+  }
+}

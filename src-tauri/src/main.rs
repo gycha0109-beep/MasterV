@@ -1,9 +1,21 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+mod updater;
+
 use tauri::{WebviewUrl, WebviewWindowBuilder};
 
 fn main() {
     tauri::Builder::default()
+        .plugin(
+            tauri_plugin_updater::Builder::new()
+                .pubkey(updater::UPDATE_PUBLIC_KEY)
+                .target(updater::UPDATE_TARGET)
+                .build(),
+        )
+        .invoke_handler(tauri::generate_handler![
+            updater::desktop_update_check,
+            updater::desktop_update_install
+        ])
         .setup(|app| {
             let mut window = WebviewWindowBuilder::new(
                 app,
