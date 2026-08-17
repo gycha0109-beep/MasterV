@@ -1,12 +1,12 @@
 # MV-PRODUCT-1A/1B — Production Workflow Completion
 
-Status: **IMPLEMENTED / VERIFICATION_PENDING / NOT ACTIVATED**
+Status: **PRODUCTION_WORKFLOW_VERIFIED / PROMPT_ACTIONS_READY / NOT ACTIVATED**
 
 ## 1. Goal
 
 MV-PRODUCT-1A/1B closes the first real-user failure discovered while exercising the private Windows package and makes the single-video path usable as a production workflow rather than an architecture diagnostics console.
 
-The user-facing path is:
+The verified user-facing path is:
 
 ```text
 YouTube discovery
@@ -21,69 +21,82 @@ This stage does not activate Background Batch, signing, updater, public release,
 
 ## 2. Observed blocker
 
-During a real Desktop use attempt, Deep Analysis completed but Production Guidance returned:
+The external-use attempt reached Deep Analysis successfully but Production Guidance returned:
 
 ```text
 unmatched/ambiguous match에 상품 사실이 연결되었습니다.
 ```
 
-The original Product Truth interpreter intentionally rejected model output that violated the semantic contract. That protected Product Truth authority, but one malformed semantic match also aborted the entire guide and all four prompt actions.
+The original Product Truth interpreter correctly rejected semantic output that violated Product Truth authority, but a single malformed semantic match aborted the entire Production Guidance request and therefore hid all prompt actions.
 
-The product requirement is stricter in a different direction:
+The corrected contract keeps the safety invariant while changing failure granularity:
 
-- invented facts must still never reach a prompt,
-- ambiguous/unmatched facts must still never be promoted,
-- but a malformed model-side relationship must degrade only the affected mechanism rather than destroy the whole workflow.
+- invented facts still never enter a prompt,
+- ambiguous/unmatched facts still cannot be promoted,
+- malformed semantic relationships degrade only the affected mechanism instead of aborting the whole guide.
 
-## 3. Canonical safe degradation
+## 3. Canonical Product Truth safe degradation
 
-The runtime-portable Product Truth core now sanitizes untrusted semantic matcher output against two authorities:
+Immutable safety implementation commit:
 
-1. the exact user-provided normalized source facts,
-2. the canonical reference mechanism list supplied by the production compiler.
+```text
+4b34b3b51225c7ec6177b3dad45a2bb0d2efca1c
+fix(product): sanitize Product Truth matcher output
+```
 
-The sanitizer applies conservative rules:
+The runtime-portable Product Truth core now sanitizes untrusted matcher output against two authorities:
 
-- model-modified `source_facts` are discarded and replaced with the user authority,
+1. the exact normalized user-provided source facts,
+2. the canonical reference mechanism list produced by the production compiler.
+
+Conservative sanitizer behavior:
+
+- model-modified `source_facts` are discarded and replaced by user authority,
 - facts absent from the user input are removed,
-- `ambiguous` or `unmatched` matches cannot retain `matched_facts`,
+- `ambiguous` / `unmatched` matches cannot retain `matched_facts`,
 - a fact-requiring `matched` mechanism with no valid user fact is downgraded,
 - unknown mechanism ids are ignored,
 - missing mechanisms receive a safe fallback,
 - duplicate mechanisms are conservatively downgraded,
-- structural mechanisms that do not require a product fact may retain only a low-confidence structural fallback.
+- structural mechanisms that do not require Product Truth may retain only a low-confidence structural fallback.
 
-No sanitizer rule creates a new product fact or strengthens a user claim.
+No sanitizer path creates a new product fact or strengthens a user claim.
 
-The compatibility API `interpretProductTruthAgainstReferenceWithKey()` remains available, while a detailed result API exposes sanitizer warnings for future diagnostics.
-
-## 4. Immutable hosted authority
-
-The corrected Product Truth core is frozen in the repository at:
+Static semantic evidence:
 
 ```text
-4b34b3b51225c7ec6177b3dad45a2bb0d2efca1c
+scripts/product-truth-safety-contract.ts
+MASTERV_PRODUCT_TRUTH_SAFETY_CONTRACT_PASS
 ```
 
-Only the hosted Product Truth core import is moved to that source pin. The unchanged Product Truth interpretation schema, reference adaptation compiler, and single-video production compiler remain pinned to their previous immutable source commit.
+The contract exercises contradictory ambiguous/unmatched fact links, invented facts, source-authority repair, missing/unknown/duplicate mechanisms, and a clean non-degraded result.
 
-The hosted boundary still owns:
+## 4. Hosted immutable authority
 
-- Gemini credential,
-- model selection,
-- analysis validation,
-- derived metrics,
-- reference mechanism derivation,
-- semantic matching,
-- canonical Production Guidance compilation.
+The hosted Product Truth core import is pinned exactly to:
 
-Desktop still carries no Gemini credential and makes no direct provider call.
+```text
+4b34b3b51225c7ec6177b3dad45a2bb0d2efca1c/lib/product-truth-interpreter-core.ts
+```
 
-## 5. Stale-prompt safety
+Unchanged Product Truth interpretation, reference adaptation, and single-video production compiler sources remain at the previous immutable source pin.
 
-A generated prompt is bound to the exact Product Truth snapshot used for its hosted Production Guidance request.
+Live hosted poststate after deployment and verification:
 
-After a successful guide is rendered, changing any of these fields invalidates the prompt surface:
+```text
+function     = masterv-api-boundary
+version      = 10
+status       = ACTIVE
+verify_jwt   = true
+import_map   = true
+ezbr_sha256  = 16f9bf3d72103b10b09c73ae75710f09d4e24d279c7f8ea85b0c1e6fb12bef47
+```
+
+The hosted deployment changed the Product Truth core import pin; it did not grant Desktop provider, model, persistence, or Batch authority.
+
+## 5. Desktop stale-prompt safety
+
+Production Guidance is bound to the exact Product Truth snapshot used for its hosted request:
 
 ```text
 product_name
@@ -92,7 +105,7 @@ target_customer
 price_offer
 ```
 
-Stale behavior is:
+After a successful guide, changing any of those fields immediately causes:
 
 ```text
 status = STALE
@@ -103,17 +116,17 @@ whole prompt copy = disabled
 hosted request delta = 0
 ```
 
-The UI displays:
+User-visible warning:
 
 ```text
 상품 정보가 변경되었습니다. 기존 프롬프트는 사용할 수 없습니다. 제작안을 다시 생성해주세요.
 ```
 
-If the user restores the exact original Product Truth snapshot, the already-generated prompt surface becomes usable again without a network request. Otherwise the user must submit the updated Product Truth and compile a new guide.
+If the exact original Product Truth snapshot is restored, the already-generated prompt becomes usable again without another hosted request. Any actual changed Product Truth requires a new Production Guidance submission.
 
 ## 6. Prompt UX
 
-The Desktop Production Guidance output keeps the four canonical prompt actions:
+The native Desktop exposes four canonical prompt actions after Production Guidance succeeds:
 
 ```text
 대본 만들기
@@ -122,27 +135,39 @@ The Desktop Production Guidance output keeps the four canonical prompt actions:
 편집 지시
 ```
 
-Each action now includes a short prompt preview before copy. The output also exposes a collapsed whole-production-prompt view with one whole-copy action.
+Each action has a prompt preview and independent copy control. A collapsed whole-production-prompt view provides one whole-copy action.
 
-The prompt surface explains its authority explicitly: it combines the analyzed reference production structure, server-derived metrics, the user's Product Truth, and guardrails. Reference-video product claims/specifications are not copied into the user's product facts.
+The prompt surface explicitly explains that prompts combine:
 
-When canonical adaptation excludes reference mechanisms, the guide may report `READY WITH WARNINGS` rather than treating safe exclusions as a total failure.
+- analyzed reference production structure,
+- server-derived metrics,
+- user-entered Product Truth,
+- canonical adaptation rules,
+- anti-hallucination / anti-overclaim guardrails.
+
+Reference-video product claims or specifications are not copied into the user's Product Truth.
+
+If canonical adaptation safely excludes reference mechanisms, the guide may complete as:
+
+```text
+READY WITH WARNINGS
+```
+
+instead of treating the exclusions as a total workflow failure.
 
 ## 7. Developer diagnostics down-rank
 
-The following surfaces are preserved for runtime/CI authority but moved into a collapsed `개발자 진단 / 실험 기능` section:
+These verification-oriented surfaces remain in the DOM but are moved under a collapsed `개발자 진단 / 실험 기능` disclosure:
 
 - Hosted Capabilities,
 - guarded Background Batch,
 - Surface Migration roadmap.
 
-Their DOM ids and runtime markers remain present so existing capability, Background Batch, and architecture verification can continue to query them. This is presentation reorganization only.
+Their existing IDs and authority markers are preserved for runtime regression tests. Background Batch is not promoted into the normal production workflow.
 
-Background Batch remains guarded and is not promoted into the main production workflow.
+## 8. Preserved trust boundaries
 
-## 8. Preserved boundaries
-
-MV-PRODUCT-1A/1B preserves:
+The verified runtime preserves:
 
 ```text
 provider_authority            = hosted-secret
@@ -152,45 +177,208 @@ reference_analysis_authority  = validated-hosted-result-transit
 metrics_authority             = server-derived
 persistence_authority         = none
 Desktop direct Gemini calls   = 0
-Desktop local Next truth calls= 0
+Desktop local Next truth      = 0
+Desktop local Next analyze    = 0
+Desktop direct YouTube API    = 0
 persistence writes            = 0
 Background Batch requests     = 0
 ```
 
-It does not change the Background Batch database gates.
+## 9. Authoritative implementation head verification
 
-## 9. Verification plan
-
-Static/semantic verification must prove:
-
-- contradictory ambiguous/unmatched fact links degrade safely,
-- invented facts are removed,
-- missing/duplicate/unknown mechanisms cannot introduce authority,
-- clean semantic output remains unchanged,
-- hosted immutable source pin points to the safe core,
-- Desktop stale snapshot logic exists,
-- four prompt actions and whole-prompt action exist,
-- developer diagnostics remain present but collapsed,
-- no Desktop provider credential/direct Gemini/local Next authority is introduced.
-
-Native Windows verification must additionally prove:
-
-- live hosted Deep Analysis succeeds,
-- live hosted Production Guidance reaches `READY` or `READY WITH WARNINGS`,
-- four prompt actions and whole-copy are usable,
-- Product Truth mutation produces `STALE` with no hosted request,
-- stale prompt surface is hidden/disabled,
-- exact Product Truth restore re-enables the prompt with no hosted request,
-- logout still clears process state.
-
-## 10. Lifecycle boundary
-
-Until exact-head static, native Windows, hosted poststate, and regressions are complete, the lifecycle remains:
+Implementation verification head before this document:
 
 ```text
-IMPLEMENTED
-VERIFICATION_PENDING
+8564a61abd8e74d5529eec37ef8c8aa21825d4fe
+```
+
+PR synthetic merge at that head:
+
+```text
+5f87e29994c74c9340d4ee10bb70009baf1966af
+```
+
+Base/main:
+
+```text
+f819da2a6568534360adbd4ee4282d22f495b923
+```
+
+Exact-head workflow results:
+
+```text
+CI #840
+run 31984231275
+SUCCESS
+
+Desktop Release Readiness #17
+run 31984231262
+SUCCESS
+
+Desktop Signing Readiness #13
+run 31984231295
+SUCCESS
+
+Desktop Shareable Package #9
+run 31984231255
+SUCCESS
+
+Desktop External Pilot Readiness #5
+run 31984231272
+SUCCESS
+```
+
+CI #840 passed `validate`, `desktop-shell`, and `desktop-windows-quality`. Native and installed Windows regressions for Reference Library, Detail/Compare, canonical compiler, YouTube Discovery, guarded Background Batch, installer quality, restart/logout, and uninstall all remained green.
+
+## 10. Native Product workflow evidence
+
+CI #840 artifact:
+
+```text
+artifact id = 9273410964
+name        = masterv-windows-desktop-smoke
+size        = 1,777,590 bytes
+digest      = sha256:0218debfc613e37181da0a0e90622907e88eace5a769b6206adb88544bbda262
+```
+
+`artifacts/desktop-production-guidance/runtime-evidence.json` records:
+
+```text
+status                                = MASTERV_WINDOWS_PRODUCTION_GUIDANCE_RUNTIME_PASS
+surface                               = desktop
+auth_status                           = AUTHENTICATED
+hosted_api_status                     = CONNECTED
+product_truth_capability              = READY
+production_guidance_capability        = READY
+model                                 = gemini-3.6-flash
+guidance_status                       = READY WITH WARNINGS
+gemini_requests                       = 1
+client_hosted_function_delta          = 1
+client_gemini_api_delta               = 0
+local_next_product_truth_requests     = 0
+local_next_analyze_requests           = 0
+client_youtube_api_delta              = 0
+desktop_provider_credentials          = false
+persistence_writes                    = 0
+background_batch_requests             = 0
+background_batch_migrated             = false
+prompt_actions                        = 4
+whole_prompt_copy                     = true
+prompt_preview                        = true
+stale_prompt_blocked                  = true
+stale_prompt_restored_without_network = true
+developer_diagnostics_collapsed       = true
+logout_clear                          = true
+```
+
+This live Windows run is the direct regression for the user-observed Product Truth failure. Production Guidance completed instead of aborting, while unsafe/unapplicable reference mechanisms remained excluded.
+
+## 11. Provider and installed-quality evidence
+
+The same CI run recorded:
+
+```text
+PROVIDER_HEALTH_GREEN
+deep_analysis       = success
+production_guidance = success
+activation_allowed  = false
+```
+
+Installed quality remained:
+
+```text
+MASTERV_WINDOWS_INSTALLED_QUALITY_PASS
+installed_launch              = PASS
+authenticated_runtime         = PASS
+process_restart_without_logout= PASS
+restart_auth_status           = SIGNED OUT
+persistent_auth_storage       = false
+explicit_logout_clear         = true
+direct_gemini_requests        = 0
+direct_youtube_data_api       = 0
+local_next_api_requests       = 0
+uninstall                     = PASS
+updater_created               = false
+activation                    = false
+```
+
+## 12. Packaging regressions
+
+The unchanged packaging/signing-readiness architecture also passed on the implementation head.
+
+Shareable Package #9:
+
+```text
+artifact id = 9273332749
+name        = masterv-windows-private-share-package
+digest      = sha256:e5d59a1728132ff19a3479d11c7fda42998a3d5c2d69dc87394afd5e788aa271
+```
+
+Release Readiness #17:
+
+```text
+artifact id = 9273334385
+name        = masterv-windows-release-readiness
+digest      = sha256:79de615edb0ca7ec45e59f8897120feb237118985644ee95e37b3efd25119ebe
+```
+
+Signing Readiness #13:
+
+```text
+artifact id = 9273330363
+name        = masterv-windows-signing-readiness
+digest      = sha256:944ab122fd80e56024c494a1766ee5c94d4cd9c2e175cd0c84f1be4a96ef2ba4
+```
+
+These passes do not sign, publish, release, or activate the application.
+
+## 13. Background Batch poststate
+
+After Product workflow verification, hosted database authority remains:
+
+```text
+provider_precondition_confirmed = false
+live_batch_verified_at          = null
+desktop_submit_enabled          = false
+background_batch_jobs           = 0
+```
+
+Native guarded evidence still reports:
+
+```text
+submit_capability     = false
+batch_submit_requests = 0
+batch_create_attempts = 0
+```
+
+Therefore MV-PRODUCT-1A/1B did not alter the MV-ARCH-3J gate.
+
+## 14. Repository/release lifecycle boundary
+
+At the authoritative implementation-head poststate:
+
+```text
+PR #1 state       = open
+PR #1 draft       = true
+PR #1 merged      = false
+PR #1 mergeable   = true
+GitHub Releases   = 0
+```
+
+No tag, GitHub Release, signing activation, updater, public publication, PR Ready transition, merge, or Desktop production activation occurred.
+
+## 15. Lifecycle conclusion
+
+MV-PRODUCT-1A/1B establishes:
+
+```text
+PRODUCTION_WORKFLOW_VERIFIED
+PROMPT_ACTIONS_READY
+PRODUCT_TRUTH_SAFE_DEGRADATION_VERIFIED
+STALE_PROMPT_BLOCKING_VERIFIED
+PROVIDER_HEALTH_GREEN
+NOT PUBLICLY RELEASED
 NOT ACTIVATED
 ```
 
-MV-PRODUCT-1C multi-reference Evidence -> A/B/C -> Prompt Pack Desktop wiring remains a separate later stage.
+The next separate product stage remains MV-PRODUCT-1C: multi-reference Evidence Rules -> A/B/C Production Concepts -> Prompt Packs Desktop/hosted wiring.
