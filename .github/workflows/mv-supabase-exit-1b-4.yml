@@ -1,0 +1,41 @@
+name: MV Supabase Exit 1B-4 Session Runtime Cleanup
+
+on:
+  pull_request:
+  push:
+    branches:
+      - feat/mvp-foundation
+
+permissions:
+  contents: read
+
+jobs:
+  session-runtime-cleanup:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: 24.19.0
+      - run: npm ci
+      - name: Verify provider foundation
+        run: node scripts/desktop-backend-provider-contract.mjs
+      - name: Verify app provider consumer regression
+        run: node scripts/desktop-app-provider-rewire-contract.mjs
+      - name: Verify remote consumer regression
+        run: node scripts/desktop-remote-consumer-rewire-contract.mjs
+      - name: Verify session runtime cleanup
+        run: node scripts/desktop-session-runtime-cleanup-contract.mjs
+      - name: Verify Desktop shell regression
+        run: npm run test:desktop-shell
+      - name: Verify hosted Deep Analysis regression
+        run: npm run test:hosted-deep-analysis
+      - name: Verify hosted Production Guidance regression
+        run: npm run test:hosted-production-guidance
+      - name: Verify hosted Background Batch regression
+        run: npm run test:hosted-background-batch
+      - name: Verify changed JavaScript syntax
+        shell: bash
+        run: |
+          node --check desktop/backend/backend.js
+          node --check scripts/desktop-session-runtime-cleanup-contract.mjs
