@@ -17,9 +17,7 @@ function gitBlobSha(path) {
   return crypto.createHash("sha1").update(Buffer.concat([Buffer.from(`blob ${body.length}\0`), body])).digest("hex");
 }
 
-for (const [path, expected] of Object.entries(expectedBlobs)) {
-  assert(gitBlobSha(path) === expected, `${path} changed without updating hosted Deep Analysis source pin`);
-}
+for (const [path, expected] of Object.entries(expectedBlobs)) assert(gitBlobSha(path) === expected, `${path} changed without updating hosted Deep Analysis source pin`);
 
 const coreText = fs.readFileSync("lib/gemini-deep-core.ts", "utf8");
 const wrapperText = fs.readFileSync("lib/gemini.ts", "utf8");
@@ -35,9 +33,7 @@ assert(!wrapperText.includes("new GoogleGenAI"), "Web wrapper must not duplicate
 
 const deno = JSON.parse(fs.readFileSync("supabase/functions/masterv-api-boundary/deno.json", "utf8"));
 assert(deno.imports?.["@google/genai"] === "npm:@google/genai@2.17.1", "hosted Gemini SDK must be pinned exactly");
-for (const path of Object.keys(expectedBlobs)) {
-  assert(Object.values(deno.imports || {}).some((value) => typeof value === "string" && value.includes(`/${SOURCE_COMMIT}/${path}`)), `deno import pin missing ${path}`);
-}
+for (const path of Object.keys(expectedBlobs)) assert(Object.values(deno.imports || {}).some((value) => typeof value === "string" && value.includes(`/${SOURCE_COMMIT}/${path}`)), `deno import pin missing ${path}`);
 assert(deno.imports?.["@masterv/gemini-deep-core"]?.includes(`/${SOURCE_COMMIT}/lib/gemini-deep-core.ts`), "hosted canonical Deep Analysis core import pin missing");
 
 const functionText = fs.readFileSync("supabase/functions/masterv-api-boundary/index.ts", "utf8");
@@ -59,20 +55,25 @@ assert(!functionText.includes("body.model"), "Desktop must not choose hosted Gem
 assert(!functionText.includes("service_role"), "Deep Analysis must not introduce service-role authority");
 
 const htmlText = fs.readFileSync("desktop/index.html", "utf8");
-for (const id of ["cap-deep-analysis", "deep-analysis-panel", "deep-analysis-form", "deep-analysis-url", "deep-analysis-submit", "deep-analysis-status", "deep-analysis-model", "deep-analysis-source", "deep-analysis-content"]) {
-  assert(htmlText.includes(`id="${id}"`), `Desktop Deep Analysis UI missing #${id}`);
-}
-assert(htmlText.indexOf('<script src="./deep-analysis.js"></script>') < htmlText.indexOf('<script src="./app.js"></script>'), "Deep Analysis token boundary script must load before app.js");
+for (const id of ["cap-deep-analysis", "deep-analysis-panel", "deep-analysis-form", "deep-analysis-url", "deep-analysis-submit", "deep-analysis-status", "deep-analysis-model", "deep-analysis-source", "deep-analysis-content"]) assert(htmlText.includes(`id="${id}"`), `Desktop Deep Analysis UI missing #${id}`);
+assert(htmlText.indexOf('<script src="./deep-analysis.js"></script>') < htmlText.indexOf('<script src="./app.js"></script>'), "Deep Analysis surface script must load before app.js");
 assert(htmlText.includes("자동 persistence를 수행하지 않습니다"), "Desktop Deep Analysis non-persistence disclosure missing");
 
 const desktopText = fs.readFileSync("desktop/deep-analysis.js", "utf8");
-assert(desktopText.includes("window.fetch = async function masterVDesktopFetch"), "Desktop Deep Analysis hosted auth bridge missing");
-assert(desktopText.includes('JSON.stringify({ operation: "youtube_deep_analysis", url })'), "Desktop Deep Analysis request must send operation and URL only");
+const remoteText = fs.readFileSync("desktop/backend/legacy/hosted-api-client.js", "utf8");
+assert(desktopText.includes("backend.remoteOperations.analyzeYouTube(session, url)"), "Desktop Deep Analysis must delegate transport to RemoteOperationClient");
+assert(desktopText.includes("backend.session.subscribe"), "Desktop Deep Analysis must consume neutral provider session state");
+assert(desktopText.includes("backend.remoteOperations.subscribeCapabilities"), "Desktop Deep Analysis must consume provider capability state");
+assert(remoteText.includes('{ operation: "youtube_deep_analysis", url }'), "legacy hosted adapter must preserve Deep Analysis request shape");
 assert(desktopText.includes('providerAuthority = "hosted-secret"'), "Desktop Deep Analysis provider authority marker missing");
 assert(desktopText.includes('providerCredentialsInClient = "false"'), "Desktop Deep Analysis credential boundary marker missing");
 assert(desktopText.includes('computeAuthority = "hosted-deep-analysis"'), "Desktop Deep Analysis compute authority marker missing");
 assert(desktopText.includes('persistenceAuthority = "none"'), "Desktop Deep Analysis persistence boundary marker missing");
-assert(desktopText.includes("logout.addEventListener(\"click\", clearState)"), "logout must clear Deep Analysis token/state");
+assert(desktopText.includes('transportAuthority = "backend-provider"'), "Desktop Deep Analysis provider transport marker missing");
+assert(desktopText.includes('logout.addEventListener("click", clearState)'), "logout must clear Deep Analysis state");
+for (const forbidden of ["MASTERV_DESKTOP_CONFIG", "supabase_publishable_key", "Authorization", "apikey", "originalFetch"]) assert(!desktopText.includes(forbidden), `Desktop Deep Analysis still owns legacy transport detail: ${forbidden}`);
+assert(!/window\.fetch\s*=/.test(desktopText), "Desktop Deep Analysis must not monkey-patch window.fetch");
+assert(!/\bfetch\s*\(/.test(desktopText), "Desktop Deep Analysis must not issue direct fetch");
 assert(!desktopText.includes("GEMINI_API_KEY"), "Desktop Deep Analysis must not contain Gemini credential name");
 assert(!desktopText.includes("generativelanguage.googleapis.com"), "Desktop Deep Analysis must not contact Gemini provider directly");
 assert(!desktopText.includes('fetch("/api/analyze'), "Desktop Deep Analysis must not call local Next analyze route");
@@ -98,6 +99,7 @@ console.log(JSON.stringify({
   provider_authority: "hosted-secret",
   compute_authority: "hosted-deep-analysis",
   desktop_provider_credentials: false,
+  transport_authority: "backend-provider",
   persistence_authority: "none",
   local_next_api_required: false
 }));

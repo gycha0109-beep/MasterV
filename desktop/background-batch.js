@@ -1,6 +1,7 @@
 (() => {
-  const config = window.MASTERV_DESKTOP_CONFIG || {};
-  const originalFetch = window.fetch.bind(window);
+  "use strict";
+
+  function initialize(backend) {
   const panel = document.getElementById("background-batch-panel");
   const cap = document.getElementById("cap-background-batch");
   const form = document.getElementById("background-batch-form");
@@ -15,14 +16,15 @@
   const list = document.getElementById("background-batch-list");
   const logout = document.getElementById("logout-button");
 
-  if (!panel || !cap || !form || !urlInput || !submit || !refresh || !status || !providerPrecondition || !liveVerified || !activation || !count || !list || !logout) return;
+  if (!backend || !panel || !cap || !form || !urlInput || !submit || !refresh || !status || !providerPrecondition || !liveVerified || !activation || !count || !list || !logout) return;
 
-  let accessToken = "";
+  let session = null;
   let submitReady = false;
   let probeInFlight = false;
   let listInFlight = false;
 
   panel.dataset.providerAuthority = "hosted-secret";
+  panel.dataset.providerCredentialsInClient = "false";
   panel.dataset.modelAuthority = "hosted-config";
   panel.dataset.persistenceAuthority = "durable-ledger";
   panel.dataset.ledgerWriteAuthority = "hosted-admin-only";
@@ -31,6 +33,7 @@
   panel.dataset.autoRetry = "false";
   panel.dataset.referenceLibraryWrites = "0";
   panel.dataset.directGeminiRequests = "0";
+  panel.dataset.transportAuthority = "backend-provider";
 
   function setStatus(text, tone = "") {
     status.textContent = text;
@@ -45,35 +48,8 @@
   }
 
   function updateControls() {
-    submit.disabled = !accessToken || !submitReady || !urlInput.value.trim();
-    refresh.disabled = !accessToken || listInFlight;
-  }
-
-  function requestUrl(input) {
-    return typeof input === "string" ? input : input instanceof URL ? input.toString() : input instanceof Request ? input.url : "";
-  }
-
-  function authorizationFrom(input, init) {
-    const headers = new Headers(init?.headers || (input instanceof Request ? input.headers : undefined));
-    const authorization = headers.get("Authorization") || headers.get("authorization") || "";
-    return authorization.replace(/^Bearer\s+/i, "").trim();
-  }
-
-  function authHeaders(extra = {}) {
-    return {
-      apikey: config.supabase_publishable_key,
-      Authorization: `Bearer ${accessToken}`,
-      ...extra
-    };
-  }
-
-  async function parseError(response) {
-    try {
-      const body = await response.json();
-      return body.error || body.message || body.code || `${response.status}`;
-    } catch {
-      return `${response.status} ${response.statusText}`.trim();
-    }
+    submit.disabled = !session || !submitReady || !urlInput.value.trim();
+    refresh.disabled = !session || listInFlight;
   }
 
   function applyCapability(body) {
@@ -84,20 +60,15 @@
     activation.textContent = capabilities.desktop_submit_enabled ? "ENABLED" : "OFF";
     setCapability(capabilities.submit === true);
     setStatus(capabilities.submit === true ? "READY" : "PROVIDER PRECONDITION BLOCKED", capabilities.submit === true ? "ok" : "error");
-    panel.hidden = !accessToken;
+    panel.hidden = !session;
     return true;
   }
 
   async function refreshCapability() {
-    if (!accessToken || probeInFlight) return;
+    if (!session || probeInFlight) return;
     probeInFlight = true;
     try {
-      const response = await originalFetch(`${config.api_base_url}/masterv-background-batch-boundary`, {
-        method: "GET",
-        headers: authHeaders({ Accept: "application/json" })
-      });
-      if (!response.ok) throw new Error(await parseError(response));
-      const body = await response.json();
+      const body = await backend.remoteOperations.probeBackgroundBatch(session);
       if (!applyCapability(body)) throw new Error("Background Batch capability contract mismatch");
     } catch (error) {
       setCapability(false);
@@ -107,8 +78,8 @@
     }
   }
 
-  function terminal(statusValue) {
-    return ["SUCCEEDED", "FAILED", "CANCELLED", "EXPIRED"].includes(statusValue);
+  function terminal(value) {
+    return ["SUCCEEDED", "FAILED", "CANCELLED", "EXPIRED"].includes(value);
   }
 
   function renderJobs(jobs) {
@@ -143,7 +114,6 @@
         meta.append(span);
       }
       content.append(title, url, meta);
-
       const actions = document.createElement("div");
       actions.className = "library-item-actions";
       if (!terminal(job.status) && job.provider_job_name) {
@@ -160,17 +130,11 @@
   }
 
   async function refreshJobs() {
-    if (!accessToken || listInFlight) return;
+    if (!session || listInFlight) return;
     listInFlight = true;
     updateControls();
     try {
-      const response = await originalFetch(`${config.api_base_url}/masterv-background-batch-boundary`, {
-        method: "POST",
-        headers: authHeaders({ "Content-Type": "application/json" }),
-        body: JSON.stringify({ operation: "background_batch_list" })
-      });
-      if (!response.ok) throw new Error(await parseError(response));
-      const body = await response.json();
+      const body = await backend.remoteOperations.listBackgroundBatchJobs(session);
       renderJobs(body.jobs);
     } catch (error) {
       list.replaceChildren();
@@ -186,17 +150,13 @@
   }
 
   async function submitJob() {
-    if (!accessToken || !submitReady || !urlInput.value.trim()) return;
+    if (!session || !submitReady || !urlInput.value.trim()) return;
     const requestId = crypto.randomUUID();
     submit.disabled = true;
     setStatus("SUBMITTING");
     try {
-      const response = await originalFetch(`${config.api_base_url}/masterv-background-batch-boundary`, {
-        method: "POST",
-        headers: authHeaders({ "Content-Type": "application/json" }),
-        body: JSON.stringify({ operation: "background_batch_submit", request_id: requestId, url: urlInput.value.trim() })
-      });
-      if (!response.ok) throw new Error(await parseError(response));
+      const request = { operation: "background_batch_submit", request_id: requestId, url: urlInput.value.trim() };
+      await backend.remoteOperations.submitBackgroundBatchJob(session, request.request_id, request.url);
       setStatus("SUBMITTED", "ok");
       await refreshJobs();
     } catch (error) {
@@ -208,15 +168,11 @@
   }
 
   async function checkJob(requestId) {
-    if (!accessToken || !requestId) return;
+    if (!session || !requestId) return;
     setStatus("CHECKING");
     try {
-      const response = await originalFetch(`${config.api_base_url}/masterv-background-batch-boundary`, {
-        method: "POST",
-        headers: authHeaders({ "Content-Type": "application/json" }),
-        body: JSON.stringify({ operation: "background_batch_check", request_id: requestId })
-      });
-      if (!response.ok && response.status !== 409) throw new Error(await parseError(response));
+      const request = { operation: "background_batch_check", request_id: requestId };
+      await backend.remoteOperations.checkBackgroundBatchJob(session, request.request_id);
       setStatus("CHECKED", "ok");
       await refreshJobs();
     } catch (error) {
@@ -225,7 +181,7 @@
   }
 
   function clearState() {
-    accessToken = "";
+    session = null;
     submitReady = false;
     panel.hidden = true;
     urlInput.value = "";
@@ -238,19 +194,17 @@
     setStatus("SIGNED OUT");
   }
 
-  window.fetch = async function masterVBackgroundBatchFetch(input, init) {
-    const token = authorizationFrom(input, init);
-    const url = requestUrl(input);
-    const isHostedFunction = url.includes("/functions/v1/");
-    const tokenChanged = Boolean(isHostedFunction && token && token !== accessToken);
-    if (tokenChanged) {
-      accessToken = token;
-      panel.hidden = false;
-      setStatus("CHECK REQUIRED");
-      updateControls();
+  backend.session.subscribe((nextSession) => {
+    if (!nextSession) {
+      clearState();
+      return;
     }
-    return await originalFetch(input, init);
-  };
+    session = nextSession;
+    panel.hidden = false;
+    setCapability(null);
+    setStatus("CHECK REQUIRED");
+    updateControls();
+  });
 
   form.addEventListener("submit", (event) => {
     event.preventDefault();
@@ -263,10 +217,13 @@
       await refreshJobs();
     })();
   });
-  list.addEventListener("click", (event) => {
-    const button = event.target.closest("[data-batch-check-request-id]");
-    if (button) void checkJob(button.dataset.batchCheckRequestId);
-  });
   logout.addEventListener("click", clearState);
-  clearState();
+  list.addEventListener("click", (event) => {
+    const button = event.target instanceof Element ? event.target.closest("[data-batch-check-request-id]") : null;
+    if (button instanceof HTMLButtonElement) void checkJob(button.dataset.batchCheckRequestId);
+  });
+  }
+
+  if (window.MASTERV_BACKEND) initialize(window.MASTERV_BACKEND);
+  else window.addEventListener("masterv:backend-ready", () => initialize(window.MASTERV_BACKEND), { once: true });
 })();
