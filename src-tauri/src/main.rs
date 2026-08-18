@@ -1,9 +1,12 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+mod local_persistence;
+
 #[cfg(feature = "private-updater")]
 mod updater;
 
-use tauri::{WebviewUrl, WebviewWindowBuilder};
+use std::io;
+use tauri::{Manager, WebviewUrl, WebviewWindowBuilder};
 
 fn main() {
     let builder = tauri::Builder::default();
@@ -17,12 +20,23 @@ fn main() {
                 .build(),
         )
         .invoke_handler(tauri::generate_handler![
+            local_persistence::desktop_local_persistence_status,
             updater::desktop_update_check,
             updater::desktop_update_install
         ]);
 
+    #[cfg(not(feature = "private-updater"))]
+    let builder = builder.invoke_handler(tauri::generate_handler![
+        local_persistence::desktop_local_persistence_status
+    ]);
+
     builder
         .setup(|app| {
+            let app_data_dir = app.path().app_data_dir()?;
+            let persistence = local_persistence::LocalPersistence::initialize(&app_data_dir)
+                .map_err(|error| io::Error::new(io::ErrorKind::Other, error))?;
+            app.manage(persistence);
+
             let mut window = WebviewWindowBuilder::new(
                 app,
                 "main",
