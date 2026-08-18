@@ -1,0 +1,28 @@
+name: MV Supabase Exit 1B-1 Provider Boundary
+
+on:
+  pull_request:
+  push:
+    branches:
+      - feat/mvp-foundation
+
+permissions:
+  contents: read
+
+jobs:
+  provider-contract:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: 24.19.0
+      - name: Verify backend provider boundary
+        run: node scripts/desktop-backend-provider-contract.mjs
+      - name: Verify provider source syntax
+        run: |
+          node --check desktop/backend/provider-boundary.js
+          node --check desktop/backend/backend.js
+          node --check desktop/backend/legacy/supabase-session-provider.js
+          node --check desktop/backend/legacy/supabase-work-data-provider.js
+          node --check desktop/backend/legacy/hosted-api-client.js
