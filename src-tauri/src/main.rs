@@ -32,8 +32,8 @@ fn main() {
 
     builder
         .setup(|app| {
-            let app_data_dir = app.path().app_data_dir()?;
-            let persistence = local_persistence::LocalPersistence::initialize(&app_data_dir)
+            let app_local_data_dir = app.path().app_local_data_dir()?;
+            let persistence = local_persistence::LocalPersistence::initialize(&app_local_data_dir)
                 .map_err(|error| io::Error::new(io::ErrorKind::Other, error))?;
             app.manage(persistence);
 

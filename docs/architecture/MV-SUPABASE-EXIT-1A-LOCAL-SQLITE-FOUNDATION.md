@@ -43,14 +43,14 @@ The local database is a dormant foundation for later migration stages.
 
 ## 3. Storage Location
 
-The database is initialized below the Tauri application data directory:
+The database is initialized below the Tauri application-local data directory:
 
 ```text
-<Tauri app_data_dir>/masterv.db
-<Tauri app_data_dir>/backups/*.db
+<Tauri app_local_data_dir>/masterv.db
+<Tauri app_local_data_dir>/backups/*.db
 ```
 
-The application uses Tauri's app-specific data path rather than a repository-relative or current-working-directory path.
+The application uses Tauri's app-specific **local** data path rather than a repository-relative, current-working-directory, or roaming application-data path. On Windows this resolves through the local-data directory family rather than the roaming-data directory family, matching MasterV's local-first, machine-local authority model.
 
 ## 4. SQLite Runtime
 

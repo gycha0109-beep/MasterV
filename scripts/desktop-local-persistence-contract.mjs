@@ -42,7 +42,8 @@ assert(persistence.includes("pub fn import_from"), "import foundation is missing
 assert(persistence.includes("product_authority_active: false"), "EXIT-1A must not activate local persistence as product authority");
 assert(persistence.includes("supabase_authority_unchanged: true"), "EXIT-1A must declare the existing product authority unchanged");
 assert(main.includes("mod local_persistence;"), "native local persistence module is not registered");
-assert(main.includes("app.path().app_data_dir()"), "local database must use Tauri app-specific data directory");
+assert(main.includes("app.path().app_local_data_dir()"), "local database must use Tauri app-specific local data directory");
+assert(!main.includes("app.path().app_data_dir()"), "local database must not use roaming app data on Windows");
 assert(main.includes("LocalPersistence::initialize"), "local persistence startup initialization is missing");
 assert(main.includes("app.manage(persistence)"), "local persistence state is not managed by Tauri");
 assert(main.includes("desktop_local_persistence_status"), "bounded local persistence status command is missing");
@@ -57,6 +58,7 @@ console.log(JSON.stringify({
   status: "MASTERV_SUPABASE_EXIT_1A_LOCAL_SQLITE_CONTRACT_PASS",
   schema_version: 1,
   sqlite_mode: "bundled",
+  data_directory: "app_local_data_dir",
   migration_transaction: "immediate",
   pre_migration_backup: true,
   export_import_foundation: true,
