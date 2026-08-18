@@ -25,14 +25,14 @@ for (const [label, source] of [["Deep Analysis", deep], ["Background Batch", bat
 
 for (const required of [
   "backend.remoteOperations.analyzeYouTube(session, url)",
-  "backend.remoteOperations.generateProductionGuidance(session, latestAnalysis, productTruth)",
+  "backend.remoteOperations.generateProductionGuidance(session, request.analysis, request.product_truth)",
   "backend.remoteOperations.subscribeCapabilities"
 ]) assert.equal(deep.includes(required), true, `Deep Analysis provider delegation missing: ${required}`);
 for (const required of [
   "backend.remoteOperations.probeBackgroundBatch(session)",
   "backend.remoteOperations.listBackgroundBatchJobs(session)",
-  "backend.remoteOperations.submitBackgroundBatchJob(session, requestId, urlInput.value.trim())",
-  "backend.remoteOperations.checkBackgroundBatchJob(session, requestId)"
+  "backend.remoteOperations.submitBackgroundBatchJob(session, request.request_id, request.url)",
+  "backend.remoteOperations.checkBackgroundBatchJob(session, request.request_id)"
 ]) assert.equal(batch.includes(required), true, `Background Batch provider delegation missing: ${required}`);
 
 assert.match(boundary, /let activeSession = null/);
