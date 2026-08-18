@@ -41,11 +41,15 @@ await fs.mkdir(path.dirname(tauriIconPath), { recursive: true });
 const tauriPng = Buffer.from(TAURI_ICON_PNG_BASE64, "base64");
 await fs.writeFile(tauriIconPath, tauriPng);
 await fs.writeFile(tauriWindowsIconPath, singlePngIco(tauriPng, 128, 128));
-for (const filename of ["index.html", "styles.css", "app.js"]) await fs.copyFile(path.join(sourceDir, filename), path.join(outputDir, filename));
+for (const filename of ["index.html", "styles.css", "app.js", "production-guidance-renderer.js"]) await fs.copyFile(path.join(sourceDir, filename), path.join(outputDir, filename));
 await fs.cp(path.join(sourceDir, "backend"), path.join(outputDir, "backend"), { recursive: true });
 
 const runtimeIndexPath = path.join(outputDir, "index.html");
-const runtimeIndex = await fs.readFile(runtimeIndexPath, "utf8");
+let runtimeIndex = await fs.readFile(runtimeIndexPath, "utf8");
+const deepScript = '    <script src="./deep-analysis.js"></script>';
+const rendererScript = '    <script src="./production-guidance-renderer.js"></script>';
+if (!runtimeIndex.includes(deepScript)) throw new Error("desktop index is missing the deep-analysis.js script anchor");
+runtimeIndex = runtimeIndex.replace(deepScript, `${rendererScript}\n${deepScript}`);
 const appScript = '    <script src="./app.js"></script>';
 const providerScripts = [
   '    <script src="./backend/provider-boundary.js"></script>',
@@ -69,6 +73,7 @@ console.log(JSON.stringify({
   api_contract_version: publicConfig.api_contract_version,
   backend_provider_assets: true,
   backend_consumer: "app",
+  production_guidance_renderer: true,
   tauri_icon_generated: true,
   tauri_windows_icon_generated: true
 }));

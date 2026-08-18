@@ -37,8 +37,10 @@ jobs:
         run: |
           node --check desktop/backend/provider-boundary.js
           node --check desktop/backend/backend.js
+          node --check desktop/production-guidance-renderer.js
           node --check desktop/deep-analysis.js
           node --check desktop/background-batch.js
+          node --check scripts/build-desktop-static.mjs
           node --check scripts/desktop-app-provider-rewire-contract.mjs
           node --check scripts/desktop-remote-consumer-rewire-contract.mjs
           node --check scripts/hosted-deep-analysis-contract.mjs
