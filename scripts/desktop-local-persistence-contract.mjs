@@ -13,7 +13,7 @@ const main = read("src-tauri/src/main.rs");
 const persistence = read("src-tauri/src/local_persistence.rs");
 const referenceHook = read("lib/use-persistent-reference-library.ts");
 const desktopApp = read("desktop/app.js");
-const ci = read(".github/workflows/ci.yml");
+const workflow = read(".github/workflows/mv-supabase-exit-1a.yml");
 
 assert(
   cargo.includes('rusqlite = { version = "=0.32.1", features = ["bundled", "backup"] }'),
@@ -49,8 +49,9 @@ assert(main.includes("desktop_local_persistence_status"), "bounded local persist
 assert(referenceHook.includes('from "@/lib/supabase-auth"'), "EXIT-1A must not replace current Supabase product authority");
 assert(referenceHook.includes("createSessionReferenceLibraryStore"), "EXIT-1A must leave current Reference Library persistence wiring unchanged");
 assert(!desktopApp.includes("desktop_local_persistence_status"), "EXIT-1A must not wire local persistence into product UI authority");
-assert(ci.includes("npm run test:desktop-local-persistence"), "CI must run the local persistence static contract");
-assert(ci.includes("cargo test --locked --manifest-path src-tauri/Cargo.toml local_persistence"), "CI must run native local persistence tests");
+assert(workflow.includes("ubuntu-22.04") && workflow.includes("windows-2025"), "local persistence CI must cover Linux and Windows native builds");
+assert(workflow.includes("npm run test:desktop-local-persistence"), "CI must run the local persistence static contract");
+assert(workflow.includes("cargo test --locked --manifest-path src-tauri/Cargo.toml local_persistence"), "CI must run native local persistence tests");
 
 console.log(JSON.stringify({
   status: "MASTERV_SUPABASE_EXIT_1A_LOCAL_SQLITE_CONTRACT_PASS",
@@ -59,6 +60,7 @@ console.log(JSON.stringify({
   migration_transaction: "immediate",
   pre_migration_backup: true,
   export_import_foundation: true,
+  cross_platform_native_test: true,
   product_authority_active: false,
   supabase_authority_unchanged: true,
   central_database_added: false,
