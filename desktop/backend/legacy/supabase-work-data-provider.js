@@ -18,13 +18,13 @@
     const supabaseUrl = normalizedBaseUrl(config.supabase_url);
     const publishableKey = String(config.supabase_publishable_key || "").trim();
 
+    function configured() {
+      return Boolean(supabaseUrl && publishableKey);
+    }
+
     function requireSession(session) {
-      if (!supabaseUrl || !publishableKey) {
-        throw new Error("Legacy Supabase work-data provider is not configured");
-      }
-      if (!session?.credential || !session?.subject_id) {
-        throw new Error("Authenticated provider session is required");
-      }
+      if (!configured()) throw new Error("Legacy Supabase work-data provider is not configured");
+      if (!session?.credential || !session?.subject_id) throw new Error("Authenticated provider session is required");
     }
 
     function authHeaders(session, extra = {}) {
@@ -42,10 +42,7 @@
       const params = new URLSearchParams({ on_conflict: "workspace_id,user_id" });
       const response = await fetchImpl(`${supabaseUrl}/rest/v1/masterv_workspace_members?${params.toString()}`, {
         method: "POST",
-        headers: authHeaders(session, {
-          "Content-Type": "application/json",
-          Prefer: "resolution=ignore-duplicates,return=minimal"
-        }),
+        headers: authHeaders(session, { "Content-Type": "application/json", Prefer: "resolution=ignore-duplicates,return=minimal" }),
         body: JSON.stringify({ workspace_id: workspaceId, user_id: session.subject_id, role: "owner" })
       });
       if (!response.ok) throw new Error(`Workspace bootstrap ${await parseError(response)}`);
@@ -54,9 +51,7 @@
 
     async function listReferenceLibrary(session, workspaceId, projection) {
       requireSession(session);
-      if (!Array.isArray(projection) || projection.length === 0) {
-        throw new Error("Reference Library projection is required");
-      }
+      if (!Array.isArray(projection) || projection.length === 0) throw new Error("Reference Library projection is required");
       const params = new URLSearchParams();
       params.set("select", projection.join(","));
       params.set("workspace_id", `eq.${workspaceId}`);
@@ -73,9 +68,7 @@
 
     async function fetchReferenceDetail(session, workspaceId, sourceId, projection) {
       requireSession(session);
-      if (!Array.isArray(projection) || projection.length === 0) {
-        throw new Error("Reference detail projection is required");
-      }
+      if (!Array.isArray(projection) || projection.length === 0) throw new Error("Reference detail projection is required");
       const params = new URLSearchParams();
       params.set("select", projection.join(","));
       params.set("workspace_id", `eq.${workspaceId}`);
@@ -87,9 +80,7 @@
       });
       if (!response.ok) throw new Error(`Reference detail ${await parseError(response)}`);
       const body = await response.json();
-      if (!Array.isArray(body) || body.length !== 1 || !body[0]?.analysis) {
-        throw new Error("Reference detail response is missing persisted analysis");
-      }
+      if (!Array.isArray(body) || body.length !== 1 || !body[0]?.analysis) throw new Error("Reference detail response is missing persisted analysis");
       return body[0];
     }
 
@@ -103,15 +94,9 @@
         headers: authHeaders(session, { Prefer: "return=minimal" })
       });
       if (!response.ok) throw new Error(`Reference Library delete ${await parseError(response)}`);
-      return undefined;
     }
 
-    return {
-      bootstrapPersonalWorkspace,
-      listReferenceLibrary,
-      fetchReferenceDetail,
-      deleteReferenceLibraryEntry
-    };
+    return { configured, bootstrapPersonalWorkspace, listReferenceLibrary, fetchReferenceDetail, deleteReferenceLibraryEntry };
   }
 
   window.MASTERV_LEGACY_SUPABASE_WORK_DATA_PROVIDER = Object.freeze({ create });
