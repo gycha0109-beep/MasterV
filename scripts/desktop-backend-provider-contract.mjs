@@ -23,11 +23,18 @@ assert.match(sources.composition, /legacy-supabase-hosted/);
 assert.match(sources.composition, /local_sqlite_authority_active:\s*false/);
 assert.match(sources.composition, /gateway_active:\s*false/);
 assert.match(sources.composition, /polar_active:\s*false/);
+assert.equal(sources.composition.includes("MASTERV_DESKTOP_CONFIG"), false, "backend composition must not consume generic Desktop config after 1B-5");
+assert.equal(sources.composition.includes("MASTERV_LEGACY_RUNTIME_CONFIG"), true, "backend composition must consume isolated legacy runtime config");
 
 let fetchCalls = 0;
 const fakeFetch = async () => { fetchCalls += 1; throw new Error("provider construction must not perform network I/O"); };
 const window = {
   MASTERV_DESKTOP_CONFIG: {
+    surface: "desktop",
+    runtime_contract_version: "mv-desktop-runtime-v1",
+    backend_provider_contract_version: "mv-backend-provider-v1"
+  },
+  MASTERV_LEGACY_RUNTIME_CONFIG: {
     supabase_url: "https://legacy.example.test",
     supabase_publishable_key: "legacy-public-key",
     api_base_url: "https://api-legacy.example.test/functions/v1",
@@ -64,5 +71,7 @@ console.log(JSON.stringify({
   consumer_wired: backend.authority.consumer_wired,
   product_authority_active: backend.authority.product_authority_active,
   supabase_authority_unchanged: backend.authority.supabase_authority_unchanged,
+  generic_desktop_config_vendor_neutral: true,
+  legacy_runtime_config_isolated: true,
   construction_network_requests: fetchCalls
 }));
