@@ -16,6 +16,13 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
           ref: feat/mvp-foundation
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: 24.19.0
+      - name: Install Node dependencies
+        run: npm ci
+      - name: Prepare desktop assets
+        run: npm run desktop:prepare
       - name: Install Tauri Linux dependencies
         run: |
           sudo apt-get update
