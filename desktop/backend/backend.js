@@ -16,7 +16,12 @@
     workData: workDataFactory.create(config),
     remoteOperations: remoteOperationsFactory.create(config),
     authority: {
+      migration_stage: "MV-SUPABASE-EXIT-1B-2",
       adapter_mode: "legacy-supabase-hosted",
+      consumer_wired: true,
+      consumer_scope: "desktop/app.js",
+      deep_analysis_consumer_wired: false,
+      background_batch_consumer_wired: false,
       supabase_authority_unchanged: true,
       local_sqlite_authority_active: false,
       gateway_active: false,
