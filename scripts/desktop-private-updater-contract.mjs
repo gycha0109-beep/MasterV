@@ -22,8 +22,8 @@ const workflow = read(".github/workflows/desktop-private-updater-bootstrap.yml")
 const publicKeyMatch = updater.match(/UPDATE_PUBLIC_KEY:\s*&str\s*=\s*"([^"]+)"/);
 const rustPublicKey = publicKeyMatch?.[1] || "";
 
-assert(cargo.includes('private-updater = ["dep:tauri-plugin-updater", "dep:serde_json"]'), "private updater Cargo feature must include updater and serde_json");
-assert(cargo.includes('serde_json = { version = "1", optional = true }'), "serde_json must be a direct optional dependency for updater config codegen");
+assert(cargo.includes('private-updater = ["dep:tauri-plugin-updater"]'), "private updater Cargo feature must include only the optional updater dependency");
+assert(cargo.includes('serde_json = "1"'), "serde_json must remain a direct shared dependency for updater config codegen and local persistence");
 assert(cargo.includes('tauri-plugin-updater = { version = "2", optional = true }'), "Rust updater dependency must be optional");
 assert(/#\[cfg\(feature\s*=\s*"private-updater"\)\]\s*mod\s+updater;/.test(main), "updater module must be feature-gated");
 assert(/#\[cfg\(feature\s*=\s*"private-updater"\)\]\s*let\s+builder\s*=\s*builder/.test(main), "updater plugin registration must be feature-gated");
