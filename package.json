@@ -35,6 +35,7 @@
     "test:supabase-auth": "tsx scripts/supabase-auth-contract.ts",
     "test:runtime-api": "tsx scripts/runtime-api-contract.ts",
     "test:desktop-shell": "node scripts/desktop-shell-contract.mjs",
+    "test:desktop-local-persistence": "node scripts/desktop-local-persistence-contract.mjs",
     "test:desktop-reference-library": "node scripts/desktop-reference-library-contract.mjs",
     "test:desktop-reference-detail-compare": "node scripts/desktop-reference-detail-compare-contract.mjs",
     "test:hosted-reference-compiler": "node scripts/hosted-reference-compiler-contract.mjs",
