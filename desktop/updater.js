@@ -1,9 +1,11 @@
 (() => {
+  "use strict";
+
   const tauri = window.__TAURI__;
   const invoke = tauri?.core?.invoke;
-  const config = window.MASTERV_DESKTOP_CONFIG || {};
-  const bridge = window.MASTERV_SESSION_BRIDGE;
-  if (typeof invoke !== "function" || !bridge || config.updater_ui !== true) return;
+  const backend = window.MASTERV_BACKEND;
+  const updaterConfig = window.MASTERV_UPDATER_BOOTSTRAP_CONFIG || {};
+  if (typeof invoke !== "function" || !backend || updaterConfig.enabled !== true) return;
 
   const shell = document.querySelector("main.shell");
   const hero = document.querySelector("section.hero");
@@ -12,8 +14,10 @@
   const panel = document.createElement("section");
   panel.className = "card";
   panel.id = "desktop-updater-panel";
-  panel.dataset.channel = "private-test";
+  panel.dataset.channel = updaterConfig.channel || "private-test";
   panel.dataset.tokenPersistence = "false";
+  panel.dataset.sessionAuthority = "backend-provider";
+  panel.dataset.configAuthority = "updater-bootstrap";
   panel.innerHTML = `
     <div class="surface-heading">
       <div>
@@ -39,11 +43,12 @@
   const installButton = panel.querySelector("#desktop-updater-install");
   const status = panel.querySelector("#desktop-updater-status");
   const notes = panel.querySelector("#desktop-updater-notes");
+  let session = backend.session.current();
   let availableVersion = null;
-  let autoCheckedToken = null;
+  let autoCheckedCredential = null;
 
-  function token() {
-    return bridge.getAccessToken();
+  function accessToken() {
+    return String(session?.credential || "").trim();
   }
 
   function setStatus(text, tone = "") {
@@ -53,7 +58,7 @@
   }
 
   function syncAuth() {
-    const current = token();
+    const current = accessToken();
     checkButton.disabled = !current;
     if (!current) {
       availableVersion = null;
@@ -61,18 +66,18 @@
       installButton.disabled = false;
       notes.textContent = "로그인 후 자동으로 한 번 확인하며, 언제든 수동으로 다시 확인할 수 있습니다.";
       setStatus("로그인 필요");
-      autoCheckedToken = null;
+      autoCheckedCredential = null;
       return;
     }
-    if (autoCheckedToken !== current) {
-      autoCheckedToken = current;
+    if (autoCheckedCredential !== current) {
+      autoCheckedCredential = current;
       setTimeout(() => checkForUpdate(true), 500);
     }
   }
 
   async function checkForUpdate(automatic = false) {
-    const accessToken = token();
-    if (!accessToken) return syncAuth();
+    const token = accessToken();
+    if (!token) return syncAuth();
     checkButton.disabled = true;
     installButton.hidden = true;
     availableVersion = null;
@@ -80,8 +85,8 @@
     notes.textContent = "";
     try {
       const release = await invoke("desktop_update_check", {
-        accessToken,
-        apikey: config.supabase_publishable_key
+        accessToken: token,
+        apikey: updaterConfig.client_key
       });
       if (!release) {
         setStatus("최신 버전", "ok");
@@ -98,21 +103,21 @@
       setStatus("확인 실패", "error");
       notes.textContent = error instanceof Error ? error.message : String(error);
     } finally {
-      checkButton.disabled = !token();
+      checkButton.disabled = !accessToken();
     }
   }
 
   async function installUpdate() {
-    const accessToken = token();
-    if (!accessToken || !availableVersion) return syncAuth();
+    const token = accessToken();
+    if (!token || !availableVersion) return syncAuth();
     checkButton.disabled = true;
     installButton.disabled = true;
     setStatus("다운로드 · 서명 검증 · 설치 중");
     notes.textContent = "Windows에서는 설치가 시작되면 MasterV가 자동으로 종료될 수 있습니다.";
     try {
       const version = await invoke("desktop_update_install", {
-        accessToken,
-        apikey: config.supabase_publishable_key
+        accessToken: token,
+        apikey: updaterConfig.client_key
       });
       setStatus(`${version} 설치 완료`, "ok");
       notes.textContent = "MasterV가 자동으로 종료되지 않았다면 앱을 다시 실행해 주세요.";
@@ -120,12 +125,14 @@
       setStatus("설치 실패", "error");
       notes.textContent = error instanceof Error ? error.message : String(error);
       installButton.disabled = false;
-      checkButton.disabled = !token();
+      checkButton.disabled = !accessToken();
     }
   }
 
   checkButton.addEventListener("click", () => checkForUpdate(false));
   installButton.addEventListener("click", installUpdate);
-  window.addEventListener("masterv:session", syncAuth);
-  syncAuth();
+  backend.session.subscribe((nextSession) => {
+    session = nextSession;
+    syncAuth();
+  });
 })();

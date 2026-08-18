@@ -9,6 +9,8 @@ const sessionBridgePath = path.join(root, "desktop", "session-bridge.js");
 const app = read("desktop/app.js");
 const deep = read("desktop/deep-analysis.js");
 const batch = read("desktop/background-batch.js");
+const updater = read("desktop/updater.js");
+const updaterPrepare = read("scripts/prepare-desktop-updater-bootstrap.mjs");
 const index = read("desktop/index.html");
 const buildSource = read("scripts/build-desktop-static.mjs");
 const backend = read("desktop/backend/backend.js");
@@ -17,13 +19,13 @@ const legacySession = read("desktop/backend/legacy/supabase-session-provider.js"
 const persistence = read("src-tauri/src/local_persistence.rs");
 
 assert.equal(fs.existsSync(sessionBridgePath), false, "legacy desktop/session-bridge.js must be removed");
-for (const [label, source] of [["desktop index", index], ["desktop builder", buildSource], ["app", app], ["Deep Analysis", deep], ["Background Batch", batch]]) {
+for (const [label, source] of [["desktop index", index], ["desktop builder", buildSource], ["updater preparation", updaterPrepare], ["app", app], ["Deep Analysis", deep], ["Background Batch", batch], ["Updater", updater]]) {
   assert.equal(source.includes("session-bridge.js"), false, `${label} still references the removed session bridge`);
   assert.equal(source.includes("MASTERV_SESSION_BRIDGE"), false, `${label} still references the removed session bridge API`);
   assert.equal(source.includes("getAccessToken"), false, `${label} still reads credentials through the removed session bridge`);
 }
 
-for (const [label, source] of [["app", app], ["Deep Analysis", deep], ["Background Batch", batch]]) {
+for (const [label, source] of [["app", app], ["Deep Analysis", deep], ["Background Batch", batch], ["Updater", updater]]) {
   assert.equal(source.includes("/auth/v1/token"), false, `${label} must not observe the legacy auth token endpoint`);
   assert.equal(source.includes("/auth/v1/logout"), false, `${label} must not observe the legacy auth logout endpoint`);
   assert.equal(/window\.fetch\s*=/.test(source), false, `${label} must not monkey-patch window.fetch`);
@@ -36,7 +38,8 @@ assert.match(boundary, /current\(\)/);
 assert.match(boundary, /subscribe\(listener\)/);
 assert.match(deep, /backend\.session\.subscribe/);
 assert.match(batch, /backend\.session\.subscribe/);
-assert.match(backend, /migration_stage:\s*"MV-SUPABASE-EXIT-1B-4"/);
+assert.match(updater, /backend\.session\.subscribe/);
+assert.match(backend, /migration_stage:\s*"MV-SUPABASE-EXIT-1B-(?:4|[5-9][0-9]*)"/);
 assert.match(backend, /session_bridge_active:\s*false/);
 assert.match(backend, /session_credential_observer_active:\s*false/);
 assert.match(backend, /fetch_monkey_patch_active:\s*false/);
@@ -69,6 +72,7 @@ console.log(JSON.stringify({
   credential_observer_paths: 0,
   fetch_monkey_patches_in_consumers: 0,
   session_runtime_authority: "backend-provider",
+  updater_session_runtime: "backend-provider",
   legacy_session_adapter_retained: true,
   product_authority_active: false,
   supabase_authority_unchanged: true
