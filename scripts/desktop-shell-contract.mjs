@@ -14,19 +14,12 @@ const env = {
   NEXT_PUBLIC_MASTERV_API_BASE_URL: "https://example.supabase.co/functions/v1",
   MASTERV_DESKTOP_REQUIRE_CONFIG: "1"
 };
-
-const build = spawnSync(process.execPath, ["scripts/build-desktop-static.mjs"], {
-  cwd: root,
-  env,
-  encoding: "utf8"
-});
-
+const build = spawnSync(process.execPath, ["scripts/build-desktop-static.mjs"], { cwd: root, env, encoding: "utf8" });
 assert(build.status === 0, `desktop static builder failed: ${build.stderr || build.stdout}`);
 
 const outputDir = path.join(root, "desktop-dist");
-for (const filename of ["index.html", "styles.css", "app.js", "config.js"]) {
-  assert(fs.existsSync(path.join(outputDir, filename)), `desktop-dist/${filename} missing`);
-}
+for (const filename of ["index.html", "styles.css", "app.js", "config.js"]) assert(fs.existsSync(path.join(outputDir, filename)), `desktop-dist/${filename} missing`);
+for (const filename of ["backend/provider-boundary.js", "backend/legacy/supabase-session-provider.js", "backend/legacy/supabase-work-data-provider.js", "backend/legacy/hosted-api-client.js", "backend/backend.js"]) assert(fs.existsSync(path.join(outputDir, filename)), `desktop-dist/${filename} missing`);
 
 const iconPath = path.join(root, "src-tauri", "icons", "icon.png");
 assert(fs.existsSync(iconPath), "generated Tauri icon missing");
@@ -34,7 +27,6 @@ const icon = fs.readFileSync(iconPath);
 assert(icon.length > 24, "generated Tauri icon is unexpectedly small");
 assert(icon.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])), "generated Tauri icon must be a PNG");
 assert(icon.readUInt32BE(16) === 128 && icon.readUInt32BE(20) === 128, "generated Tauri icon must be 128x128");
-
 const windowsIconPath = path.join(root, "src-tauri", "icons", "icon.ico");
 assert(fs.existsSync(windowsIconPath), "generated Windows Tauri icon missing");
 const windowsIcon = fs.readFileSync(windowsIconPath);
@@ -53,18 +45,29 @@ assert(!configText.includes("GEMINI_API_KEY"), "desktop public config must never
 assert(!configText.includes("YOUTUBE_DATA_API_KEY"), "desktop public config must never contain YouTube credentials");
 
 const appText = fs.readFileSync(path.join(outputDir, "app.js"), "utf8");
+const remoteText = fs.readFileSync(path.join(outputDir, "backend", "legacy", "hosted-api-client.js"), "utf8");
 assert(!appText.includes('fetch("/api/'), "desktop shell must not call local Next /api routes");
-assert(appText.includes("masterv-api-boundary"), "desktop shell must probe the hosted API boundary");
+assert(appText.includes("window.MASTERV_BACKEND"), "desktop shell must consume the backend provider boundary");
+assert(appText.includes("backend.remoteOperations.probeCapabilities"), "desktop shell must probe capabilities through the backend provider");
+assert(!appText.includes("masterv-api-boundary"), "desktop shell consumer must not know the hosted API endpoint");
+assert(remoteText.includes("masterv-api-boundary"), "legacy hosted adapter must retain current hosted API endpoint authority");
+
+const runtimeIndex = fs.readFileSync(path.join(outputDir, "index.html"), "utf8");
+assert(runtimeIndex.includes("./backend/provider-boundary.js"), "desktop runtime must load provider boundary");
+assert(runtimeIndex.includes("./backend/backend.js"), "desktop runtime must load backend composition");
+assert(runtimeIndex.indexOf("./backend/backend.js") < runtimeIndex.indexOf("./app.js"), "backend composition must load before app consumer");
 
 const tauriConfig = JSON.parse(fs.readFileSync(path.join(root, "src-tauri/tauri.conf.json"), "utf8"));
 assert(tauriConfig.build?.frontendDist === "../desktop-dist", "Tauri frontendDist must point to static desktop output");
 assert(tauriConfig.bundle?.active === false, "3B must not claim installer bundling yet");
-assert(String(tauriConfig.app?.security?.csp || "").includes("https://euqkjrmrhhvnyzasppnd.supabase.co"), "Tauri CSP must explicitly allow the MasterV Supabase origin");
+assert(String(tauriConfig.app?.security?.csp || "").includes("https://euqkjrmrhhvnyzasppnd.supabase.co"), "Tauri CSP must explicitly allow the current MasterV Supabase origin");
 
 console.log(JSON.stringify({
   status: "MASTERV_DESKTOP_SHELL_CONTRACT_PASS",
   frontend_dist: tauriConfig.build.frontendDist,
   bundle_active: tauriConfig.bundle.active,
+  backend_provider_boundary: true,
+  app_direct_hosted_endpoint_knowledge: false,
   tauri_icon_png: true,
   tauri_icon_size: "128x128",
   tauri_windows_icon_ico: true,
