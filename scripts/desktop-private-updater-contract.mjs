@@ -46,11 +46,11 @@ assert(!updater.includes("encrypted secret key"), "private updater signing key m
 assert(bootstrap.version === "0.1.1", "bootstrap version must be 0.1.1");
 assert(bootstrap.app?.withGlobalTauri === true, "bootstrap config must expose Tauri invoke only for updater UI build");
 assert(bootstrap.bundle?.active === true, "bootstrap installer bundle must be active");
-assert(bootstrap.bundle?.createUpdaterArtifacts === false, "bootstrap signer itself must not require updater signing artifacts");
+assert(bootstrap.bundle?.createUpdaterArtifacts === false, "bootstrap installer itself must not require updater signing artifacts");
 assert(rustPublicKey.length > 0, "Rust updater public key authority is missing");
-assert(bootstrap.Plugins?.updater?.pubkey === rustPublicKey, "bootstrap plugins.updater.pubkey must match the Rust public key authority");
-assert(Array.isArray(bootstrap.Plugins?.updater?.endpoints) && bootstrap.Plugins.updater.endpoints.length === 0, "bootstrap plugin config must not contain an unauthenticated static endpoint");
-assert(bootstrap.Plugins?.updater?.windows?.installMode === "passive", "Windows updater install mode must be passive");
+assert(bootstrap.plugins?.updater?.pubkey === rustPublicKey, "bootstrap plugins.updater.pubkey must match the Rust public key authority");
+assert(Array.isArray(bootstrap.plugins?.updater?.endpoints) && bootstrap.plugins.updater.endpoints.length === 0, "bootstrap plugin config must not contain an unauthenticated static endpoint");
+assert(bootstrap.plugins?.updater?.windows?.installMode === "passive", "Windows updater install mode must be passive");
 assert(!baseConfig.includes("withGlobalTauri") && !baseConfig.includes("createUpdaterArtifacts"), "default desktop authority must remain updater-inactive");
 assert(!releaseConfig.includes("withGlobalTauri") && !releaseConfig.includes("createUpdaterArtifacts"), "existing release readiness config must remain updater-inactive");
 
