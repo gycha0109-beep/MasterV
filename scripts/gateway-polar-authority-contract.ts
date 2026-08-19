@@ -147,7 +147,32 @@ const minimalAnalysis: VideoAnalysis = {
   presentation: { format: "", presenter_type: "", caption_style: "", visual_style: "", music_role: "" },
   transcript: { full: "", segments: [] },
   scenes: [],
-  observation_segments: [],
+  observation_segments: [{
+    start_seconds: 0,
+    end_seconds: 4,
+    visual: {
+      description: "제품 시연",
+      subjects: ["제품"],
+      material_types: ["직접촬영", "상품실물"],
+      presenter_presence: ["손"],
+      subject_role: "판매제품",
+      contains_product: true
+    },
+    action: { type: "제품제시", description: "제품을 보여준다" },
+    scene_purpose: "제품 시연",
+    message_roles: ["제품소개", "사용시연"],
+    spoken_text: "",
+    on_screen_text: "",
+    claims: [],
+    evidence: {
+      types: ["직접사용"],
+      scope: "판매제품직접",
+      supports_selling_product_claim: false,
+      observable_result: "",
+      result_visually_observable: false
+    },
+    confidence: "high"
+  }],
   tags: [],
   confidence_notes: []
 };
