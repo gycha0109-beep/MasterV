@@ -4,204 +4,197 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="color-scheme" content="dark" />
-    <title>MasterV Desktop</title>
+    <title>MasterV</title>
     <link rel="stylesheet" href="./styles.css" />
   </head>
   <body>
     <main class="shell">
-      <header class="topbar">
-        <div><p class="eyebrow">REFERENCE INTELLIGENCE</p><h1>MasterV Desktop</h1></div>
-        <span id="surface-badge" class="badge">desktop</span>
+      <header class="hero">
+        <div>
+          <p class="eyebrow">MASTERV DESKTOP · 0.1.2 MIGRATION BRIDGE</p>
+          <h1>Local-first Video Intelligence</h1>
+          <p class="muted">Product Key + MasterV Gateway + Local SQLite가 primary authority입니다. Supabase는 기존 데이터 이전 용도로만 임시 유지됩니다.</p>
+        </div>
+        <div class="status-stack">
+          <div><span>License / Session</span><strong id="auth-status">LOCAL STARTUP</strong></div>
+          <div><span>Gateway</span><strong id="api-status">LOCAL ONLY</strong></div>
+        </div>
       </header>
 
-      <section class="hero card">
-        <div>
-          <p class="eyebrow">DESKTOP FOUNDATION</p>
-          <h2>레퍼런스를 모으고, 분석하고, 제작으로 연결하는 작업 공간</h2>
-          <p class="muted">이 빌드는 Next.js 서버를 포함하지 않습니다. 인증과 hosted 기능, Reference Library persistence는 Supabase 경계로 연결됩니다.</p>
-        </div>
-        <div class="status-stack" aria-live="polite">
-          <div class="status-row"><span>Static client</span><strong class="ok">READY</strong></div>
-          <div class="status-row"><span>Supabase Auth</span><strong id="auth-status">SIGNED OUT</strong></div>
-          <div class="status-row"><span>Hosted API</span><strong id="api-status">NOT CHECKED</strong></div>
-        </div>
-      </section>
-
-      <section class="grid">
+      <section class="grid auth-grid">
         <article class="card">
-          <p class="eyebrow">ACCOUNT</p><h2>로그인</h2>
-          <form id="login-form">
-            <label>이메일<input id="email" type="email" autocomplete="username" required /></label>
-            <label>비밀번호<input id="password" type="password" autocomplete="current-password" minlength="6" required /></label>
-            <button id="login-button" type="submit">MasterV 연결</button>
+          <p class="eyebrow">PRODUCT ACTIVATION</p>
+          <h2>제품키 활성화</h2>
+          <p class="muted small">제품키는 최초 activation의 bootstrap credential이며 저장되지 않습니다. 이후 Windows DPAPI로 보호된 device credential을 사용합니다.</p>
+          <form id="activation-form" class="stack">
+            <label>
+              <span>Product Key</span>
+              <input id="product-key" name="product-key" type="password" autocomplete="off" spellcheck="false" placeholder="MV-XXXX-XXXX-XXXX" />
+            </label>
+            <div class="actions">
+              <button id="activate-button" type="submit">제품키 활성화</button>
+              <button id="resume-button" type="button" class="secondary">기기 세션 다시 연결</button>
+              <button id="logout-button" type="button" class="ghost" hidden>Gateway 연결 해제</button>
+            </div>
           </form>
-          <button id="logout-button" class="secondary" type="button" hidden>로그아웃</button>
           <p id="message" class="message" aria-live="polite"></p>
         </article>
 
         <article class="card">
-          <p class="eyebrow">HOSTED CAPABILITIES</p><h2>서버 경계 상태</h2>
-          <dl class="capabilities">
-            <div><dt>Boundary probe</dt><dd id="cap-boundary">—</dd></div>
-            <div><dt>Reference Compare/Evidence</dt><dd id="cap-reference-compiler">—</dd></div>
-            <div><dt>Legacy Next Analyze</dt><dd id="cap-analyze">—</dd></div>
-            <div><dt>Hosted Deep Analysis</dt><dd id="cap-deep-analysis">—</dd></div>
-            <div><dt>YouTube discovery</dt><dd id="cap-youtube">—</dd></div>
-            <div><dt>Product Truth / Guidance</dt><dd id="cap-product-truth">—</dd></div>
-            <div><dt>Background Batch</dt><dd id="cap-background-batch">—</dd></div>
-          </dl>
-          <p class="muted small">Compare/Evidence, YouTube metadata discovery, Deep Analysis, Product Truth semantic matching과 Production Guidance는 authenticated hosted boundary를 사용합니다. Background Batch는 별도 guarded boundary와 durable ledger를 사용하며 provider live gate가 닫힌 동안 submit되지 않습니다.</p>
+          <p class="eyebrow">AUTHORITY</p>
+          <h2>0.1.2 Runtime</h2>
+          <div class="facts">
+            <div><span>User work data</span><strong>LOCAL SQLITE</strong></div>
+            <div><span>AI / YouTube</span><strong>MASTERV GATEWAY</strong></div>
+            <div><span>License / Entitlement</span><strong>POLAR VIA GATEWAY</strong></div>
+            <div><span>Updater</span><strong>INDEPENDENT SIGNED</strong></div>
+          </div>
+          <p class="muted small">구독이 만료되거나 Gateway에 연결할 수 없어도 로컬 데이터 조회·비교·삭제는 계속 가능합니다.</p>
         </article>
       </section>
 
-      <section id="discovery-panel" class="card discovery" aria-label="YouTube Discovery" hidden>
-        <div class="surface-heading">
-          <div>
-            <p class="eyebrow">SEARCH / DISCOVERY</p><h2>YouTube 참고영상 찾기</h2>
-            <p class="muted small">Desktop은 검색어와 제한된 필터만 보냅니다. YouTube provider credential과 실제 provider call은 hosted runtime에만 존재하며, metadata 후보만 반환합니다.</p>
-          </div>
-          <span class="badge">metadata only</span>
-        </div>
-        <form id="discovery-form" class="discovery-form">
-          <label class="discovery-query">검색어<input id="discovery-query" type="search" maxlength="200" placeholder="예: sunscreen review shorts" required /></label>
-          <label>지역
-            <select id="discovery-region">
-              <option value="KR">KR</option><option value="US">US</option><option value="JP">JP</option><option value="ID">ID</option><option value="">전체</option>
-            </select>
+      <details class="card migration-card">
+        <summary>0.1.1 기존 Reference Library 이전</summary>
+        <p class="muted small">기존 Supabase 자격증명은 이 migration 동작에서만 사용됩니다. 먼저 기존 데이터를 읽은 뒤 로컬 DB backup → transactional import → local-wins → migration ledger → integrity 검증 순서로 처리하며 자격증명은 저장하지 않습니다.</p>
+        <form id="legacy-migration-form" class="stack">
+          <label>
+            <span>기존 이메일</span>
+            <input id="migration-email" type="email" autocomplete="username" />
           </label>
-          <label>언어
-            <select id="discovery-language">
-              <option value="ko">한국어</option><option value="en">English</option><option value="ja">日本語</option><option value="id">Bahasa Indonesia</option><option value="">전체</option>
-            </select>
+          <label>
+            <span>기존 비밀번호</span>
+            <input id="migration-password" type="password" autocomplete="current-password" />
           </label>
-          <label>최대 길이
-            <select id="discovery-duration"><option value="60">60초</option><option value="180" selected>180초</option></select>
-          </label>
-          <button id="discovery-search" type="submit" disabled>참고영상 찾기</button>
+          <div class="actions">
+            <button id="migration-button" type="submit">기존 데이터 이전</button>
+            <strong id="migration-status">NOT RUN</strong>
+          </div>
         </form>
-        <div class="library-summary" aria-live="polite">
-          <span>상태 <strong id="discovery-status">SIGNED OUT</strong></span>
-          <span>후보 <strong id="discovery-count">0</strong></span>
-          <span>Provider <strong id="discovery-provider">HOSTED</strong></span>
-        </div>
-        <div id="discovery-results" class="discovery-results"></div>
+      </details>
+
+      <section class="grid">
+        <article class="card">
+          <p class="eyebrow">CAPABILITIES</p>
+          <h2>Runtime readiness</h2>
+          <div class="facts">
+            <div><span>Gateway boundary</span><strong id="cap-boundary">—</strong></div>
+            <div><span>Local Reference compiler</span><strong id="cap-reference-compiler">—</strong></div>
+            <div><span>Gateway Analyze</span><strong id="cap-analyze">—</strong></div>
+            <div><span>YouTube Discovery</span><strong id="cap-youtube">—</strong></div>
+            <div><span>Deep Analysis</span><strong id="cap-deep-analysis">—</strong></div>
+            <div><span>Production Guidance</span><strong id="cap-product-truth">—</strong></div>
+            <div><span>Background Batch</span><strong id="cap-background-batch">—</strong></div>
+          </div>
+        </article>
       </section>
 
-      <section id="deep-analysis-panel" class="card reference-detail" aria-label="Deep Analysis" hidden>
-        <div class="surface-heading">
+      <section id="reference-library-panel" class="card" hidden>
+        <div class="section-heading">
           <div>
-            <p class="eyebrow">DEEP ANALYSIS / HOSTED COMPUTE</p><h2>YouTube 영상 심층 분석</h2>
-            <p class="muted small">Desktop은 공개 YouTube URL만 authenticated hosted boundary로 전달합니다. Gemini credential, model authority, provider call은 hosted runtime에만 존재하며 이 단계는 자동 persistence를 수행하지 않습니다.</p>
+            <p class="eyebrow">REFERENCE LIBRARY / 보관함</p>
+            <h2>Local SQLite Reference Library</h2>
+            <p class="muted small">workspace <strong id="library-workspace">—</strong> · items <strong id="library-count">0</strong> · selected <strong id="library-selected-count">0</strong></p>
           </div>
-          <span class="badge">deep / hosted</span>
-        </div>
-        <form id="deep-analysis-form" class="discovery-form">
-          <label class="discovery-query">YouTube URL<input id="deep-analysis-url" type="url" maxlength="500" placeholder="https://www.youtube.com/watch?v=..." required /></label>
-          <button id="deep-analysis-submit" type="submit" disabled>Deep Analysis</button>
-        </form>
-        <div class="library-summary" aria-live="polite">
-          <span>상태 <strong id="deep-analysis-status">SIGNED OUT</strong></span>
-          <span>Model <strong id="deep-analysis-model">—</strong></span>
-          <span>Source <strong id="deep-analysis-source">—</strong></span>
-        </div>
-        <div id="deep-analysis-content"></div>
-      </section>
-
-      <section id="production-guidance-panel" class="card reference-detail" aria-label="Product Truth Production Guidance" hidden>
-        <div class="surface-heading">
-          <div>
-            <p class="eyebrow">PRODUCT TRUTH / PRODUCTION GUIDANCE</p><h2>내 상품에 맞춰 제작안 만들기</h2>
-            <p class="muted small">현재 Deep Analysis 결과는 Desktop 프로세스 메모리에서만 다음 hosted 요청으로 전달됩니다. 서버가 분석 schema를 다시 검증하고 metrics를 재계산한 뒤, 사용자가 입력한 원문만 Product Truth authority로 사용해 semantic matching과 canonical 제작 가이드를 컴파일합니다. 자동 persistence와 Background Batch는 수행하지 않습니다.</p>
+          <div class="actions">
+            <strong id="library-status">LOCAL STARTUP</strong>
+            <button id="library-refresh" type="button" class="secondary">새로고침</button>
+            <button id="library-compare" type="button" disabled>선택 비교</button>
           </div>
-          <span class="badge">truth / hosted</span>
-        </div>
-        <form id="product-truth-form" class="discovery-form">
-          <label>상품명<input id="product-truth-name" type="text" maxlength="160" placeholder="예: 자동 단우산" /></label>
-          <label>타깃<input id="product-truth-target" type="text" maxlength="500" placeholder="예: 출퇴근 때 작은 우산이 필요한 사람" /></label>
-          <label>가격 / 혜택<input id="product-truth-price" type="text" maxlength="500" placeholder="예: 8,900원 / 무료배송" /></label>
-          <label class="discovery-query">확인된 특징 / 스펙<textarea id="product-truth-facts" rows="4" maxlength="4000" placeholder="한 줄에 하나씩 입력&#10;예: 200그람&#10;예: 버튼으로 자동 개폐&#10;예: 가방에 걍 쏙"></textarea></label>
-          <button id="production-guidance-submit" type="submit" disabled>제작안에 반영</button>
-        </form>
-        <div class="library-summary" aria-live="polite">
-          <span>상태 <strong id="production-guidance-status">SIGNED OUT</strong></span>
-          <span>Matcher model <strong id="production-guidance-model">—</strong></span>
-          <span>Authority <strong>USER RAW FACTS</strong></span>
-        </div>
-        <div id="production-guidance-content"></div>
-      </section>
-
-      <section id="background-batch-panel" class="card library" aria-label="Background Batch" hidden>
-        <div class="surface-heading">
-          <div>
-            <p class="eyebrow">BACKGROUND BATCH / GUARDED ORCHESTRATION</p><h2>비동기 분석 작업</h2>
-            <p class="muted small">Batch create는 비멱등이므로 request-id reservation을 먼저 durable ledger에 기록하고 자동 재시도하지 않습니다. 현재 provider precondition과 live verification gate가 확인되기 전에는 Desktop submit이 차단됩니다. 결과를 Reference Library에 자동 저장하지 않습니다.</p>
-          </div>
-          <span class="badge">guarded / blocked</span>
-        </div>
-        <form id="background-batch-form" class="discovery-form">
-          <label class="discovery-query">YouTube URL<input id="background-batch-url" type="url" maxlength="500" placeholder="https://www.youtube.com/watch?v=..." required /></label>
-          <button id="background-batch-submit" type="submit" disabled>Background Batch 제출</button>
-          <button id="background-batch-refresh" class="secondary" type="button" disabled>작업 새로고침</button>
-        </form>
-        <div class="library-summary" aria-live="polite">
-          <span>상태 <strong id="background-batch-status">SIGNED OUT</strong></span>
-          <span>Provider precondition <strong id="background-batch-provider-precondition">—</strong></span>
-          <span>Live Batch <strong id="background-batch-live-verified">—</strong></span>
-          <span>Desktop submit <strong id="background-batch-activation">OFF</strong></span>
-          <span>작업 <strong id="background-batch-count">0</strong></span>
-        </div>
-        <div id="background-batch-list" class="library-list"></div>
-      </section>
-
-      <section id="reference-library-panel" class="card library" aria-label="Reference Library" hidden>
-        <div class="library-heading">
-          <div>
-            <p class="eyebrow">REFERENCE LIBRARY / 보관함</p><h2>저장된 레퍼런스</h2>
-            <p class="muted small">목록은 metadata만 조회합니다. full analysis는 단일 상세를 명시적으로 열 때만 Desktop으로 지연 로드하며, 비교는 hosted compiler가 persisted rows를 직접 읽습니다.</p>
-          </div>
-          <div class="library-heading-actions">
-            <button id="library-compare" class="compact" type="button" disabled>Canonical 비교</button>
-            <button id="library-refresh" class="secondary compact" type="button">새로고침</button>
-          </div>
-        </div>
-        <div class="library-summary" aria-live="polite">
-          <span>상태 <strong id="library-status">SIGNED OUT</strong></span>
-          <span>workspace <strong id="library-workspace">—</strong></span>
-          <span>항목 <strong id="library-count">0</strong></span>
-          <span>비교 선택 <strong id="library-selected-count">0</strong></span>
         </div>
         <div id="reference-library-list" class="library-list"></div>
       </section>
 
-      <section id="reference-detail-panel" class="card reference-detail" aria-label="Reference Detail" hidden>
-        <div class="surface-heading">
-          <div><p class="eyebrow">REFERENCE DETAIL</p><h2>레퍼런스 상세</h2><p class="muted small">이 화면을 열 때만 선택 항목의 persisted analysis를 workspace-scoped RLS 아래 조회합니다.</p></div>
-          <button id="reference-detail-close" class="secondary compact" type="button">닫기</button>
+      <section id="reference-detail-panel" class="card" hidden>
+        <div class="section-heading">
+          <div><p class="eyebrow">LOCAL REFERENCE DETAIL</p><h2>분석 상세</h2></div>
+          <div class="actions"><strong id="reference-detail-status">IDLE</strong><button id="reference-detail-close" type="button" class="ghost">닫기</button></div>
         </div>
-        <div class="library-summary"><span>상태 <strong id="reference-detail-status">IDLE</strong></span></div>
         <div id="reference-detail-content"></div>
       </section>
 
-      <section id="reference-compare-panel" class="card reference-compare" aria-label="Reference Compare" hidden>
-        <div class="surface-heading">
-          <div><p class="eyebrow">REFERENCE COMPARE / EVIDENCE</p><h2>Canonical 비교 · 근거 규칙</h2><p class="muted small">2개 이상 선택하면 authenticated hosted boundary가 JWT-derived workspace의 persisted analyses를 RLS 아래 읽고 canonical Compare/Evidence compiler를 실행합니다.</p></div>
-          <button id="reference-compare-clear" class="secondary compact" type="button">선택 초기화</button>
+      <section id="reference-compare-panel" class="card" hidden>
+        <div class="section-heading">
+          <div><p class="eyebrow">LOCAL CANONICAL COMPARE</p><h2>Reference Compare</h2><p class="muted small">선택한 분석은 Gateway로 보내지 않고 Desktop canonical compiler에서 비교합니다.</p></div>
+          <div class="actions"><strong id="reference-compare-status">IDLE</strong><span>sample <strong id="reference-compare-count">0</strong></span><button id="reference-compare-clear" type="button" class="ghost">선택 초기화</button></div>
         </div>
-        <div class="library-summary"><span>상태 <strong id="reference-compare-status">IDLE</strong></span><span>비교 항목 <strong id="reference-compare-count">0</strong></span></div>
         <div id="reference-compare-content"></div>
       </section>
 
-      <section class="card roadmap">
-        <p class="eyebrow">SURFACE MIGRATION</p>
-        <div class="roadmap-row"><span>Reference Library list / delete</span><strong>verified</strong></div>
-        <div class="roadmap-row"><span>Reference Detail</span><strong>verified</strong></div>
-        <div class="roadmap-row"><span>Canonical Compare / Evidence</span><strong>verified</strong></div>
-        <div class="roadmap-row"><span>Search / Discovery</span><strong>verified</strong></div>
-        <div class="roadmap-row"><span>Deep Analysis</span><strong>verified</strong></div>
-        <div class="roadmap-row"><span>Product Truth / Production Guidance</span><strong>verified</strong></div>
-        <div class="roadmap-row"><span>Background Batch</span><strong>current / blocked</strong></div>
+      <section id="discovery-panel" class="card" hidden>
+        <div class="section-heading">
+          <div><p class="eyebrow">GATEWAY DISCOVERY</p><h2>YouTube Discovery</h2><p class="muted small">YouTube provider secret은 Desktop에 포함되지 않습니다.</p></div>
+          <div><strong id="discovery-status">LOCAL ONLY</strong></div>
+        </div>
+        <form id="discovery-form" class="stack">
+          <label><span>검색어</span><input id="discovery-query" type="text" placeholder="예: skincare short form" /></label>
+          <div class="grid compact-grid">
+            <label><span>Region</span><input id="discovery-region" type="text" value="KR" maxlength="2" /></label>
+            <label><span>Language</span><input id="discovery-language" type="text" value="ko" maxlength="8" /></label>
+            <label><span>Max duration</span><input id="discovery-duration" type="number" min="1" max="3600" value="180" /></label>
+          </div>
+          <button id="discovery-search" type="submit" disabled>Gateway 검색</button>
+        </form>
+        <p class="muted small">provider <strong id="discovery-provider">GATEWAY</strong> · candidates <strong id="discovery-count">0</strong></p>
+        <div id="discovery-results" class="discovery-results"></div>
+      </section>
+
+      <section id="deep-analysis-panel" class="card" hidden>
+        <div class="section-heading">
+          <div><p class="eyebrow">GATEWAY AI</p><h2>Deep Analysis</h2><p class="muted small">Gateway에서 실행하고 결과는 Local SQLite에 저장합니다.</p></div>
+          <div><strong id="deep-analysis-status">SIGNED OUT</strong></div>
+        </div>
+        <form id="deep-analysis-form" class="stack">
+          <label><span>YouTube URL</span><input id="deep-analysis-url" type="url" placeholder="https://www.youtube.com/watch?v=..." /></label>
+          <button id="deep-analysis-submit" type="submit" disabled>Deep Analysis</button>
+        </form>
+        <div class="facts">
+          <div><span>Model</span><strong id="deep-analysis-model">—</strong></div>
+          <div><span>Source</span><strong id="deep-analysis-source">—</strong></div>
+        </div>
+        <div id="deep-analysis-content"></div>
+      </section>
+
+      <section id="production-guidance-panel" class="card" hidden>
+        <div class="section-heading">
+          <div><p class="eyebrow">GATEWAY GUIDANCE</p><h2>Production Guidance</h2><p class="muted small">유료 사용 판정은 Gateway가 수행하고 결과는 Local SQLite에 저장합니다.</p></div>
+          <div><strong id="production-guidance-status">SIGNED OUT</strong></div>
+        </div>
+        <form id="product-truth-form" class="stack">
+          <label><span>Product name</span><input id="product-truth-name" type="text" /></label>
+          <label><span>Target customer</span><input id="product-truth-target" type="text" /></label>
+          <label><span>Price / offer</span><input id="product-truth-price" type="text" /></label>
+          <label><span>Verified facts</span><textarea id="product-truth-facts" rows="4"></textarea></label>
+          <button id="production-guidance-submit" type="submit" disabled>Production Guidance 생성</button>
+        </form>
+        <div class="facts"><div><span>Model</span><strong id="production-guidance-model">—</strong></div></div>
+        <div id="production-guidance-content"></div>
+      </section>
+
+      <section id="background-batch-panel" class="card" hidden>
+        <div class="section-heading">
+          <div><p class="eyebrow">TRANSITION-ONLY</p><h2>Background Batch</h2><p class="muted small">Stateless Gateway에는 노출되지 않으며 0.1.2 Product-Key session에서는 차단됩니다.</p></div>
+          <div><strong id="background-batch-status">SIGNED OUT</strong></div>
+        </div>
+        <div class="facts">
+          <div><span>Provider precondition</span><strong id="background-batch-provider-precondition">—</strong></div>
+          <div><span>Live verified</span><strong id="background-batch-live-verified">—</strong></div>
+          <div><span>Activation</span><strong id="background-batch-activation">OFF</strong></div>
+          <div><span>Jobs</span><strong id="background-batch-count">0</strong></div>
+        </div>
+        <form id="background-batch-form" class="stack">
+          <label><span>YouTube URL</span><input id="background-batch-url" type="url" /></label>
+          <div class="actions"><button id="background-batch-submit" type="submit" disabled>Submit</button><button id="background-batch-refresh" type="button" class="secondary" disabled>Refresh</button></div>
+        </form>
+        <div id="background-batch-list" class="library-list"></div>
+      </section>
+
+      <section class="roadmap card">
+        <p class="eyebrow">MIGRATION BOUNDARY</p>
+        <h2>0.1.2 bridge, not 0.1.3 clean cut</h2>
+        <p class="muted small">이 빌드에는 existing-data migration을 위한 legacy Supabase adapter/config가 남아 있습니다. SUPABASE_RUNTIME_DEPENDENCY = ZERO는 아직 선언하지 않습니다.</p>
       </section>
     </main>
+
     <script src="./config.js"></script>
     <script src="./deep-analysis.js"></script>
     <script src="./background-batch.js"></script>

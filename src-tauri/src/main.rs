@@ -3,6 +3,7 @@
 mod device_secure_store;
 mod gateway_transport;
 mod local_persistence;
+mod migration_bridge;
 
 #[cfg(feature = "independent-updater")]
 mod updater;
@@ -32,6 +33,7 @@ fn main() {
             local_persistence::desktop_local_comparison_save,
             local_persistence::desktop_local_guidance_save,
             local_persistence::desktop_local_migrate_legacy_reference_library,
+            migration_bridge::desktop_migrate_legacy_reference_library_verified,
             local_persistence::desktop_local_export_database,
             local_persistence::desktop_local_import_database,
             device_secure_store::desktop_device_secure_store_status,
@@ -61,6 +63,7 @@ fn main() {
         local_persistence::desktop_local_comparison_save,
         local_persistence::desktop_local_guidance_save,
         local_persistence::desktop_local_migrate_legacy_reference_library,
+        migration_bridge::desktop_migrate_legacy_reference_library_verified,
         local_persistence::desktop_local_export_database,
         local_persistence::desktop_local_import_database,
         device_secure_store::desktop_device_secure_store_status,

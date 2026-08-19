@@ -65,7 +65,7 @@
 
     async function migrateLegacyReferenceLibrary(records) {
       requireConfigured();
-      return await invoke("desktop_local_migrate_legacy_reference_library", { records });
+      return await invoke("desktop_migrate_legacy_reference_library_verified", { records });
     }
 
     return Object.freeze({

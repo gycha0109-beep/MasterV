@@ -1,6 +1,20 @@
 (() => {
   "use strict";
 
+  const MIGRATION_PROJECTION = Object.freeze([
+    "source_platform",
+    "source_id",
+    "native_id",
+    "canonical_url",
+    "label",
+    "analysis",
+    "analysis_cache_key",
+    "analysis_provenance",
+    "schema_version",
+    "first_saved_at",
+    "updated_at"
+  ]);
+
   function normalizedBaseUrl(value) {
     return String(value || "").trim().replace(/\/+$/, "");
   }
@@ -24,7 +38,9 @@
 
     function requireSession(session) {
       if (!configured()) throw new Error("Legacy Supabase work-data provider is not configured");
-      if (!session?.credential || !session?.subject_id) throw new Error("Authenticated provider session is required");
+      if (session?.provider !== "legacy-supabase" || !session?.credential || !session?.subject_id) {
+        throw new Error("Legacy Supabase migration session is required");
+      }
     }
 
     function authHeaders(session, extra = {}) {
@@ -66,6 +82,24 @@
       return body;
     }
 
+    async function exportReferenceLibraryForMigration(session, workspaceId) {
+      requireSession(session);
+      const rows = await listReferenceLibrary(session, workspaceId, MIGRATION_PROJECTION);
+      return rows.map((row) => Object.freeze({
+        source_platform: row.source_platform,
+        source_id: row.source_id,
+        native_id: row.native_id,
+        canonical_url: row.canonical_url,
+        label: row.label,
+        analysis: row.analysis,
+        analysis_cache_key: row.analysis_cache_key,
+        analysis_provenance: row.analysis_provenance,
+        schema_version: row.schema_version,
+        first_saved_at: row.first_saved_at ?? null,
+        updated_at: row.updated_at ?? null
+      }));
+    }
+
     async function fetchReferenceDetail(session, workspaceId, sourceId, projection) {
       requireSession(session);
       if (!Array.isArray(projection) || projection.length === 0) throw new Error("Reference detail projection is required");
@@ -96,8 +130,16 @@
       if (!response.ok) throw new Error(`Reference Library delete ${await parseError(response)}`);
     }
 
-    return { configured, bootstrapPersonalWorkspace, listReferenceLibrary, fetchReferenceDetail, deleteReferenceLibraryEntry };
+    return Object.freeze({
+      configured,
+      bootstrapPersonalWorkspace,
+      listReferenceLibrary,
+      exportReferenceLibraryForMigration,
+      fetchReferenceDetail,
+      deleteReferenceLibraryEntry,
+      authority: Object.freeze({ scope: "0.1.2-existing-data-migration-only" })
+    });
   }
 
-  window.MASTERV_LEGACY_SUPABASE_WORK_DATA_PROVIDER = Object.freeze({ create });
+  window.MASTERV_LEGACY_SUPABASE_WORK_DATA_PROVIDER = Object.freeze({ create, MIGRATION_PROJECTION });
 })();

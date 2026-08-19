@@ -26,17 +26,21 @@
 
   const authStatus = document.getElementById("auth-status");
   const apiStatus = document.getElementById("api-status");
-  const form = document.getElementById("login-form");
-  const emailInput = document.getElementById("email");
-  const passwordInput = document.getElementById("password");
-  const loginButton = document.getElementById("login-button");
+  const activationForm = document.getElementById("activation-form");
+  const productKeyInput = document.getElementById("product-key");
+  const activateButton = document.getElementById("activate-button");
+  const resumeButton = document.getElementById("resume-button");
   const logoutButton = document.getElementById("logout-button");
   const message = document.getElementById("message");
+  const migrationForm = document.getElementById("legacy-migration-form");
+  const migrationEmail = document.getElementById("migration-email");
+  const migrationPassword = document.getElementById("migration-password");
+  const migrationButton = document.getElementById("migration-button");
+  const migrationStatus = document.getElementById("migration-status");
   const capBoundary = document.getElementById("cap-boundary");
   const capReferenceCompiler = document.getElementById("cap-reference-compiler");
   const capAnalyze = document.getElementById("cap-analyze");
   const capYoutube = document.getElementById("cap-youtube");
-  const capProductTruth = document.getElementById("cap-product-truth");
   const discoveryPanel = document.getElementById("discovery-panel");
   const discoveryForm = document.getElementById("discovery-form");
   const discoveryQuery = document.getElementById("discovery-query");
@@ -66,6 +70,18 @@
   const compareContent = document.getElementById("reference-compare-content");
   const compareClear = document.getElementById("reference-compare-clear");
 
+  const required = [
+    authStatus, apiStatus, activationForm, productKeyInput, activateButton, resumeButton,
+    logoutButton, message, migrationForm, migrationEmail, migrationPassword, migrationButton,
+    migrationStatus, capBoundary, capReferenceCompiler, capAnalyze, capYoutube, discoveryPanel,
+    discoveryForm, discoveryQuery, discoveryRegion, discoveryLanguage, discoveryDuration,
+    discoverySearch, discoveryStatus, discoveryCount, discoveryProvider, discoveryResults,
+    libraryPanel, libraryStatus, libraryWorkspace, libraryCount, librarySelectedCount,
+    libraryList, libraryRefresh, libraryCompare, detailPanel, detailStatus, detailContent,
+    detailClose, comparePanel, compareStatus, compareCount, compareContent, compareClear
+  ];
+  if (required.some((value) => !value)) throw new Error("MasterV EXIT-2C visible surface is missing required DOM elements");
+
   let session = null;
   let workspaceId = null;
   let detailSourceId = null;
@@ -74,21 +90,20 @@
 
   libraryPanel.dataset.projection = REFERENCE_LIBRARY_LIST_PROJECTION.join(",");
   detailPanel.dataset.projection = REFERENCE_LIBRARY_DETAIL_PROJECTION.join(",");
-  comparePanel.dataset.compiler = "hosted-canonical";
-  discoveryPanel.dataset.providerAuthority = "hosted-secret";
+  comparePanel.dataset.compiler = "local-canonical";
+  comparePanel.dataset.workDataAuthority = "local-sqlite";
+  discoveryPanel.dataset.providerAuthority = "masterv-gateway";
   discoveryPanel.dataset.providerCredentialsInClient = "false";
   discoveryPanel.dataset.analysisAuthority = "metadata-only";
   discoveryPanel.dataset.youtubeApiRequests = "0";
   document.documentElement.dataset.backendProviderContract = backend.contract_version;
   document.documentElement.dataset.backendConsumer = "app";
-
-  function configured() {
-    return backend.configured();
-  }
+  document.documentElement.dataset.migrationStage = "MV-SUPABASE-EXIT-2C";
+  document.documentElement.dataset.localDataRequiresSubscription = "false";
 
   function publishSessionState(authenticated) {
     window.dispatchEvent(new CustomEvent("masterv:session-state-changed", {
-      detail: { authenticated: Boolean(authenticated) }
+      detail: { authenticated: Boolean(authenticated), provider: session?.provider || null }
     }));
   }
 
@@ -98,15 +113,20 @@
   }
 
   function setCapability(target, value) {
-    if (!target) return;
-    target.textContent = value === true ? "READY" : value === false ? "PENDING" : "—";
+    target.textContent = value === true ? "READY" : value === false ? "BLOCKED" : "—";
+    target.classList.toggle("ok", value === true);
+    target.classList.toggle("error", value === false);
   }
 
-  function resetCapabilities() {
-    [capBoundary, capReferenceCompiler, capAnalyze, capYoutube, capProductTruth].forEach((target) => setCapability(target, null));
+  function resetRemoteCapabilities() {
+    setCapability(capBoundary, null);
+    setCapability(capAnalyze, null);
+    setCapability(capYoutube, null);
+    setCapability(capReferenceCompiler, Boolean(window.MASTERV_LOCAL_REFERENCE_COMPILER && workspaceId));
     youtubeDiscoveryReady = false;
+    apiStatus.textContent = session ? "NOT CHECKED" : "LOCAL ONLY";
+    apiStatus.classList.remove("ok", "error");
     updateDiscoveryControl();
-    apiStatus.textContent = "NOT CHECKED";
   }
 
   function setDiscoveryStatus(text, tone = "") {
@@ -134,7 +154,6 @@
   }
 
   function updateDiscoveryControl() {
-    if (!discoverySearch || !discoveryQuery) return;
     discoverySearch.disabled = !session || !youtubeDiscoveryReady || !discoveryQuery.value.trim();
   }
 
@@ -142,10 +161,10 @@
     if (hide) discoveryPanel.hidden = true;
     discoveryResults.replaceChildren();
     discoveryCount.textContent = "0";
-    discoveryProvider.textContent = "HOSTED";
+    discoveryProvider.textContent = "GATEWAY";
     discoveryPanel.dataset.youtubeApiRequests = "0";
     if (clearQuery) discoveryQuery.value = "";
-    setDiscoveryStatus(session ? (youtubeDiscoveryReady ? "READY" : "NOT CONFIGURED") : "SIGNED OUT", session && youtubeDiscoveryReady ? "ok" : "");
+    setDiscoveryStatus(session ? (youtubeDiscoveryReady ? "READY" : "NOT ENTITLED") : "LOCAL ONLY", session && youtubeDiscoveryReady ? "ok" : "");
     updateDiscoveryControl();
   }
 
@@ -165,25 +184,13 @@
     updateCompareControls();
   }
 
-  function clearReferenceLibraryState() {
-    workspaceId = null;
-    libraryPanel.hidden = true;
-    libraryWorkspace.textContent = "—";
-    libraryCount.textContent = "0";
-    libraryList.replaceChildren();
-    selectedSourceIds.clear();
-    clearReferenceDetailState();
-    clearReferenceCompareState({ clearSelection: false });
-    setLibraryStatus("SIGNED OUT");
-  }
-
   function setLibraryLoading(label = "LOADING") {
     libraryPanel.hidden = false;
     setLibraryStatus(label);
     libraryList.replaceChildren();
     const loading = document.createElement("p");
     loading.className = "library-state";
-    loading.textContent = "보관함을 불러오는 중입니다.";
+    loading.textContent = "로컬 보관함을 불러오는 중입니다.";
     libraryList.append(loading);
   }
 
@@ -219,14 +226,12 @@
 
   function updateCompareControls() {
     librarySelectedCount.textContent = String(selectedSourceIds.size);
-    libraryCompare.disabled = selectedSourceIds.size < 2;
+    libraryCompare.disabled = !workspaceId || selectedSourceIds.size < 2;
   }
 
   function pruneSelection(records) {
     const available = new Set(records.map((record) => record.source_id));
-    for (const sourceId of selectedSourceIds) {
-      if (!available.has(sourceId)) selectedSourceIds.delete(sourceId);
-    }
+    for (const sourceId of selectedSourceIds) if (!available.has(sourceId)) selectedSourceIds.delete(sourceId);
     if (detailSourceId && !available.has(detailSourceId)) clearReferenceDetailState();
     updateCompareControls();
   }
@@ -234,12 +239,12 @@
   function renderReferenceLibrary(records) {
     libraryList.replaceChildren();
     libraryCount.textContent = String(records.length);
-    setLibraryStatus("READY", "ok");
+    setLibraryStatus("READY / LOCAL", "ok");
     pruneSelection(records);
     if (records.length === 0) {
       const empty = document.createElement("p");
       empty.className = "library-state";
-      empty.textContent = "아직 저장된 레퍼런스가 없습니다.";
+      empty.textContent = "로컬 SQLite에 저장된 레퍼런스가 없습니다.";
       libraryList.append(empty);
       return;
     }
@@ -267,13 +272,11 @@
       url.textContent = record.canonical_url;
       const meta = document.createElement("div");
       meta.className = "library-meta";
-      const provenance = document.createElement("span");
-      provenance.textContent = `provenance ${record.analysis_provenance}`;
-      const revision = document.createElement("span");
-      revision.textContent = `rev ${record.revision}`;
-      const updated = document.createElement("span");
-      updated.textContent = `updated ${formatUpdatedAt(record.updated_at)}`;
-      meta.append(provenance, revision, updated);
+      for (const text of [`provenance ${record.analysis_provenance}`, `rev ${record.revision}`, `updated ${formatUpdatedAt(record.updated_at)}`]) {
+        const span = document.createElement("span");
+        span.textContent = text;
+        meta.append(span);
+      }
       content.append(title, url, meta);
       const actions = document.createElement("div");
       actions.className = "library-item-actions";
@@ -293,54 +296,11 @@
     }
   }
 
-  function renderDiscoveryCandidates(result) {
-    discoveryResults.replaceChildren();
-    const candidates = Array.isArray(result.candidates) ? result.candidates : [];
-    discoveryCount.textContent = String(candidates.length);
-    discoveryProvider.textContent = "HOSTED SECRET";
-    discoveryPanel.dataset.youtubeApiRequests = String(result.diagnostics?.youtube_api_requests ?? 0);
-    if (candidates.length === 0) {
-      const empty = document.createElement("p");
-      empty.className = "library-state discovery-empty";
-      empty.textContent = "조건에 맞는 YouTube 후보가 없습니다. 검색어 또는 필터를 조정해 주세요.";
-      discoveryResults.append(empty);
-      setDiscoveryStatus("READY", "ok");
-      return;
-    }
-    candidates.forEach((candidate, index) => {
-      const card = document.createElement("article");
-      card.className = "discovery-card";
-      card.dataset.discoverySourceId = candidate.source_id;
-      const rank = document.createElement("span");
-      rank.className = "discovery-rank";
-      rank.textContent = `candidate #${index + 1}`;
-      const title = document.createElement("h3");
-      title.textContent = candidate.title || candidate.source_id;
-      const meta = document.createElement("div");
-      meta.className = "discovery-meta";
-      const creator = document.createElement("span");
-      creator.textContent = candidate.creator || "채널 미확인";
-      const duration = document.createElement("span");
-      duration.textContent = typeof candidate.duration_seconds === "number" ? `${candidate.duration_seconds}초` : "길이 미확인";
-      const views = document.createElement("span");
-      views.textContent = `조회 ${formatViews(candidate.native_metrics?.view_count)}`;
-      const published = document.createElement("span");
-      published.textContent = candidate.published_at ? formatUpdatedAt(candidate.published_at) : "게시일 미확인";
-      meta.append(creator, duration, views, published);
-      const url = document.createElement("p");
-      url.className = "discovery-url";
-      url.textContent = candidate.canonical_url;
-      card.append(rank, title, meta, url);
-      discoveryResults.append(card);
-    });
-    setDiscoveryStatus("READY", "ok");
-  }
-
   async function loadReferenceLibrary() {
-    if (!session || !workspaceId) throw new Error("Reference Library session is not ready");
+    if (!workspaceId) throw new Error("Local Reference Library workspace is not ready");
     setLibraryLoading();
     try {
-      const records = await backend.workData.listReferenceLibrary(session, workspaceId, REFERENCE_LIBRARY_LIST_PROJECTION);
+      const records = await backend.workData.listReferenceLibrary(null, workspaceId, REFERENCE_LIBRARY_LIST_PROJECTION);
       renderReferenceLibrary(records);
       return records;
     } catch (error) {
@@ -349,28 +309,12 @@
     }
   }
 
-  async function loadYouTubeDiscovery() {
-    if (!session || !youtubeDiscoveryReady) throw new Error("Hosted YouTube discovery is not ready");
-    const query = discoveryQuery.value.trim();
-    if (!query) throw new Error("검색어를 입력해 주세요.");
-    const options = { max_results: 50, shortlist_limit: 12, min_duration_seconds: 1, max_duration_seconds: Number(discoveryDuration.value || 180), max_per_creator: 2 };
-    if (discoveryRegion.value) options.region_code = discoveryRegion.value;
-    if (discoveryLanguage.value) options.relevance_language = discoveryLanguage.value;
-    discoveryResults.replaceChildren();
-    discoveryCount.textContent = "0";
-    setDiscoveryStatus("SEARCHING");
-    try {
-      const result = await backend.remoteOperations.discoverYouTube(session, query, options);
-      renderDiscoveryCandidates(result);
-      return result;
-    } catch (error) {
-      setDiscoveryStatus("ERROR", "error");
-      const errorText = document.createElement("p");
-      errorText.className = "library-state error-text discovery-empty";
-      errorText.textContent = error instanceof Error ? error.message : String(error);
-      discoveryResults.replaceChildren(errorText);
-      throw error;
-    }
+  async function initializeLocalWorkspace() {
+    setLibraryLoading("LOCAL STARTUP");
+    workspaceId = await backend.workData.bootstrapPersonalWorkspace(null);
+    libraryWorkspace.textContent = workspaceId;
+    setCapability(capReferenceCompiler, Boolean(window.MASTERV_LOCAL_REFERENCE_COMPILER));
+    await loadReferenceLibrary();
   }
 
   function appendFact(container, label, value) {
@@ -404,22 +348,20 @@
     appendFact(facts, "Structure", analysis.structure_label || "—");
     appendFact(facts, "Duration", formatSeconds(analysis.duration_seconds));
     appendFact(facts, "Hook", analysis.hook?.type || "—");
-    appendFact(facts, "Product first seen", formatSeconds(analysis.product_presentation?.first_seen_seconds));
-    appendFact(facts, "CTA", analysis.persuasion?.cta || "—");
     appendFact(facts, "Observation segments", String(Array.isArray(analysis.observation_segments) ? analysis.observation_segments.length : 0));
     appendFact(facts, "Provenance", record.analysis_provenance || "—");
     appendFact(facts, "Revision", String(record.revision ?? "—"));
     detailContent.append(heading, facts);
-    setDetailStatus("READY", "ok");
+    setDetailStatus("READY / LOCAL", "ok");
   }
 
   async function loadReferenceDetail(sourceId) {
-    if (!session || !workspaceId) throw new Error("Reference Library session is not ready");
+    if (!workspaceId) throw new Error("Local Reference Library workspace is not ready");
     detailPanel.hidden = false;
     detailContent.replaceChildren();
     setDetailStatus("LOADING");
     try {
-      const record = await backend.workData.fetchReferenceDetail(session, workspaceId, sourceId, REFERENCE_LIBRARY_DETAIL_PROJECTION);
+      const record = await backend.workData.fetchReferenceDetail(null, workspaceId, sourceId, REFERENCE_LIBRARY_DETAIL_PROJECTION);
       renderReferenceDetail(record);
       return record;
     } catch (error) {
@@ -432,6 +374,16 @@
     }
   }
 
+  async function deleteReferenceLibraryEntry(sourceId) {
+    if (!workspaceId) throw new Error("Local Reference Library workspace is not ready");
+    await backend.workData.deleteReferenceLibraryEntry(null, workspaceId, sourceId);
+    selectedSourceIds.delete(sourceId);
+    if (detailSourceId === sourceId) clearReferenceDetailState();
+    const records = await loadReferenceLibrary();
+    if (records.some((record) => record.source_id === sourceId)) throw new Error("Reference Library delete did not converge with local persisted state");
+    if (selectedSourceIds.size < 2) clearReferenceCompareState({ clearSelection: false });
+  }
+
   function renderReferenceComparison(result) {
     const comparison = result.comparison;
     const ruleSet = result.evidence_rules;
@@ -440,8 +392,8 @@
     compareCount.textContent = String(comparison.sample_size ?? 0);
     const authority = document.createElement("p");
     authority.className = "muted small";
-    authority.dataset.compilerAuthority = "canonical";
-    authority.textContent = "Hosted canonical Compare/Evidence compiler 결과입니다. raw persisted analysis는 비교를 위해 Desktop으로 전송하지 않습니다.";
+    authority.dataset.compilerAuthority = "local-canonical";
+    authority.textContent = "Local SQLite 분석을 Desktop의 canonical Compare/Evidence compiler로 처리했습니다. Gateway 전송은 없습니다.";
     compareContent.append(authority);
     const aggregateTitle = document.createElement("h3");
     aggregateTitle.textContent = "Aggregate comparison";
@@ -500,29 +452,19 @@
       evidenceGrid.append(card);
     }
     compareContent.append(evidenceTitle, evidenceGrid);
-    if (Array.isArray(ruleSet.notes) && ruleSet.notes.length) {
-      const notes = document.createElement("ul");
-      notes.className = "muted small";
-      for (const text of ruleSet.notes) {
-        const item = document.createElement("li");
-        item.textContent = text;
-        notes.append(item);
-      }
-      compareContent.append(notes);
-    }
-    setCompareStatus("READY", "ok");
+    setCompareStatus("READY / LOCAL", "ok");
   }
 
   async function loadReferenceComparison() {
-    if (!session || !workspaceId) throw new Error("Reference Library session is not ready");
+    if (!workspaceId) throw new Error("Local Reference Library workspace is not ready");
     const sourceIds = [...selectedSourceIds];
     if (sourceIds.length < 2) throw new Error("비교하려면 레퍼런스를 2개 이상 선택해야 합니다.");
     comparePanel.hidden = false;
     compareContent.replaceChildren();
     compareCount.textContent = String(sourceIds.length);
-    setCompareStatus("LOADING");
+    setCompareStatus("COMPILING LOCAL");
     try {
-      const result = await backend.remoteOperations.compileReferenceWorkflow(session, sourceIds);
+      const result = await backend.remoteOperations.compileReferenceWorkflow(null, sourceIds);
       renderReferenceComparison(result);
       return result;
     } catch (error) {
@@ -535,101 +477,178 @@
     }
   }
 
-  async function deleteReferenceLibraryEntry(sourceId) {
-    if (!session || !workspaceId) throw new Error("Reference Library session is not ready");
-    await backend.workData.deleteReferenceLibraryEntry(session, workspaceId, sourceId);
-    selectedSourceIds.delete(sourceId);
-    if (detailSourceId === sourceId) clearReferenceDetailState();
-    const records = await loadReferenceLibrary();
-    if (records.some((record) => record.source_id === sourceId)) throw new Error("Reference Library delete did not converge with persisted state");
-    if (selectedSourceIds.size < 2) clearReferenceCompareState({ clearSelection: false });
+  function renderDiscoveryCandidates(result) {
+    discoveryResults.replaceChildren();
+    const candidates = Array.isArray(result.candidates) ? result.candidates : [];
+    discoveryCount.textContent = String(candidates.length);
+    discoveryProvider.textContent = "MASTERV GATEWAY";
+    discoveryPanel.dataset.youtubeApiRequests = String(result.diagnostics?.youtube_api_requests ?? 0);
+    if (candidates.length === 0) {
+      const empty = document.createElement("p");
+      empty.className = "library-state discovery-empty";
+      empty.textContent = "조건에 맞는 YouTube 후보가 없습니다. 검색어 또는 필터를 조정해 주세요.";
+      discoveryResults.append(empty);
+      setDiscoveryStatus("READY", "ok");
+      return;
+    }
+    candidates.forEach((candidate, index) => {
+      const card = document.createElement("article");
+      card.className = "discovery-card";
+      card.dataset.discoverySourceId = candidate.source_id;
+      const rank = document.createElement("span");
+      rank.className = "discovery-rank";
+      rank.textContent = `candidate #${index + 1}`;
+      const title = document.createElement("h3");
+      title.textContent = candidate.title || candidate.source_id;
+      const meta = document.createElement("div");
+      meta.className = "discovery-meta";
+      for (const text of [candidate.creator || "채널 미확인", typeof candidate.duration_seconds === "number" ? `${candidate.duration_seconds}초` : "길이 미확인", `조회 ${formatViews(candidate.native_metrics?.view_count)}`, candidate.published_at ? formatUpdatedAt(candidate.published_at) : "게시일 미확인"]) {
+        const span = document.createElement("span");
+        span.textContent = text;
+        meta.append(span);
+      }
+      const url = document.createElement("p");
+      url.className = "discovery-url";
+      url.textContent = candidate.canonical_url;
+      card.append(rank, title, meta, url);
+      discoveryResults.append(card);
+    });
+    setDiscoveryStatus("READY", "ok");
   }
 
-  async function connect(email, password) {
-    session = await backend.session.openSession({ kind: "email_password", email, password });
-    authStatus.textContent = "AUTHENTICATED";
+  async function loadYouTubeDiscovery() {
+    if (!session || !youtubeDiscoveryReady) throw new Error("MasterV Gateway YouTube discovery is not ready");
+    const query = discoveryQuery.value.trim();
+    if (!query) throw new Error("검색어를 입력해 주세요.");
+    const options = { max_results: 50, shortlist_limit: 12, min_duration_seconds: 1, max_duration_seconds: Number(discoveryDuration.value || 180), max_per_creator: 2 };
+    if (discoveryRegion.value) options.region_code = discoveryRegion.value;
+    if (discoveryLanguage.value) options.relevance_language = discoveryLanguage.value;
+    discoveryResults.replaceChildren();
+    discoveryCount.textContent = "0";
+    setDiscoveryStatus("SEARCHING");
+    const result = await backend.remoteOperations.discoverYouTube(session, query, options);
+    renderDiscoveryCandidates(result);
+    return result;
+  }
+
+  async function establishGatewaySession(credentials, { silent = false } = {}) {
+    const nextSession = await backend.session.openSession(credentials);
+    session = nextSession;
+    authStatus.textContent = credentials.kind === "resume" ? "DEVICE RESUMED" : "ACTIVATED";
     authStatus.classList.add("ok");
-    const hosted = await backend.remoteOperations.probeCapabilities(session);
-    apiStatus.textContent = "CONNECTED";
-    apiStatus.classList.add("ok");
-    setCapability(capBoundary, hosted.capabilities?.boundary_probe);
-    setCapability(capReferenceCompiler, hosted.capabilities?.reference_compiler);
-    setCapability(capAnalyze, hosted.capabilities?.analyze);
-    setCapability(capYoutube, hosted.capabilities?.youtube_discovery);
-    setCapability(capProductTruth, hosted.capabilities?.product_truth);
-    youtubeDiscoveryReady = hosted.capabilities?.youtube_discovery === true;
-    discoveryPanel.hidden = false;
-    setDiscoveryStatus(youtubeDiscoveryReady ? "READY" : "NOT CONFIGURED", youtubeDiscoveryReady ? "ok" : "error");
-    updateDiscoveryControl();
     logoutButton.hidden = false;
+    resumeButton.disabled = true;
     publishSessionState(true);
-    setLibraryLoading("WORKSPACE");
     try {
-      workspaceId = await backend.workData.bootstrapPersonalWorkspace(session);
-      libraryWorkspace.textContent = workspaceId;
-      await loadReferenceLibrary();
-      setMessage(youtubeDiscoveryReady ? "인증된 hosted API, YouTube Discovery, Reference Library에 연결되었습니다." : "인증된 hosted API와 Reference Library에 연결되었습니다. YouTube Discovery hosted secret은 아직 설정되지 않았습니다.", true);
+      const capabilities = await backend.remoteOperations.probeCapabilities(session);
+      apiStatus.textContent = "CONNECTED";
+      apiStatus.classList.add("ok");
+      setCapability(capBoundary, capabilities.capabilities?.boundary_probe === true);
+      setCapability(capReferenceCompiler, capabilities.capabilities?.reference_compiler === true);
+      setCapability(capAnalyze, capabilities.capabilities?.analyze === true);
+      setCapability(capYoutube, capabilities.capabilities?.youtube_discovery === true);
+      youtubeDiscoveryReady = capabilities.capabilities?.youtube_discovery === true;
+      discoveryPanel.hidden = false;
+      setDiscoveryStatus(youtubeDiscoveryReady ? "READY" : "NOT ENTITLED", youtubeDiscoveryReady ? "ok" : "error");
+      updateDiscoveryControl();
+      if (!silent) setMessage("Product-Key/Device session이 MasterV Gateway에 연결되었습니다. 로컬 데이터 authority는 SQLite로 유지됩니다.", true);
+      return nextSession;
     } catch (error) {
-      renderLibraryError(error instanceof Error ? error.message : String(error));
-      setMessage("Hosted API는 연결되었지만 Reference Library 초기화에 실패했습니다.");
+      await backend.session.closeSession(nextSession).catch(() => undefined);
+      session = null;
+      publishSessionState(false);
+      throw error;
     }
   }
 
   async function logout() {
     const activeSession = session;
     session = null;
-    youtubeDiscoveryReady = false;
-    authStatus.textContent = "SIGNED OUT";
+    authStatus.textContent = "LOCAL ONLY";
     authStatus.classList.remove("ok");
-    apiStatus.classList.remove("ok");
-    resetCapabilities();
-    clearDiscoveryState({ hide: true, clearQuery: true });
-    clearReferenceLibraryState();
+    apiStatus.textContent = "LOCAL ONLY";
+    apiStatus.classList.remove("ok", "error");
     logoutButton.hidden = true;
-    passwordInput.value = "";
+    resumeButton.disabled = false;
+    resetRemoteCapabilities();
+    clearDiscoveryState({ hide: true, clearQuery: true });
     publishSessionState(false);
+    if (activeSession) await backend.session.closeSession(activeSession);
+    setMessage("Gateway 세션만 메모리에서 제거했습니다. Local SQLite 데이터는 계속 사용할 수 있습니다.", true);
+  }
+
+  async function tryDeviceResume() {
     try {
-      if (activeSession) await backend.session.closeSession(activeSession);
-    } finally {
-      setMessage("세션과 Search/Discovery, Reference Library 상세/비교 화면을 이 프로세스 메모리에서 제거했습니다.", true);
+      await establishGatewaySession({ kind: "resume" }, { silent: true });
+      setMessage("저장된 Windows device credential로 Gateway session을 재개했습니다.", true);
+    } catch {
+      session = null;
+      authStatus.textContent = "LOCAL ONLY";
+      logoutButton.hidden = true;
+      resumeButton.disabled = false;
+      resetRemoteCapabilities();
+      publishSessionState(false);
     }
   }
 
-  form.addEventListener("submit", async (event) => {
+  activationForm.addEventListener("submit", async (event) => {
     event.preventDefault();
+    const productKey = productKeyInput.value.trim();
+    if (!productKey) return;
+    activateButton.disabled = true;
+    authStatus.textContent = "ACTIVATING";
     setMessage("");
-    resetCapabilities();
-    clearDiscoveryState({ hide: true });
-    clearReferenceLibraryState();
-    if (!configured()) {
-      setMessage("이 Desktop 빌드에는 backend provider runtime config가 완전히 주입되지 않았습니다.");
-      return;
-    }
-    loginButton.disabled = true;
-    authStatus.textContent = "CONNECTING";
     try {
-      await connect(emailInput.value, passwordInput.value);
+      await establishGatewaySession({ kind: "product_key", product_key: productKey, device_label: "MasterV Desktop" });
     } catch (error) {
-      const failedSession = session;
-      session = null;
-      youtubeDiscoveryReady = false;
-      authStatus.textContent = "SIGNED OUT";
+      authStatus.textContent = "LOCAL ONLY";
       authStatus.classList.remove("ok");
       apiStatus.textContent = "FAILED";
-      apiStatus.classList.remove("ok");
-      clearDiscoveryState({ hide: true });
-      clearReferenceLibraryState();
-      publishSessionState(false);
-      if (failedSession) {
-        try { await backend.session.closeSession(failedSession); } catch {}
-      }
+      apiStatus.classList.add("error");
       setMessage(error instanceof Error ? error.message : String(error));
     } finally {
-      loginButton.disabled = false;
+      productKeyInput.value = "";
+      activateButton.disabled = false;
+    }
+  });
+
+  resumeButton.addEventListener("click", async () => {
+    resumeButton.disabled = true;
+    setMessage("");
+    try {
+      await establishGatewaySession({ kind: "resume" });
+    } catch (error) {
+      authStatus.textContent = "LOCAL ONLY";
+      setMessage(error instanceof Error ? error.message : String(error));
+      resumeButton.disabled = false;
     }
   });
 
   logoutButton.addEventListener("click", () => { void logout(); });
+
+  migrationForm.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const email = migrationEmail.value.trim();
+    const password = migrationPassword.value;
+    migrationButton.disabled = true;
+    migrationStatus.textContent = "EXPORTING / IMPORTING";
+    migrationStatus.classList.remove("ok", "error");
+    try {
+      const result = await backend.workData.migrateLegacyReferenceLibrary({ email, password });
+      migrationStatus.textContent = result.already_completed ? "ALREADY MIGRATED" : "MIGRATED / VERIFIED";
+      migrationStatus.classList.add("ok");
+      await loadReferenceLibrary();
+      setMessage(`기존 Reference Library ${result.exported_count}개를 확인했습니다. 신규 import ${result.imported_count}개, post-import integrity 검증 완료.`, true);
+    } catch (error) {
+      migrationStatus.textContent = "FAILED";
+      migrationStatus.classList.add("error");
+      setMessage(error instanceof Error ? error.message : String(error));
+    } finally {
+      migrationPassword.value = "";
+      migrationButton.disabled = false;
+    }
+  });
+
   discoveryQuery.addEventListener("input", updateDiscoveryControl);
   discoveryForm.addEventListener("submit", async (event) => {
     event.preventDefault();
@@ -637,29 +656,49 @@
     discoverySearch.disabled = true;
     try {
       const result = await loadYouTubeDiscovery();
-      setMessage(`Hosted YouTube metadata discovery로 ${result.candidates.length}개 후보를 불러왔습니다.`, true);
+      setMessage(`Gateway YouTube metadata discovery로 ${result.candidates.length}개 후보를 불러왔습니다.`, true);
       discoveryPanel.scrollIntoView({ block: "start" });
-    } catch (error) { setMessage(error instanceof Error ? error.message : String(error)); }
-    finally { updateDiscoveryControl(); }
+    } catch (error) {
+      setDiscoveryStatus("ERROR", "error");
+      setMessage(error instanceof Error ? error.message : String(error));
+    } finally {
+      updateDiscoveryControl();
+    }
   });
+
   libraryRefresh.addEventListener("click", async () => {
-    if (!session || !workspaceId) return;
     libraryRefresh.disabled = true;
-    try { await loadReferenceLibrary(); setMessage("Reference Library를 새로고침했습니다.", true); }
-    catch (error) { setMessage(error instanceof Error ? error.message : String(error)); }
-    finally { libraryRefresh.disabled = false; }
+    try {
+      await loadReferenceLibrary();
+      setMessage("Local SQLite Reference Library를 새로고침했습니다.", true);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : String(error));
+    } finally {
+      libraryRefresh.disabled = false;
+    }
   });
+
   libraryCompare.addEventListener("click", async () => {
     libraryCompare.disabled = true;
-    try { await loadReferenceComparison(); comparePanel.scrollIntoView({ block: "start" }); setMessage("선택한 레퍼런스를 hosted canonical Compare/Evidence compiler로 처리했습니다.", true); }
-    catch (error) { setMessage(error instanceof Error ? error.message : String(error)); }
-    finally { updateCompareControls(); }
+    try {
+      await loadReferenceComparison();
+      comparePanel.scrollIntoView({ block: "start" });
+      setMessage("선택한 레퍼런스를 local canonical Compare/Evidence compiler로 처리하고 SQLite에 저장했습니다.", true);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : String(error));
+    } finally {
+      updateCompareControls();
+    }
   });
+
   compareClear.addEventListener("click", () => {
     clearReferenceCompareState();
-    for (const checkbox of libraryList.querySelectorAll("[data-compare-source-id]")) if (checkbox instanceof HTMLInputElement) checkbox.checked = false;
+    for (const checkbox of libraryList.querySelectorAll("[data-compare-source-id]")) {
+      if (checkbox instanceof HTMLInputElement) checkbox.checked = false;
+    }
     setMessage("비교 선택을 초기화했습니다.", true);
   });
+
   detailClose.addEventListener("click", clearReferenceDetailState);
   libraryList.addEventListener("change", (event) => {
     const target = event.target;
@@ -669,6 +708,7 @@
     if (selectedSourceIds.size < 2) clearReferenceCompareState({ clearSelection: false });
     updateCompareControls();
   });
+
   libraryList.addEventListener("click", async (event) => {
     const element = event.target instanceof Element ? event.target : null;
     const detailTarget = element?.closest("[data-detail-source-id]");
@@ -676,9 +716,14 @@
       const sourceId = detailTarget.dataset.detailSourceId;
       if (!sourceId) return;
       detailTarget.disabled = true;
-      try { await loadReferenceDetail(sourceId); detailPanel.scrollIntoView({ block: "start" }); setMessage("선택한 레퍼런스의 persisted analysis를 상세 화면에 불러왔습니다.", true); }
-      catch (error) { setMessage(error instanceof Error ? error.message : String(error)); }
-      finally { detailTarget.disabled = false; }
+      try {
+        await loadReferenceDetail(sourceId);
+        detailPanel.scrollIntoView({ block: "start" });
+      } catch (error) {
+        setMessage(error instanceof Error ? error.message : String(error));
+      } finally {
+        detailTarget.disabled = false;
+      }
       return;
     }
     const deleteTarget = element?.closest("[data-delete-source-id]");
@@ -687,14 +732,32 @@
     if (!sourceId) return;
     deleteTarget.disabled = true;
     setLibraryStatus("DELETING");
-    try { await deleteReferenceLibraryEntry(sourceId); setMessage("Reference Library 항목을 삭제했습니다.", true); }
-    catch (error) {
+    try {
+      await deleteReferenceLibraryEntry(sourceId);
+      setMessage("Local SQLite Reference Library 항목을 삭제했습니다.", true);
+    } catch (error) {
       setMessage(error instanceof Error ? error.message : String(error));
       try { await loadReferenceLibrary(); } catch {}
     }
   });
 
   clearDiscoveryState({ hide: true });
-  clearReferenceLibraryState();
-  if (!configured()) setMessage("Desktop shell static build 완료. Backend provider runtime config는 아직 연결되지 않았습니다.");
+  clearReferenceDetailState();
+  clearReferenceCompareState();
+  authStatus.textContent = "LOCAL STARTUP";
+  apiStatus.textContent = "LOCAL ONLY";
+
+  void (async () => {
+    try {
+      await initializeLocalWorkspace();
+      authStatus.textContent = "LOCAL ONLY";
+      setMessage("Local SQLite 작업 데이터를 사용할 수 있습니다. 유료 AI 기능은 Product Key activation 또는 device resume 후 연결됩니다.", true);
+    } catch (error) {
+      authStatus.textContent = "LOCAL ERROR";
+      renderLibraryError(error instanceof Error ? error.message : String(error));
+      setMessage(error instanceof Error ? error.message : String(error));
+      return;
+    }
+    await tryDeviceResume();
+  })();
 })();
