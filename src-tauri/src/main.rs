@@ -1,6 +1,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod device_secure_store;
+mod gateway_transport;
 mod local_persistence;
 
 #[cfg(feature = "independent-updater")]
@@ -37,6 +38,13 @@ fn main() {
             device_secure_store::desktop_device_identity_save,
             device_secure_store::desktop_device_identity_load,
             device_secure_store::desktop_device_identity_clear,
+            gateway_transport::desktop_gateway_status,
+            gateway_transport::desktop_gateway_activate,
+            gateway_transport::desktop_gateway_resume_session,
+            gateway_transport::desktop_gateway_entitlement,
+            gateway_transport::desktop_gateway_discover,
+            gateway_transport::desktop_gateway_analyze,
+            gateway_transport::desktop_gateway_guidance,
             updater::desktop_update_check,
             updater::desktop_update_install
         ]);
@@ -58,7 +66,14 @@ fn main() {
         device_secure_store::desktop_device_secure_store_status,
         device_secure_store::desktop_device_identity_save,
         device_secure_store::desktop_device_identity_load,
-        device_secure_store::desktop_device_identity_clear
+        device_secure_store::desktop_device_identity_clear,
+        gateway_transport::desktop_gateway_status,
+        gateway_transport::desktop_gateway_activate,
+        gateway_transport::desktop_gateway_resume_session,
+        gateway_transport::desktop_gateway_entitlement,
+        gateway_transport::desktop_gateway_discover,
+        gateway_transport::desktop_gateway_analyze,
+        gateway_transport::desktop_gateway_guidance
     ]);
 
     builder
@@ -68,8 +83,11 @@ fn main() {
                 .map_err(|error| io::Error::new(io::ErrorKind::Other, error))?;
             let secure_store = device_secure_store::DeviceSecureStore::initialize(&app_local_data_dir)
                 .map_err(|error| io::Error::new(io::ErrorKind::Other, error))?;
+            let gateway = gateway_transport::GatewayTransport::initialize()
+                .map_err(|error| io::Error::new(io::ErrorKind::Other, error))?;
             app.manage(persistence);
             app.manage(secure_store);
+            app.manage(gateway);
 
             let mut window = WebviewWindowBuilder::new(
                 app,

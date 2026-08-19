@@ -1,6 +1,6 @@
 # MV-SUPABASE-EXIT-2A — Local Authority & Secure Device Foundation
 
-Status: IMPLEMENTED — EXACT-HEAD CI REQUIRED FOR CLOSEOUT
+Status: CLOSED
 
 Architecture authority: `MV-ARCH-001`
 
@@ -124,17 +124,41 @@ EXIT-2A does not perform:
 
 Those are subsequent EXIT-2/EXIT-3 responsibilities.
 
-## Closeout gates
+## Closeout evidence
 
-EXIT-2A may close only when the exact branch head passes:
+Audited implementation head:
 
-- updated EXIT-1A SQLite regression contract
-- EXIT-1E independent updater regression
-- EXIT-2A source authority contract
-- Linux native SQLite tests
-- Windows native SQLite tests
-- Windows DPAPI round-trip + plaintext leakage check
-- native compile with locked Cargo graph
-- unchanged `Cargo.lock`
+`f42565fe6e5671decb574df2c65a4199efbd4f14`
+
+Dedicated workflow:
+
+- workflow: `MV Supabase Exit 2A Local Authority Secure Device`
+- run: `32208489831`
+- conclusion: `SUCCESS`
+- source contract: `SUCCESS`
+- Ubuntu native authority: `SUCCESS`
+- Windows native authority: `SUCCESS`
+- SQLite schema/migration/export/import tests: `SUCCESS`
+- Windows DPAPI plaintext-leakage/round-trip/clear tests: `SUCCESS`
+- native compile with locked Cargo graph: `SUCCESS`
+- Cargo.lock mutation during EXIT-2A validation: `NONE`
+
+Broad regression evidence:
+
+- workflow: `CI`
+- run: `32208489844`
+- conclusion: `SUCCESS`
+- canonical validate suite: `SUCCESS`
+- Linux Desktop build: `SUCCESS`
+- Windows native build/WebView2/NSIS/install/restart/uninstall: `SUCCESS`
+- hosted provider-health observations: `SUCCESS`
+
+Historical provider/config/session boundary workflows for EXIT-1B, plus EXIT-1C, EXIT-1D, and EXIT-1E, also returned `SUCCESS` on the audited head after successor-aware authority assertions were applied.
+
+## Closeout classification
+
+`EXIT-2A = STRICT SUCCESS / CLOSED`
+
+This closure is limited to the local work-data authority and secure device foundation. It does **not** close the overall `0.1.2 Migration Bridge` and does not mean the active Desktop UI has switched to Product Key/Gateway yet.
 
 Final 0.1.2 Bridge remains open until later subphases wire Product-Key/Gateway primary runtime and migrate legacy data through the explicit bridge path.
