@@ -5,6 +5,8 @@ import { PolarGatewayAuthorityProvider } from "./providers/polar-authority-provi
 import { PolarHttpClient } from "./providers/polar-http-client";
 import { YouTubeDiscoveryGatewayProvider } from "./providers/youtube-discovery-provider";
 
+export type GatewayRuntimeEnv = Readonly<Record<string, string | undefined>>;
+
 function optionalPositiveInteger(value: string | undefined) {
   if (!value?.trim()) return undefined;
   const parsed = Number(value);
@@ -12,7 +14,7 @@ function optionalPositiveInteger(value: string | undefined) {
   return parsed;
 }
 
-export function createGatewayProviderRuntime(env: NodeJS.ProcessEnv = process.env): GatewayDependencies {
+export function createGatewayProviderRuntime(env: GatewayRuntimeEnv = process.env): GatewayDependencies {
   const geminiKey = env.GEMINI_API_KEY?.trim() || "";
   const youtubeKey = env.YOUTUBE_DATA_API_KEY?.trim() || "";
   const polarAccessToken = env.POLAR_ACCESS_TOKEN?.trim() || "";
