@@ -12,6 +12,12 @@ export function required(name) {
   return value;
 }
 
+export function shellLines(command) {
+  const result = spawnSync("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command", command], { encoding: "utf8" });
+  if (result.status !== 0) throw new Error(result.stderr || result.stdout || `PowerShell failed: ${command}`);
+  return String(result.stdout || "").split(/\r?\n/).map((value) => value.trim()).filter(Boolean);
+}
+
 export function resolveMasterVBinary(fallbackPath) {
   const installed = process.env.MASTERV_DESKTOP_APP_BINARY?.trim() || "";
   if (installed && fs.existsSync(installed)) return path.resolve(installed);
@@ -104,7 +110,7 @@ async function waitForMasterVDom(driverPort, sessionId, appProcess, timeoutMs = 
       last = await execute(driverPort, sessionId, `return {
         href: location.href,
         readyState: document.readyState,
-        surface: document.querySelector('#surface-badge')?.textContent?.trim() || ''
+        surface: window.MASTERV_DESKTOP_CONFIG?.surface || document.querySelector('#surface-badge')?.textContent?.trim() || ''
       };`);
       if (last?.href?.startsWith("https://tauri.localhost/") && last.readyState !== "loading" && last.surface === "desktop") return last;
     } catch (error) {
