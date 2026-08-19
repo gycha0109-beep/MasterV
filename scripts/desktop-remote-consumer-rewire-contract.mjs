@@ -50,9 +50,16 @@ assert.match(backend, /supabase_authority_unchanged:\s*true/);
 assert.match(backend, /local_sqlite_authority_active:\s*false/);
 assert.match(remote, /masterv-api-boundary/);
 assert.match(remote, /masterv-background-batch-boundary/);
-assert.match(persistence, /product_authority_active:\s*false/);
-assert.match(persistence, /supabase_authority_unchanged:\s*true/);
 assert.equal(app.includes("supabase_publishable_key"), false, "app consumer regression reintroduced Supabase coupling");
+
+const localAuthorityPromoted = /product_authority_active:\s*true/.test(persistence);
+if (localAuthorityPromoted) {
+  assert.match(persistence, /supabase_primary_authority_active:\s*false/);
+  assert.match(persistence, /supabase_fallback_available:\s*true/);
+} else {
+  assert.match(persistence, /product_authority_active:\s*false/);
+  assert.match(persistence, /supabase_authority_unchanged:\s*true/);
+}
 
 const window = {};
 window.window = window;
@@ -109,6 +116,8 @@ console.log(JSON.stringify({
   fetch_monkey_patches: 0,
   session_runtime: "provider-boundary",
   capability_runtime: "provider-boundary",
-  product_authority_active: false,
-  supabase_authority_unchanged: true
+  desktop_provider_local_sqlite_authority_active: false,
+  native_local_work_data_authority_active: localAuthorityPromoted,
+  supabase_fallback_available: localAuthorityPromoted,
+  historical_remote_boundary_preserved: true
 }));

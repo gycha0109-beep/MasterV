@@ -45,8 +45,15 @@ assert.match(backendSource, /supabase_authority_unchanged:\s*true/);
 assert.match(backendSource, /local_sqlite_authority_active:\s*false/);
 assert.match(backendSource, /gateway_active:\s*false/);
 assert.match(backendSource, /polar_active:\s*false/);
-assert.match(persistence, /product_authority_active:\s*false/);
-assert.match(persistence, /supabase_authority_unchanged:\s*true/);
+
+const localAuthorityPromoted = /product_authority_active:\s*true/.test(persistence);
+if (localAuthorityPromoted) {
+  assert.match(persistence, /supabase_primary_authority_active:\s*false/);
+  assert.match(persistence, /supabase_fallback_available:\s*true/);
+} else {
+  assert.match(persistence, /product_authority_active:\s*false/);
+  assert.match(persistence, /supabase_authority_unchanged:\s*true/);
+}
 
 assert.equal(updaterSource.includes("window.MASTERV_BACKEND"), false, "EXIT-1E updater UI must not consume backend session runtime");
 assert.equal(updaterSource.includes("backend.session"), false, "EXIT-1E updater UI must not subscribe to backend sessions");
@@ -126,8 +133,10 @@ console.log(JSON.stringify({
   legacy_runtime_config_asset: "backend/legacy/runtime-config.js",
   updater_session_authority: "none-independent-exit-1e",
   updater_bootstrap_config: "independent-neutral",
-  supabase_authority_unchanged: true,
-  product_authority_active: false,
+  desktop_provider_local_sqlite_authority_active: false,
+  native_local_work_data_authority_active: localAuthorityPromoted,
+  supabase_fallback_available: localAuthorityPromoted,
   gateway_active: false,
-  polar_active: false
+  polar_active: false,
+  historical_config_boundary_preserved: true
 }));

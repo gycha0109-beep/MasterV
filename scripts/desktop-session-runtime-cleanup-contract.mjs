@@ -49,8 +49,15 @@ assert.match(backend, /supabase_authority_unchanged:\s*true/);
 assert.match(backend, /local_sqlite_authority_active:\s*false/);
 assert.match(legacySession, /\/auth\/v1\/token\?grant_type=password/);
 assert.match(legacySession, /access_token/);
-assert.match(persistence, /product_authority_active:\s*false/);
-assert.match(persistence, /supabase_authority_unchanged:\s*true/);
+
+const localAuthorityPromoted = /product_authority_active:\s*true/.test(persistence);
+if (localAuthorityPromoted) {
+  assert.match(persistence, /supabase_primary_authority_active:\s*false/);
+  assert.match(persistence, /supabase_fallback_available:\s*true/);
+} else {
+  assert.match(persistence, /product_authority_active:\s*false/);
+  assert.match(persistence, /supabase_authority_unchanged:\s*true/);
+}
 
 const env = {
   ...process.env,
@@ -76,6 +83,8 @@ console.log(JSON.stringify({
   session_runtime_authority: "backend-provider",
   updater_session_runtime: "none-independent-exit-1e",
   legacy_session_adapter_retained: true,
-  product_authority_active: false,
-  supabase_authority_unchanged: true
+  desktop_provider_local_sqlite_authority_active: false,
+  native_local_work_data_authority_active: localAuthorityPromoted,
+  supabase_fallback_available: localAuthorityPromoted,
+  historical_session_boundary_preserved: true
 }));

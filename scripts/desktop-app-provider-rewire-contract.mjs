@@ -36,8 +36,15 @@ assert.match(workData, /\/rest\/v1\/reference_library_entries/);
 assert.match(remote, /masterv-api-boundary/);
 assert.match(remote, /operation:\s*"reference_workflow"/);
 assert.match(remote, /operation:\s*"youtube_discovery"/);
-assert.match(persistence, /product_authority_active:\s*false/);
-assert.match(persistence, /supabase_authority_unchanged:\s*true/);
+
+const localAuthorityPromoted = /product_authority_active:\s*true/.test(persistence);
+if (localAuthorityPromoted) {
+  assert.match(persistence, /supabase_primary_authority_active:\s*false/);
+  assert.match(persistence, /supabase_fallback_available:\s*true/);
+} else {
+  assert.match(persistence, /product_authority_active:\s*false/);
+  assert.match(persistence, /supabase_authority_unchanged:\s*true/);
+}
 
 const env = {
   ...process.env,
@@ -59,6 +66,8 @@ console.log(JSON.stringify({
   app_direct_backend_implementation_details: 0,
   app_direct_network_fetches: 0,
   consumer: "desktop/app.js",
-  product_authority_active: false,
-  supabase_authority_unchanged: true
+  desktop_provider_local_sqlite_authority_active: false,
+  native_local_work_data_authority_active: localAuthorityPromoted,
+  supabase_fallback_available: localAuthorityPromoted,
+  historical_provider_boundary_preserved: true
 }));

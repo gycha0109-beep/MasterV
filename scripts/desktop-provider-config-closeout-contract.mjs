@@ -115,8 +115,15 @@ assert.deepEqual(
   ["https://github.com/gycha0109-beep/MasterV/releases/latest/download/latest.json"],
   "EXIT-1E updater must use an independent static release manifest"
 );
-assert.match(persistence, /product_authority_active:\s*false/);
-assert.match(persistence, /supabase_authority_unchanged:\s*true/);
+
+const localAuthorityPromoted = /product_authority_active:\s*true/.test(persistence);
+if (localAuthorityPromoted) {
+  assert.match(persistence, /supabase_primary_authority_active:\s*false/);
+  assert.match(persistence, /supabase_fallback_available:\s*true/);
+} else {
+  assert.match(persistence, /product_authority_active:\s*false/);
+  assert.match(persistence, /supabase_authority_unchanged:\s*true/);
+}
 
 const env = {
   ...process.env,
@@ -150,9 +157,11 @@ console.log(JSON.stringify({
   legacy_config_bridge_isolated: true,
   updater_ui_session_authority: "none-independent-exit-1e",
   deferred_native_updater_owner: "EXIT-1E-CLOSED",
-  supabase_authority_unchanged: true,
-  local_sqlite_product_authority_active: false,
+  desktop_provider_local_sqlite_authority_active: false,
+  native_local_work_data_authority_active: localAuthorityPromoted,
+  supabase_fallback_available: localAuthorityPromoted,
   gateway_active: false,
   polar_active: false,
-  exit_1b_closeout: "PASS"
+  exit_1b_closeout: "PASS",
+  historical_provider_config_boundary_preserved: true
 }));
