@@ -131,6 +131,7 @@ const minimalAnalysis: VideoAnalysis = {
   confidence_notes: []
 };
 
+async function main() {
 let usageAuthorizations = 0;
 let usageRecords = 0;
 let discoveryCalls = 0;
@@ -277,3 +278,9 @@ console.log(JSON.stringify({
   polar_active: false,
   gateway_active: false
 }));
+}
+
+void main().catch((error) => {
+  console.error(error);
+  process.exitCode = 1;
+});
