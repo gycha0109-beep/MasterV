@@ -101,8 +101,6 @@ jobs:
       NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: sb_publishable_WUdzeBz9jsYwQXP_YeyD4w_OdkRcLp2
       NEXT_PUBLIC_MASTERV_API_BASE_URL: https://euqkjrmrhhvnyzasppnd.supabase.co/functions/v1
       MASTERV_DESKTOP_REQUIRE_CONFIG: "1"
-      SUPABASE_TEST_EMAIL: ${{ secrets.SUPABASE_TEST_EMAIL }}
-      SUPABASE_TEST_PASSWORD: ${{ secrets.SUPABASE_TEST_PASSWORD }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
@@ -112,13 +110,13 @@ jobs:
         with:
           toolchain: 1.97.1
       - run: npm ci
-      - name: Verify Windows desktop smoke preconditions
+      - name: Verify local-first Windows runtime preconditions
         shell: pwsh
         run: |
-          if (-not $env:SUPABASE_TEST_EMAIL) { throw "SUPABASE_TEST_EMAIL is required" }
-          if (-not $env:SUPABASE_TEST_PASSWORD) { throw "SUPABASE_TEST_PASSWORD is required" }
           if ($env:GEMINI_API_KEY) { throw "Gemini credential must not be present in desktop runtime smoke" }
           if ($env:YOUTUBE_DATA_API_KEY) { throw "YouTube credential must not be present in desktop runtime smoke" }
+          if ($env:POLAR_ACCESS_TOKEN) { throw "Polar server credential must not be present in desktop runtime smoke" }
+          if ($env:SUPABASE_SERVICE_ROLE_KEY) { throw "Supabase admin credential must not be present in desktop runtime smoke" }
       - name: Verify locked Cargo graph
         shell: pwsh
         run: cargo metadata --locked --manifest-path src-tauri/Cargo.toml --no-deps | Out-Null
@@ -126,16 +124,8 @@ jobs:
         run: npm run desktop:build
       - name: Verify native build did not mutate lockfiles
         run: git diff --exit-code -- package-lock.json src-tauri/Cargo.lock
-      - name: Run native WebView2 Reference Library runtime smoke
+      - name: Run native local-first Windows runtime smoke
         run: npm run test:desktop-windows-runtime
-      - name: Run native WebView2 Reference Detail Compare regression smoke
-        run: npm run test:desktop-reference-detail-compare-windows
-      - name: Run native WebView2 Canonical Reference Compiler runtime smoke
-        run: npm run test:desktop-reference-compiler-windows
-      - name: Run native WebView2 Hosted YouTube Discovery runtime smoke
-        run: npm run test:desktop-youtube-discovery-windows
-      - name: Run native WebView2 Guarded Background Batch runtime smoke
-        run: npm run test:desktop-background-batch-windows
       - name: Generate platform icons for installer smoke
         run: npm run tauri -- icon src-tauri/icons/icon.png
       - name: Build unsigned NSIS installer smoke
@@ -144,91 +134,15 @@ jobs:
         run: git diff --exit-code -- package-lock.json src-tauri/Cargo.lock
       - name: Install and audit unsigned NSIS quality candidate
         run: npm run test:desktop-installed-prepare-windows
-      - name: Run installed WebView2 Reference Detail Compare quality smoke
-        run: npm run test:desktop-reference-detail-compare-windows
-      - name: Run installed WebView2 Canonical Reference Compiler quality smoke
-        run: npm run test:desktop-reference-compiler-windows
-      - name: Run installed WebView2 Hosted YouTube Discovery quality smoke
-        run: npm run test:desktop-youtube-discovery-windows
-      - name: Run installed WebView2 Guarded Background Batch quality smoke
-        run: npm run test:desktop-background-batch-windows
-      - name: Run installed restart session and uninstall quality smoke
+      - name: Run installed local-first restart and uninstall quality smoke
         run: npm run test:desktop-installed-session-uninstall-windows
-      - name: Observe Hosted Deep Analysis provider health
-        id: provider_3h
-        continue-on-error: true
-        shell: pwsh
-        run: |
-          $maxAttempts = 3
-          for ($attempt = 1; $attempt -le $maxAttempts; $attempt++) {
-            $lines = @()
-            & npm run test:desktop-deep-analysis-windows 2>&1 | Tee-Object -Variable lines | Write-Host
-            $exitCode = $LASTEXITCODE
-            if ($exitCode -eq 0) { exit 0 }
-            $text = ($lines | Out-String)
-            $retryable = $text -match '요청 한도에 도달했습니다|재시도 힌트|\b429\b'
-            if (-not $retryable -or $attempt -eq $maxAttempts) { exit $exitCode }
-            $waitSeconds = 15
-            if ($text -match '([0-9]+)초 재시도 힌트') { $waitSeconds = [int]$Matches[1] + 3 }
-            $waitSeconds = [Math]::Min([Math]::Max($waitSeconds, 10), 65)
-            Write-Host "MASTERV_CI_PROVIDER_RATE_LIMIT_RETRY smoke=3H attempt=$attempt wait_seconds=$waitSeconds"
-            Start-Sleep -Seconds $waitSeconds
-          }
-      - name: Observe Product Truth Production Guidance provider health
-        id: provider_3i
-        if: ${{ steps.provider_3h.outcome == 'success' }}
-        continue-on-error: true
-        shell: pwsh
-        run: |
-          Start-Sleep -Seconds 10
-          $maxAttempts = 3
-          for ($attempt = 1; $attempt -le $maxAttempts; $attempt++) {
-            $lines = @()
-            & npm run test:desktop-production-guidance-windows 2>&1 | Tee-Object -Variable lines | Write-Host
-            $exitCode = $LASTEXITCODE
-            if ($exitCode -eq 0) { exit 0 }
-            $text = ($lines | Out-String)
-            $retryable = $text -match '요청 한도에 도달했습니다|재시도 힌트|\b429\b|3I prerequisite Deep Analysis failed:\s*at main'
-            if (-not $retryable -or $attempt -eq $maxAttempts) { exit $exitCode }
-            $waitSeconds = 15
-            if ($text -match '([0-9]+)초 재시도 힌트') { $waitSeconds = [int]$Matches[1] + 3 }
-            $waitSeconds = [Math]::Min([Math]::Max($waitSeconds, 10), 65)
-            Write-Host "MASTERV_CI_PROVIDER_RATE_LIMIT_RETRY smoke=3I attempt=$attempt wait_seconds=$waitSeconds"
-            Start-Sleep -Seconds $waitSeconds
-          }
-      - name: Record provider health separately from product quality
-        if: always()
-        shell: pwsh
-        env:
-          DEEP_OUTCOME: ${{ steps.provider_3h.outcome }}
-          GUIDANCE_OUTCOME: ${{ steps.provider_3i.outcome }}
-        run: |
-          New-Item -ItemType Directory -Force -Path artifacts/desktop-installed-quality | Out-Null
-          $green = ($env:DEEP_OUTCOME -eq 'success' -and $env:GUIDANCE_OUTCOME -eq 'success')
-          $status = if ($green) { 'PROVIDER_HEALTH_GREEN' } else { 'PROVIDER_HEALTH_BLOCKED' }
-          $payload = [ordered]@{
-            status = $status
-            deep_analysis = $env:DEEP_OUTCOME
-            production_guidance = $env:GUIDANCE_OUTCOME
-            product_quality_authority = 'separate'
-            activation_allowed = $false
-          }
-          $payload | ConvertTo-Json | Set-Content -Encoding utf8 artifacts/desktop-installed-quality/provider-health.json
-          if (-not $green) { Write-Warning "$status deep=$env:DEEP_OUTCOME guidance=$env:GUIDANCE_OUTCOME" }
-          Write-Host ($payload | ConvertTo-Json -Compress)
-      - name: Upload Windows desktop runtime evidence
+      - name: Upload Windows local-first runtime evidence
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: masterv-windows-desktop-smoke
           path: |
             artifacts/desktop-windows-runtime
-            artifacts/desktop-reference-detail-compare
-            artifacts/desktop-reference-compiler
-            artifacts/desktop-youtube-discovery
-            artifacts/desktop-deep-analysis
-            artifacts/desktop-production-guidance
-            artifacts/desktop-background-batch
             artifacts/desktop-installed-quality
             src-tauri/target/release/bundle/nsis/*.exe
           if-no-files-found: warn

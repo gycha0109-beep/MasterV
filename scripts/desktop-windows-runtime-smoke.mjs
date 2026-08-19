@@ -1,10 +1,14 @@
-import { spawn, spawnSync } from "node:child_process";
 import fs from "node:fs";
-import net from "node:net";
-import os from "node:os";
 import path from "node:path";
+import {
+  assert,
+  attachMasterV,
+  delay,
+  execute,
+  webdriverRequest
+} from "./windows-webview2-attach.mjs";
 
-const REFERENCE_LIBRARY_LIST_PROJECTION = [
+const LIST_PROJECTION = [
   "source_id",
   "canonical_url",
   "label",
@@ -13,516 +17,279 @@ const REFERENCE_LIBRARY_LIST_PROJECTION = [
   "first_saved_at",
   "updated_at"
 ];
+const DETAIL_PROJECTION = [...LIST_PROJECTION, "analysis"];
 
-function required(name) {
-  const value = process.env[name]?.trim() || "";
-  if (!value) throw new Error(`${name} is required`);
-  return value;
-}
-
-function assert(condition, message) {
-  if (!condition) throw new Error(message);
-}
-
-function delay(ms) {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
-async function freePort() {
-  return await new Promise((resolve, reject) => {
-    const server = net.createServer();
-    server.once("error", reject);
-    server.listen(0, "127.0.0.1", () => {
-      const address = server.address();
-      if (!address || typeof address === "string") {
-        server.close();
-        reject(new Error("failed to allocate TCP port"));
-        return;
-      }
-      const port = address.port;
-      server.close((error) => error ? reject(error) : resolve(port));
-    });
-  });
-}
-
-function detectWebView2Version() {
-  const registryPaths = [
-    "HKLM\\SOFTWARE\\WOW6432Node\\Microsoft\\EdgeUpdate\\Clients\\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}",
-    "HKLM\\SOFTWARE\\Microsoft\\EdgeUpdate\\Clients\\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}",
-    "HKCU\\SOFTWARE\\Microsoft\\EdgeUpdate\\Clients\\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}"
-  ];
-
-  for (const registryPath of registryPaths) {
-    const result = spawnSync("reg.exe", ["query", registryPath, "/v", "pv"], { encoding: "utf8" });
-    const match = `${result.stdout || ""}\n${result.stderr || ""}`.match(/pv\s+REG_SZ\s+([\d.]+)/i);
-    if (match) return match[1];
-  }
-  throw new Error("WebView2 runtime version could not be detected from the Windows registry");
-}
-
-function ensureEdgeDriver(version, workDir) {
-  const driverDir = path.join(workDir, "msedgedriver", version);
-  const driverPath = path.join(driverDir, "msedgedriver.exe");
-  if (fs.existsSync(driverPath)) return driverPath;
-
-  fs.mkdirSync(driverDir, { recursive: true });
-  const escapedDir = driverDir.replace(/'/g, "''");
-  const script = [
-    "$ErrorActionPreference = 'Stop'",
-    "$ProgressPreference = 'SilentlyContinue'",
-    "[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12",
-    `$version = '${version}'`,
-    `$dir = '${escapedDir}'`,
-    "$zip = Join-Path $dir 'edgedriver.zip'",
-    "$url = \"https://msedgedriver.microsoft.com/$version/edgedriver_win64.zip\"",
-    "Invoke-WebRequest -Uri $url -OutFile $zip -UseBasicParsing -TimeoutSec 60",
-    "Expand-Archive -Path $zip -DestinationPath $dir -Force",
-    "Remove-Item $zip -Force",
-    "if (-not (Test-Path (Join-Path $dir 'msedgedriver.exe'))) { throw 'msedgedriver.exe missing after extraction' }"
-  ].join("; ");
-
-  const download = spawnSync("powershell.exe", ["-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", script], {
-    encoding: "utf8",
-    timeout: 90_000
-  });
-  if (download.status !== 0 || !fs.existsSync(driverPath)) {
-    throw new Error(`EdgeDriver download failed: ${download.stderr || download.stdout}`);
-  }
-  return driverPath;
-}
-
-async function waitHttp(url, label, timeoutMs, processToWatch) {
-  const deadline = Date.now() + timeoutMs;
-  let lastError = "";
-  while (Date.now() < deadline) {
-    if (processToWatch && processToWatch.exitCode !== null) {
-      throw new Error(`${label} process exited early with code ${processToWatch.exitCode}`);
-    }
-    try {
-      const response = await fetch(url);
-      if (response.ok) return response;
-      lastError = `${response.status} ${response.statusText}`;
-    } catch (error) {
-      lastError = error instanceof Error ? error.message : String(error);
-    }
-    await delay(400);
-  }
-  throw new Error(`${label} was not ready within ${timeoutMs}ms: ${lastError}`);
-}
-
-async function webdriverRequest(driverPort, method, requestPath, body) {
-  const response = await fetch(`http://127.0.0.1:${driverPort}${requestPath}`, {
-    method,
-    headers: body === undefined ? undefined : { "Content-Type": "application/json" },
-    body: body === undefined ? undefined : JSON.stringify(body)
-  });
-  let payload = null;
-  try {
-    payload = await response.json();
-  } catch {
-    payload = { value: null };
-  }
-  if (!response.ok || payload?.value?.error) {
-    const detail = payload?.value?.message || payload?.value?.error || `${response.status} ${response.statusText}`;
-    throw new Error(`WebDriver ${method} ${requestPath} failed: ${detail}`);
-  }
-  return payload;
-}
-
-async function execute(driverPort, sessionId, script, args = []) {
-  const payload = await webdriverRequest(driverPort, "POST", `/session/${sessionId}/execute/sync`, { script, args });
-  return payload.value;
-}
-
-async function waitUi(driverPort, sessionId, predicate, timeoutMs, label) {
-  const deadline = Date.now() + timeoutMs;
-  let last = null;
-  while (Date.now() < deadline) {
-    last = await execute(driverPort, sessionId, `return {
-      surface: document.querySelector('#surface-badge')?.textContent?.trim() || '',
-      auth: document.querySelector('#auth-status')?.textContent?.trim() || '',
-      api: document.querySelector('#api-status')?.textContent?.trim() || '',
-      boundary: document.querySelector('#cap-boundary')?.textContent?.trim() || '',
-      analyze: document.querySelector('#cap-analyze')?.textContent?.trim() || '',
-      youtube: document.querySelector('#cap-youtube')?.textContent?.trim() || '',
-      productTruth: document.querySelector('#cap-product-truth')?.textContent?.trim() || '',
-      message: document.querySelector('#message')?.textContent?.trim() || '',
-      libraryStatus: document.querySelector('#library-status')?.textContent?.trim() || '',
-      libraryWorkspace: document.querySelector('#library-workspace')?.textContent?.trim() || '',
-      libraryCount: document.querySelector('#library-count')?.textContent?.trim() || '',
-      libraryHidden: Boolean(document.querySelector('#reference-library-panel')?.hidden),
-      projection: document.querySelector('#reference-library-panel')?.dataset?.projection || '',
-      sourceIds: Array.from(document.querySelectorAll('[data-source-id]')).map((node) => node.dataset.sourceId || '')
-    };`);
-    if (predicate(last)) return last;
-    await delay(500);
-  }
-  throw new Error(`${label} timed out: ${JSON.stringify(last)}`);
-}
-
-function restHeaders(publishableKey, accessToken, extra = {}) {
+function fixture(nativeId, label, variant) {
+  const primary = variant === "A";
   return {
-    apikey: publishableKey,
-    Authorization: `Bearer ${accessToken}`,
-    ...extra
-  };
-}
-
-async function parseHttpError(response) {
-  try {
-    const body = await response.json();
-    return body.message || body.details || body.error_description || body.error || `${response.status}`;
-  } catch {
-    return `${response.status} ${response.statusText}`.trim();
-  }
-}
-
-async function directLogin(projectUrl, publishableKey, email, password) {
-  const response = await fetch(`${projectUrl}/auth/v1/token?grant_type=password`, {
-    method: "POST",
-    headers: {
-      apikey: publishableKey,
-      "Content-Type": "application/json"
-    },
-    body: JSON.stringify({ email, password })
-  });
-  if (!response.ok) throw new Error(`Direct Supabase login failed: ${await parseHttpError(response)}`);
-  const body = await response.json();
-  assert(body.access_token && body.user?.id, "Direct Supabase login response is incomplete");
-  return body;
-}
-
-async function bootstrapWorkspace(projectUrl, publishableKey, directSession) {
-  const workspaceId = `user:${directSession.user.id}`;
-  const params = new URLSearchParams({ on_conflict: "workspace_id,user_id" });
-  const response = await fetch(`${projectUrl}/rest/v1/masterv_workspace_members?${params.toString()}`, {
-    method: "POST",
-    headers: restHeaders(publishableKey, directSession.access_token, {
-      "Content-Type": "application/json",
-      Prefer: "resolution=ignore-duplicates,return=minimal"
-    }),
-    body: JSON.stringify({ workspace_id: workspaceId, user_id: directSession.user.id, role: "owner" })
-  });
-  if (!response.ok) throw new Error(`Direct workspace bootstrap failed: ${await parseHttpError(response)}`);
-  return workspaceId;
-}
-
-function fixtureRecord(workspaceId, nativeId, label) {
-  return {
-    workspace_id: workspaceId,
     source_platform: "youtube",
     source_id: `yt:${nativeId}`,
     native_id: nativeId,
     canonical_url: `https://www.youtube.com/watch?v=${nativeId}`,
     label,
     analysis: {
-      summary: `${label} synthetic persistence smoke`,
-      structure_label: "hook → demo → CTA",
-      duration_seconds: 12,
-      hook: { type: "visual", text: "", visual: "synthetic", duration_seconds: 2 },
+      summary: `${label} local-first runtime fixture`,
+      structure_label: primary ? "hook → demo → CTA" : "problem → proof → CTA",
+      duration_seconds: primary ? 12 : 18,
+      hook: { type: primary ? "visual" : "problem", text: "", visual: "synthetic", duration_seconds: 2 },
       product_presentation: {
-        first_seen_seconds: 1,
+        first_seen_seconds: primary ? 1 : 4,
         demonstration_present: true,
         before_after_present: false,
-        comparison_present: false,
+        comparison_present: !primary,
         result_visual_present: false,
         face_present: false,
         hand_present: true
       },
-      persuasion: { problem: "", solution: "", benefit: "", proof: "", social_proof: "", offer: "", cta: "", emotional_trigger: "" },
+      persuasion: {
+        problem: primary ? "" : "synthetic problem",
+        solution: "",
+        benefit: "",
+        proof: "",
+        social_proof: "",
+        offer: "",
+        cta: primary ? "링크 확인" : "상세 보기",
+        emotional_trigger: ""
+      },
       presentation: { format: "", presenter_type: "", caption_style: "", visual_style: "", music_role: "" },
       transcript: { full: "", segments: [] },
       scenes: [],
       observation_segments: [],
-      tags: ["synthetic-smoke"],
-      confidence_notes: ["Synthetic desktop runtime fixture; no provider request was executed."]
+      tags: ["synthetic-smoke", variant],
+      confidence_notes: ["Synthetic local-first Windows runtime fixture; no remote provider request executed."]
     },
-    analysis_cache_key: `desktop-runtime:${nativeId}`,
+    analysis_cache_key: `desktop-runtime-exit2c:${nativeId}`,
     analysis_provenance: "replay",
-    schema_version: "reference-library-v1"
+    schema_version: "reference-library-v1",
+    first_saved_at: null,
+    updated_at: null
   };
 }
 
-async function deleteFixture(projectUrl, publishableKey, directSession, workspaceId, sourceId) {
-  const params = new URLSearchParams();
-  params.set("workspace_id", `eq.${workspaceId}`);
-  params.set("source_id", `eq.${sourceId}`);
-  const response = await fetch(`${projectUrl}/rest/v1/reference_library_entries?${params.toString()}`, {
-    method: "DELETE",
-    headers: restHeaders(publishableKey, directSession.access_token, { Prefer: "return=minimal" })
-  });
-  if (!response.ok) throw new Error(`Fixture cleanup failed: ${await parseHttpError(response)}`);
+async function state(driverPort, sessionId) {
+  return await execute(driverPort, sessionId, `return {
+    surface: window.MASTERV_DESKTOP_CONFIG?.surface || '',
+    migrationStage: window.MASTERV_DESKTOP_CONFIG?.migration_stage || '',
+    tauriGlobal: Boolean(window.__TAURI__?.core?.invoke),
+    auth: document.querySelector('#auth-status')?.textContent?.trim() || '',
+    api: document.querySelector('#api-status')?.textContent?.trim() || '',
+    activationForm: Boolean(document.querySelector('#activation-form')),
+    productKeyInput: Boolean(document.querySelector('#product-key')),
+    loginForm: Boolean(document.querySelector('#login-form')),
+    legacyMigrationForm: Boolean(document.querySelector('#legacy-migration-form')),
+    libraryStatus: document.querySelector('#library-status')?.textContent?.trim() || '',
+    libraryWorkspace: document.querySelector('#library-workspace')?.textContent?.trim() || '',
+    libraryHidden: Boolean(document.querySelector('#reference-library-panel')?.hidden),
+    listProjection: document.querySelector('#reference-library-panel')?.dataset?.projection || '',
+    sourceIds: Array.from(document.querySelectorAll('[data-source-id]')).map(n => n.dataset.sourceId || ''),
+    detailHidden: Boolean(document.querySelector('#reference-detail-panel')?.hidden),
+    detailStatus: document.querySelector('#reference-detail-status')?.textContent?.trim() || '',
+    detailProjection: document.querySelector('#reference-detail-panel')?.dataset?.projection || '',
+    detailText: document.querySelector('#reference-detail-content')?.textContent?.trim() || '',
+    compareHidden: Boolean(document.querySelector('#reference-compare-panel')?.hidden),
+    compareStatus: document.querySelector('#reference-compare-status')?.textContent?.trim() || '',
+    compareCount: document.querySelector('#reference-compare-count')?.textContent?.trim() || '',
+    compareIds: Array.from(document.querySelectorAll('[data-compare-result-source-id]')).map(n => n.dataset.compareResultSourceId || ''),
+    compareText: document.querySelector('#reference-compare-content')?.textContent?.trim() || '',
+    localKeys: Object.keys(localStorage),
+    sessionKeys: Object.keys(sessionStorage),
+    resources: performance.getEntriesByType('resource').map(entry => entry.name),
+    smokeInvoke: document.documentElement.dataset.smokeInvoke || ''
+  };`);
 }
 
-async function readFixture(projectUrl, publishableKey, directSession, workspaceId, sourceId) {
-  const params = new URLSearchParams();
-  params.set("select", "source_id,label,revision");
-  params.set("workspace_id", `eq.${workspaceId}`);
-  params.set("source_id", `eq.${sourceId}`);
-  const response = await fetch(`${projectUrl}/rest/v1/reference_library_entries?${params.toString()}`, {
-    method: "GET",
-    headers: restHeaders(publishableKey, directSession.access_token, { Accept: "application/json" })
-  });
-  if (!response.ok) throw new Error(`Fixture read failed: ${await parseHttpError(response)}`);
-  const body = await response.json();
-  assert(Array.isArray(body), "Fixture read response must be an array");
-  return body;
+async function waitState(driverPort, sessionId, predicate, label, timeout = 30_000) {
+  const end = Date.now() + timeout;
+  let last;
+  while (Date.now() < end) {
+    last = await state(driverPort, sessionId);
+    if (predicate(last)) return last;
+    await delay(350);
+  }
+  throw new Error(`${label} timed out: ${JSON.stringify(last)}`);
 }
 
-async function insertFixture(projectUrl, publishableKey, directSession, record) {
-  const params = new URLSearchParams({ on_conflict: "workspace_id,source_id" });
-  const response = await fetch(`${projectUrl}/rest/v1/reference_library_entries?${params.toString()}`, {
-    method: "POST",
-    headers: restHeaders(publishableKey, directSession.access_token, {
-      "Content-Type": "application/json",
-      Prefer: "resolution=merge-duplicates,return=representation"
-    }),
-    body: JSON.stringify(record)
-  });
-  if (!response.ok) throw new Error(`Fixture insert failed: ${await parseHttpError(response)}`);
-  const body = await response.json();
-  assert(Array.isArray(body) && body[0]?.source_id === record.source_id, "Fixture insert response mismatch");
+async function invokeNative(driverPort, sessionId, command, args) {
+  await execute(driverPort, sessionId, `
+    document.documentElement.dataset.smokeInvoke = 'pending';
+    window.__TAURI__.core.invoke(arguments[0], arguments[1] || {})
+      .then(() => { document.documentElement.dataset.smokeInvoke = 'ok'; })
+      .catch((error) => { document.documentElement.dataset.smokeInvoke = 'error:' + String(error); });
+    return true;
+  `, [command, args]);
+  const result = await waitState(
+    driverPort,
+    sessionId,
+    (snapshot) => snapshot.smokeInvoke === "ok" || snapshot.smokeInvoke.startsWith("error:"),
+    `native invoke ${command}`
+  );
+  assert(result.smokeInvoke === "ok", `native invoke ${command} failed: ${result.smokeInvoke}`);
 }
 
-async function verifyCrossWorkspaceWriteDenied(projectUrl, publishableKey, directSession, record) {
-  const foreignRecord = { ...record, workspace_id: "user:00000000-0000-0000-0000-000000000000" };
-  const response = await fetch(`${projectUrl}/rest/v1/reference_library_entries`, {
-    method: "POST",
-    headers: restHeaders(publishableKey, directSession.access_token, {
-      "Content-Type": "application/json",
-      Prefer: "return=minimal"
-    }),
-    body: JSON.stringify(foreignRecord)
-  });
-  return !response.ok;
+async function click(driverPort, sessionId, selector, label) {
+  const clicked = await execute(driverPort, sessionId, `const node=document.querySelector(arguments[0]);if(!node)return false;node.click();return true;`, [selector]);
+  assert(clicked === true, `${label} control missing: ${selector}`);
+}
+
+async function seedFixtures(native, records) {
+  for (const record of records) {
+    await invokeNative(native.driverPort, native.sessionId, "desktop_local_reference_upsert", { input: record });
+  }
+  await click(native.driverPort, native.sessionId, "#library-refresh", "Reference Library refresh");
+}
+
+async function deleteFixture(native, sourceId) {
+  const clicked = await execute(native.driverPort, native.sessionId, `
+    const id=arguments[0];
+    const button=Array.from(document.querySelectorAll('[data-delete-source-id]')).find(node => node.dataset.deleteSourceId === id);
+    if(!button)return false;
+    button.click();
+    return true;
+  `, [sourceId]);
+  assert(clicked === true, `delete control missing for ${sourceId}`);
+  await waitState(native.driverPort, native.sessionId, (snapshot) => snapshot.libraryStatus === "READY / LOCAL" && !snapshot.sourceIds.includes(sourceId), `delete ${sourceId}`);
 }
 
 async function main() {
-  if (process.platform !== "win32") throw new Error("Windows native runtime smoke must run on Windows");
-
-  const appBinaryPath = path.resolve("src-tauri", "target", "release", "masterv-desktop.exe");
-  assert(fs.existsSync(appBinaryPath), `MasterV Windows binary not found: ${appBinaryPath}`);
-
-  const email = required("SUPABASE_TEST_EMAIL");
-  const password = required("SUPABASE_TEST_PASSWORD");
-  const projectUrl = required("NEXT_PUBLIC_SUPABASE_URL").replace(/\/+$/, "");
-  const publishableKey = required("NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY");
-  assert(!process.env.GEMINI_API_KEY, "Gemini credential must not be present in desktop runtime smoke");
-  assert(!process.env.YOUTUBE_DATA_API_KEY, "YouTube credential must not be present in desktop runtime smoke");
+  if (process.platform !== "win32") throw new Error("Desktop Windows runtime smoke must run on Windows");
+  const binary = path.resolve(process.env.MASTERV_DESKTOP_APP_BINARY || path.join("src-tauri", "target", "release", "masterv-desktop.exe"));
+  assert(fs.existsSync(binary), `MasterV binary missing: ${binary}`);
+  assert(!process.env.GEMINI_API_KEY, "Gemini credential must not be present in Desktop runtime smoke");
+  assert(!process.env.YOUTUBE_DATA_API_KEY, "YouTube credential must not be present in Desktop runtime smoke");
+  assert(!process.env.POLAR_ACCESS_TOKEN, "Polar server credential must not be present in Desktop runtime smoke");
 
   const evidenceDir = path.resolve("artifacts", "desktop-windows-runtime");
-  const runtimeRoot = path.join(process.env.RUNNER_TEMP?.trim() || os.tmpdir(), `masterv-desktop-runtime-${process.pid}`);
-  const webviewUserDataFolder = path.join(runtimeRoot, "webview2");
-  fs.rmSync(runtimeRoot, { recursive: true, force: true });
-  fs.mkdirSync(webviewUserDataFolder, { recursive: true });
   fs.mkdirSync(evidenceDir, { recursive: true });
+  const suffix = `${process.env.GITHUB_RUN_ID || Date.now()}${process.env.GITHUB_RUN_ATTEMPT || "1"}${process.pid}`.replace(/[^A-Za-z0-9_-]/g, "");
+  const ids = [`yt:MV2C${suffix}A`, `yt:MV2C${suffix}B`];
+  const labels = [`Desktop EXIT-2C fixture A ${suffix}`, `Desktop EXIT-2C fixture B ${suffix}`];
+  const records = [fixture(ids[0].slice(3), labels[0], "A"), fixture(ids[1].slice(3), labels[1], "B")];
+  const dataDir = path.join(evidenceDir, `webview-${suffix}`);
 
-  const webViewVersion = detectWebView2Version();
-  const edgeDriverPath = ensureEdgeDriver(webViewVersion, runtimeRoot);
-  const debugPort = await freePort();
-  const driverPort = await freePort();
-  const uniqueSuffix = `${process.env.GITHUB_RUN_ID || Date.now()}${process.env.GITHUB_RUN_ATTEMPT || "1"}${process.pid}`.replace(/[^A-Za-z0-9_-]/g, "");
-  const nativeId = `MV3D${uniqueSuffix}`;
-  const sourceId = `yt:${nativeId}`;
-  const fixtureLabel = `Desktop runtime fixture ${uniqueSuffix}`;
-
-  const appLog = fs.openSync(path.join(evidenceDir, "masterv-process.log"), "w");
-  const driverLog = fs.openSync(path.join(evidenceDir, "msedgedriver.log"), "w");
-  let appProcess;
-  let driverProcess;
-  let sessionId = null;
-  let directSession = null;
-  let workspaceId = null;
-  let cleanupVerified = false;
-  let failure = null;
-  let cleanupFailure = null;
-  let evidence = null;
-
+  let first;
+  let second;
+  let failure;
+  let cleanupFailure;
+  let evidence;
   try {
-    directSession = await directLogin(projectUrl, publishableKey, email, password);
-    workspaceId = await bootstrapWorkspace(projectUrl, publishableKey, directSession);
-    const record = fixtureRecord(workspaceId, nativeId, fixtureLabel);
-    await deleteFixture(projectUrl, publishableKey, directSession, workspaceId, sourceId);
-    const crossWorkspaceWriteDenied = await verifyCrossWorkspaceWriteDenied(projectUrl, publishableKey, directSession, record);
-    assert(crossWorkspaceWriteDenied, "RLS must deny the desktop test user from writing a foreign workspace");
-    await insertFixture(projectUrl, publishableKey, directSession, record);
-    const seeded = await readFixture(projectUrl, publishableKey, directSession, workspaceId, sourceId);
-    assert(seeded.length === 1 && seeded[0].label === fixtureLabel, "Unique runtime fixture was not persisted");
+    first = await attachMasterV(binary, evidenceDir, "masterv-desktop-exit2c-first", { dataDir, reuseDataDir: false });
+    const local = await waitState(
+      first.driverPort,
+      first.sessionId,
+      (snapshot) => snapshot.auth === "LOCAL ONLY" && snapshot.api === "LOCAL ONLY" && snapshot.libraryStatus === "READY / LOCAL" && snapshot.libraryWorkspace === "local:masterv",
+      "fresh local-first state",
+      45_000
+    );
+    assert(local.surface === "desktop", `unexpected Desktop surface: ${local.surface}`);
+    assert(local.migrationStage === "MV-SUPABASE-EXIT-2C", `unexpected migration stage: ${local.migrationStage}`);
+    assert(local.tauriGlobal === true, "window.__TAURI__.core.invoke is unavailable in the packaged runtime");
+    assert(local.activationForm && local.productKeyInput, "Product-Key activation controls are missing");
+    assert(!local.loginForm, "legacy email/password login must not be the visible primary entry");
+    assert(local.legacyMigrationForm, "0.1.2 existing-data migration surface is missing");
+    assert(!local.libraryHidden, "Local Reference Library must be accessible without a Gateway session");
+    assert(local.listProjection === LIST_PROJECTION.join(","), `unexpected local list projection: ${local.listProjection}`);
+    assert(local.localKeys.length === 0 && local.sessionKeys.length === 0, "fresh local-only runtime must not persist auth credentials in Web storage");
 
-    appProcess = spawn(appBinaryPath, [], {
-      cwd: path.dirname(appBinaryPath),
-      env: {
-        ...process.env,
-        MASTERV_DESKTOP_TEST_REMOTE_DEBUGGING_PORT: String(debugPort),
-        MASTERV_DESKTOP_TEST_WEBVIEW_DATA_DIR: webviewUserDataFolder
-      },
-      stdio: ["ignore", appLog, appLog],
-      windowsHide: false
-    });
+    await seedFixtures(first, records);
+    const seeded = await waitState(first.driverPort, first.sessionId, (snapshot) => snapshot.libraryStatus === "READY / LOCAL" && ids.every((id) => snapshot.sourceIds.includes(id)), "local SQLite fixture visibility");
 
-    const cdpResponse = await waitHttp(`http://127.0.0.1:${debugPort}/json/version`, "WebView2 CDP", 60_000, appProcess);
-    const cdpVersion = await cdpResponse.json();
+    const detailClicked = await execute(first.driverPort, first.sessionId, `
+      const id=arguments[0];
+      const button=Array.from(document.querySelectorAll('[data-detail-source-id]')).find(node => node.dataset.detailSourceId===id);
+      if(!button)return false;
+      button.click();
+      return true;
+    `, [ids[0]]);
+    assert(detailClicked === true, "local detail button missing");
+    const detail = await waitState(first.driverPort, first.sessionId, (snapshot) => !snapshot.detailHidden && snapshot.detailStatus === "READY / LOCAL" && snapshot.detailText.includes(labels[0]), "local detail read");
+    assert(detail.detailProjection === DETAIL_PROJECTION.join(","), `unexpected detail projection: ${detail.detailProjection}`);
 
-    driverProcess = spawn(edgeDriverPath, [`--port=${driverPort}`, "--verbose"], {
-      cwd: path.dirname(edgeDriverPath),
-      stdio: ["ignore", driverLog, driverLog],
-      windowsHide: true
-    });
-    await waitHttp(`http://127.0.0.1:${driverPort}/status`, "msedgedriver", 30_000, driverProcess);
-
-    const driverSession = await webdriverRequest(driverPort, "POST", "/session", {
-      capabilities: {
-        alwaysMatch: {
-          browserName: "webview2",
-          "ms:edgeChromium": true,
-          "ms:edgeOptions": {
-            debuggerAddress: `127.0.0.1:${debugPort}`
-          }
-        }
+    const compareClicked = await execute(first.driverPort, first.sessionId, `
+      const ids=arguments[0];
+      for(const id of ids){
+        const checkbox=Array.from(document.querySelectorAll('[data-compare-source-id]')).find(node => node.dataset.compareSourceId===id);
+        if(!checkbox)return false;
+        checkbox.checked=true;
+        checkbox.dispatchEvent(new Event('change',{bubbles:true}));
       }
-    });
-    sessionId = driverSession.value?.sessionId || driverSession.sessionId;
-    assert(sessionId, `WebDriver session id missing: ${JSON.stringify(driverSession)}`);
-
-    await execute(driverPort, sessionId, `
-      const email = document.querySelector('#email');
-      const password = document.querySelector('#password');
-      const button = document.querySelector('#login-button');
-      if (!email || !password || !button) return false;
-      email.value = arguments[0];
-      password.value = arguments[1];
+      const button=document.querySelector('#library-compare');
+      if(!button||button.disabled)return false;
       button.click();
       return true;
-    `, [email, password]);
+    `, [ids]);
+    assert(compareClicked === true, "local canonical compare could not be activated");
+    const compared = await waitState(first.driverPort, first.sessionId, (snapshot) => !snapshot.compareHidden && snapshot.compareStatus === "READY / LOCAL" && snapshot.compareCount === "2" && ids.every((id) => snapshot.compareIds.includes(id)), "local canonical compare", 45_000);
+    assert(labels.every((label) => compared.compareText.includes(label)), "local compare output does not contain both fixture labels");
 
-    const connected = await waitUi(
-      driverPort,
-      sessionId,
-      (state) => state.auth === "AUTHENTICATED" && state.api === "CONNECTED" && state.libraryStatus === "READY" && state.sourceIds.includes(sourceId),
-      45_000,
-      "MasterV authenticated Reference Library state"
+    const screenshot = await webdriverRequest(first.driverPort, "GET", `/session/${first.sessionId}/screenshot`);
+    assert(typeof screenshot.value === "string" && screenshot.value.length > 100, "runtime screenshot missing");
+    fs.writeFileSync(path.join(evidenceDir, "local-first-runtime.png"), Buffer.from(screenshot.value, "base64"));
+
+    await first.close();
+    first = null;
+    second = await attachMasterV(binary, evidenceDir, "masterv-desktop-exit2c-restart", { dataDir, reuseDataDir: true });
+    const restarted = await waitState(
+      second.driverPort,
+      second.sessionId,
+      (snapshot) => snapshot.auth === "LOCAL ONLY" && snapshot.libraryStatus === "READY / LOCAL" && ids.every((id) => snapshot.sourceIds.includes(id)),
+      "local data after process restart",
+      45_000
     );
+    assert(restarted.tauriGlobal === true, "Tauri invoke bridge disappeared after restart");
+    assert(restarted.localKeys.length === 0 && restarted.sessionKeys.length === 0, "restart introduced persistent browser auth storage");
 
-    assert(connected.surface === "desktop", `unexpected surface: ${connected.surface}`);
-    assert(connected.boundary === "READY", `boundary probe was not READY: ${JSON.stringify(connected)}`);
-    assert(connected.analyze === "PENDING", `analyze capability must remain PENDING: ${connected.analyze}`);
-    assert(["PENDING", "READY"].includes(connected.youtube), `YouTube discovery capability must be PENDING or READY: ${connected.youtube}`);
-    assert(["PENDING", "READY"].includes(connected.productTruth), `Product Truth capability observation is invalid: ${connected.productTruth}`);
-    assert(connected.libraryWorkspace === workspaceId, `desktop workspace mismatch: ${connected.libraryWorkspace}`);
-    assert(connected.projection === REFERENCE_LIBRARY_LIST_PROJECTION.join(","), `desktop metadata projection mismatch: ${connected.projection}`);
-    assert(!connected.projection.split(",").includes("analysis"), "desktop list projection must not select analysis payload");
+    for (const id of ids) await deleteFixture(second, id);
+    const cleaned = await waitState(second.driverPort, second.sessionId, (snapshot) => ids.every((id) => !snapshot.sourceIds.includes(id)), "local fixture cleanup");
 
-    await execute(driverPort, sessionId, `
-      const email = document.querySelector('#email');
-      const password = document.querySelector('#password');
-      if (email) email.value = '';
-      if (password) password.value = '';
-      document.querySelector('#reference-library-panel')?.scrollIntoView({ block: 'start' });
-      return true;
-    `);
-    await delay(300);
-
-    const screenshot = await webdriverRequest(driverPort, "GET", `/session/${sessionId}/screenshot`);
-    assert(typeof screenshot.value === "string" && screenshot.value.length > 100, "WebDriver screenshot payload missing");
-    fs.writeFileSync(path.join(evidenceDir, "reference-library-visible.png"), Buffer.from(screenshot.value, "base64"));
-
-    const clickedDelete = await execute(driverPort, sessionId, `
-      const sourceId = arguments[0];
-      const button = Array.from(document.querySelectorAll('[data-delete-source-id]'))
-        .find((node) => node.dataset.deleteSourceId === sourceId);
-      if (!button) return false;
-      button.click();
-      return true;
-    `, [sourceId]);
-    assert(clickedDelete === true, "Desktop fixture delete button was not found");
-
-    const afterDelete = await waitUi(
-      driverPort,
-      sessionId,
-      (state) => state.libraryStatus === "READY" && !state.sourceIds.includes(sourceId),
-      20_000,
-      "Desktop Reference Library delete convergence"
-    );
-    assert(!afterDelete.sourceIds.includes(sourceId), "Fixture remained visible after UI delete");
-
-    const persistedAfterDelete = await readFixture(projectUrl, publishableKey, directSession, workspaceId, sourceId);
-    assert(persistedAfterDelete.length === 0, "Fixture still exists in Supabase after desktop UI delete");
-
-    await deleteFixture(projectUrl, publishableKey, directSession, workspaceId, sourceId);
-    const remainingAfterCleanup = await readFixture(projectUrl, publishableKey, directSession, workspaceId, sourceId);
-    assert(remainingAfterCleanup.length === 0, "Fixture cleanup verification failed");
-    cleanupVerified = true;
-
-    await execute(driverPort, sessionId, "document.querySelector('#logout-button')?.click(); return true;");
-    const signedOut = await waitUi(
-      driverPort,
-      sessionId,
-      (state) => state.auth === "SIGNED OUT" && state.libraryHidden === true && state.sourceIds.length === 0,
-      10_000,
-      "desktop logout"
-    );
-    assert(signedOut.auth === "SIGNED OUT", "desktop logout did not clear in-memory session");
-    assert(signedOut.libraryHidden === true, "desktop logout did not hide Reference Library surface");
+    const resourceUrls = [...new Set([...local.resources, ...seeded.resources, ...restarted.resources, ...cleaned.resources])];
+    const forbiddenRuntimeRequests = resourceUrls.filter((url) => /\/api\/|generativelanguage\.googleapis\.com|youtube\.googleapis\.com/i.test(url));
+    assert(forbiddenRuntimeRequests.length === 0, `local-only runtime emitted forbidden direct provider/local API requests: ${forbiddenRuntimeRequests.join(", ")}`);
 
     evidence = {
-      status: "MASTERV_WINDOWS_REFERENCE_LIBRARY_RUNTIME_PASS",
-      webview2_runtime_version: webViewVersion,
-      cdp_browser: cdpVersion.Browser || null,
+      status: "MASTERV_WINDOWS_DESKTOP_RUNTIME_PASS",
+      migration_stage: "MV-SUPABASE-EXIT-2C",
+      webview2_runtime_version: second.webviewVersion,
+      cdp_browser: second.cdpBrowser,
       attach_mode: true,
-      surface: connected.surface,
-      auth_status: connected.auth,
-      hosted_api_status: connected.api,
-      boundary_probe: connected.boundary === "READY",
-      workspace_bootstrap: connected.libraryWorkspace === workspaceId,
-      reference_library_list: "PASS",
-      reference_library_projection: REFERENCE_LIBRARY_LIST_PROJECTION,
-      analysis_payload_selected: false,
-      fixture_visible: connected.sourceIds.includes(sourceId),
-      reference_delete_ui: !afterDelete.sourceIds.includes(sourceId) ? "PASS" : "FAIL",
-      reference_delete_db: persistedAfterDelete.length === 0 ? "PASS" : "FAIL",
-      cross_workspace_write_denied: crossWorkspaceWriteDenied,
-      cleanup: cleanupVerified ? "PASS" : "FAIL",
-      logout: signedOut.auth === "SIGNED OUT" ? "PASS" : "FAIL",
-      analyze_migrated: false,
-      youtube_discovery_capability_observed: connected.youtube,
-      product_truth_capability_observed: connected.productTruth,
-      local_next_api_required: false,
-      provider_credentials_in_desktop_job: false,
-      gemini_requests: 0,
-      youtube_requests: 0,
-      screenshot: "reference-library-visible.png"
+      visible_auth: "product-key+device-resume",
+      fresh_runtime_auth_state: local.auth,
+      gateway_required_for_local_data: false,
+      local_workspace: restarted.libraryWorkspace,
+      local_sqlite_crud: "PASS",
+      local_sqlite_process_restart_persistence: "PASS",
+      reference_detail_local_read: detail.detailStatus === "READY / LOCAL" ? "PASS" : "FAIL",
+      reference_compare_local_canonical: compared.compareStatus === "READY / LOCAL" ? "PASS" : "FAIL",
+      product_key_ui_present: local.productKeyInput,
+      legacy_login_ui_present: local.loginForm,
+      legacy_migration_ui_present: local.legacyMigrationForm,
+      tauri_global_invoke_bridge: local.tauriGlobal,
+      persistent_auth_storage: false,
+      direct_provider_requests: 0,
+      local_next_api_requests: 0,
+      fixture_cleanup: "PASS",
+      screenshot: "local-first-runtime.png"
     };
   } catch (error) {
     failure = error;
   } finally {
-    if (directSession && workspaceId && !cleanupVerified) {
-      try {
-        await deleteFixture(projectUrl, publishableKey, directSession, workspaceId, sourceId);
-        const remaining = await readFixture(projectUrl, publishableKey, directSession, workspaceId, sourceId);
-        assert(remaining.length === 0, "fallback fixture cleanup verification failed");
-        cleanupVerified = true;
-      } catch (error) {
-        cleanupFailure = error;
+    if (first) await first.close();
+    if (second) {
+      if (!evidence) {
+        try {
+          for (const id of ids) {
+            await invokeNative(second.driverPort, second.sessionId, "desktop_local_reference_delete", { sourceId: id });
+          }
+        } catch (error) {
+          cleanupFailure = error;
+        }
       }
+      await second.close();
     }
-    if (sessionId) {
-      await webdriverRequest(driverPort, "DELETE", `/session/${sessionId}`).catch(() => undefined);
-    }
-    if (driverProcess && driverProcess.exitCode === null) driverProcess.kill();
-    if (appProcess && appProcess.exitCode === null) appProcess.kill();
-    fs.closeSync(appLog);
-    fs.closeSync(driverLog);
   }
 
-  if (cleanupFailure) {
-    const cleanupMessage = cleanupFailure instanceof Error ? cleanupFailure.message : String(cleanupFailure);
-    const primaryMessage = failure instanceof Error ? failure.message : failure ? String(failure) : "runtime verification failed";
-    throw new Error(`${primaryMessage}; cleanup also failed: ${cleanupMessage}`);
-  }
+  if (cleanupFailure) throw new Error(`${failure instanceof Error ? failure.message : failure || "runtime failed"}; cleanup also failed: ${cleanupFailure instanceof Error ? cleanupFailure.message : cleanupFailure}`);
   if (failure) throw failure;
-  assert(cleanupVerified, "Runtime fixture cleanup was not verified");
-  assert(evidence, "Runtime evidence was not produced");
-
+  assert(evidence, "local-first Windows runtime did not produce evidence");
   fs.writeFileSync(path.join(evidenceDir, "runtime-evidence.json"), JSON.stringify(evidence, null, 2));
   console.log(JSON.stringify(evidence));
 }

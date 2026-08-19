@@ -1,171 +1,211 @@
-import { spawnSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { assert, attachMasterV, delay, execute, required } from "./windows-webview2-attach.mjs";
+import {
+  assert,
+  attachMasterV,
+  delay,
+  execute,
+  required,
+  shellLines
+} from "./windows-webview2-attach.mjs";
 
-async function waitState(native, predicate, label, timeout = 30_000) {
+function powershell(command) {
+  return execFileSync("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command", command], { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }).trim();
+}
+
+function countMatching(command) {
+  const output = powershell(`$items = @(${command}); Write-Output $items.Count`);
+  const value = Number(output.split(/\r?\n/).filter(Boolean).at(-1) || "0");
+  assert(Number.isInteger(value) && value >= 0, `Invalid PowerShell count: ${output}`);
+  return value;
+}
+
+async function state(native) {
+  return await execute(native.driverPort, native.sessionId, `return {
+    surface: window.MASTERV_DESKTOP_CONFIG?.surface || '',
+    migrationStage: window.MASTERV_DESKTOP_CONFIG?.migration_stage || '',
+    tauriGlobal: Boolean(window.__TAURI__?.core?.invoke),
+    auth: document.querySelector('#auth-status')?.textContent?.trim() || '',
+    api: document.querySelector('#api-status')?.textContent?.trim() || '',
+    workspace: document.querySelector('#library-workspace')?.textContent?.trim() || '',
+    libraryStatus: document.querySelector('#library-status')?.textContent?.trim() || '',
+    sourceIds: Array.from(document.querySelectorAll('[data-source-id]')).map(node => node.dataset.sourceId || ''),
+    activationForm: Boolean(document.querySelector('#activation-form')),
+    loginForm: Boolean(document.querySelector('#login-form')),
+    localKeys: Object.keys(localStorage),
+    sessionKeys: Object.keys(sessionStorage),
+    resources: performance.getEntriesByType('resource').map(entry => entry.name),
+    smokeInvoke: document.documentElement.dataset.smokeInvoke || ''
+  };`);
+}
+
+async function waitState(native, predicate, label, timeout = 35_000) {
   const end = Date.now() + timeout;
-  let last = null;
+  let last;
   while (Date.now() < end) {
-    last = await execute(native.driverPort, native.sessionId, `return {
-      surface: document.querySelector('#surface-badge')?.textContent?.trim() || '',
-      auth: document.querySelector('#auth-status')?.textContent?.trim() || '',
-      api: document.querySelector('#api-status')?.textContent?.trim() || '',
-      libraryHidden: Boolean(document.querySelector('#reference-library-panel')?.hidden),
-      batchHidden: Boolean(document.querySelector('#background-batch-panel')?.hidden),
-      localKeys: Object.keys(localStorage),
-      sessionKeys: Object.keys(sessionStorage),
-      resources: performance.getEntriesByType('resource').map(e => e.name)
-    };`);
+    last = await state(native);
     if (predicate(last)) return last;
     await delay(400);
   }
   throw new Error(`${label} timed out: ${JSON.stringify(last)}`);
 }
 
-async function login(native, email, password) {
-  const clicked = await execute(native.driverPort, native.sessionId, `
-    const e=document.querySelector('#email'),p=document.querySelector('#password'),b=document.querySelector('#login-button');
-    if(!e||!p||!b)return false;e.value=arguments[0];p.value=arguments[1];b.click();return true;
-  `, [email, password]);
-  assert(clicked === true, "Installed Desktop login controls missing");
-  return await waitState(native, (s) => s.auth === "AUTHENTICATED" && s.api === "CONNECTED", "installed Desktop authenticated state", 45_000);
+async function invokeNative(native, command, args) {
+  await execute(native.driverPort, native.sessionId, `
+    document.documentElement.dataset.smokeInvoke = 'pending';
+    window.__TAURI__.core.invoke(arguments[0], arguments[1] || {})
+      .then(() => { document.documentElement.dataset.smokeInvoke = 'ok'; })
+      .catch((error) => { document.documentElement.dataset.smokeInvoke = 'error:' + String(error); });
+    return true;
+  `, [command, args]);
+  const result = await waitState(native, (snapshot) => snapshot.smokeInvoke === "ok" || snapshot.smokeInvoke.startsWith("error:"), `native invoke ${command}`);
+  assert(result.smokeInvoke === "ok", `native invoke ${command} failed: ${result.smokeInvoke}`);
 }
 
-function assertNoPersistentAuthKeys(state, phase) {
-  const suspicious = [...state.localKeys, ...state.sessionKeys].filter((key) => /supabase|auth|token|session/i.test(key));
-  assert(suspicious.length === 0, `${phase} persisted auth/session keys: ${suspicious.join(", ")}`);
+function fixture(nativeId, label) {
+  return {
+    source_platform: "youtube",
+    source_id: `yt:${nativeId}`,
+    native_id: nativeId,
+    canonical_url: `https://www.youtube.com/watch?v=${nativeId}`,
+    label,
+    analysis: {
+      summary: `${label} installed lifecycle fixture`,
+      structure_label: "hook → demo → CTA",
+      duration_seconds: 12,
+      hook: { type: "visual", text: "", visual: "synthetic", duration_seconds: 2 },
+      product_presentation: { first_seen_seconds: 1, demonstration_present: true, before_after_present: false, comparison_present: false, result_visual_present: false, face_present: false, hand_present: true },
+      persuasion: { problem: "", solution: "", benefit: "", proof: "", social_proof: "", offer: "", cta: "링크 확인", emotional_trigger: "" },
+      presentation: { format: "", presenter_type: "", caption_style: "", visual_style: "", music_role: "" },
+      transcript: { full: "", segments: [] },
+      scenes: [], observation_segments: [], tags: ["installed-exit2c-smoke"], confidence_notes: ["Synthetic local-only installed runtime fixture."]
+    },
+    analysis_cache_key: `installed-exit2c:${nativeId}`,
+    analysis_provenance: "replay",
+    schema_version: "reference-library-v1",
+    first_saved_at: null,
+    updated_at: null
+  };
 }
 
-function assertNetworkIsolation(resources, phase) {
-  const forbidden = resources.filter((url) => /generativelanguage\.googleapis\.com|youtube\.googleapis\.com|127\.0\.0\.1:3000|localhost:3000/i.test(url));
-  assert(forbidden.length === 0, `${phase} made forbidden direct/local requests: ${forbidden.join(", ")}`);
-}
-
-function powershell(script, timeout = 90_000) {
-  const result = spawnSync("powershell.exe", ["-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", script], { encoding: "utf8", timeout });
-  if (result.status !== 0) throw new Error(`PowerShell failed (${result.status}): ${result.stderr || result.stdout}`);
-  return (result.stdout || "").trim();
-}
-
-function masterVUninstallRegistryCount() {
-  const value = powershell(`
-$paths=@('HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\*','HKLM:\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\*','HKLM:\\Software\\WOW6432Node\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\*')
-@((Get-ItemProperty $paths -ErrorAction SilentlyContinue | Where-Object { $_.DisplayName -eq 'MasterV' })).Count
-`);
-  const count = Number(value);
-  assert(Number.isFinite(count), `MasterV uninstall registry count was not numeric: ${value}`);
-  return count;
-}
-
-async function waitForUninstallCleanup(binary, timeout = 60_000) {
-  const deadline = Date.now() + timeout;
-  let registryCount = masterVUninstallRegistryCount();
-  while (Date.now() < deadline) {
-    if (!fs.existsSync(binary) && registryCount === 0) return { registryCount, elapsedMs: timeout - Math.max(0, deadline - Date.now()) };
-    await delay(1000);
-    registryCount = masterVUninstallRegistryCount();
+async function waitForUninstallCleanup(installedBinary, uninstallKeyName, timeout = 60_000) {
+  const end = Date.now() + timeout;
+  let lastRegistryCount = -1;
+  while (Date.now() < end) {
+    const registryCount = countMatching(`Get-ItemProperty 'HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\*','HKLM:\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\*','HKLM:\\Software\\WOW6432Node\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\*' -ErrorAction SilentlyContinue | Where-Object { $_.PSChildName -eq '${uninstallKeyName.replace(/'/g, "''")}' }`);
+    lastRegistryCount = registryCount;
+    if (!fs.existsSync(installedBinary) && registryCount === 0) return { registryCount, waitedMs: timeout - Math.max(0, end - Date.now()) };
+    await delay(500);
   }
-  return { registryCount, elapsedMs: timeout };
+  assert(!fs.existsSync(installedBinary), `Installed executable still exists after bounded uninstall cleanup: ${installedBinary}`);
+  assert(lastRegistryCount === 0, `MasterV uninstall registry entry still exists after bounded cleanup: ${lastRegistryCount}`);
+  return { registryCount: lastRegistryCount, waitedMs: timeout };
 }
 
-if (process.platform !== "win32") throw new Error("3L installed session/uninstall smoke must run on Windows");
-const binary = required("MASTERV_DESKTOP_APP_BINARY");
-const installDir = required("MASTERV_DESKTOP_INSTALL_DIR");
-const uninstaller = required("MASTERV_DESKTOP_UNINSTALLER");
-const email = required("SUPABASE_TEST_EMAIL");
-const password = required("SUPABASE_TEST_PASSWORD");
-assert(fs.existsSync(binary), `Installed MasterV binary missing before lifecycle test: ${binary}`);
-assert(fs.existsSync(uninstaller), `MasterV uninstaller missing before lifecycle test: ${uninstaller}`);
-assert(!process.env.GEMINI_API_KEY && !process.env.YOUTUBE_DATA_API_KEY, "Provider credentials must not be present in installed quality smoke");
+async function main() {
+  if (process.platform !== "win32") throw new Error("Installed lifecycle smoke must run on Windows");
+  const binary = path.resolve(required("MASTERV_DESKTOP_APP_BINARY"));
+  const uninstaller = path.resolve(required("MASTERV_DESKTOP_UNINSTALLER"));
+  const uninstallKeyName = required("MASTERV_DESKTOP_UNINSTALL_KEY");
+  assert(fs.existsSync(binary), `Installed MasterV binary missing: ${binary}`);
+  assert(fs.existsSync(uninstaller), `MasterV uninstaller missing: ${uninstaller}`);
+  assert(!process.env.GEMINI_API_KEY && !process.env.YOUTUBE_DATA_API_KEY && !process.env.SUPABASE_SERVICE_ROLE_KEY, "Provider/admin credentials must not be present in installed Desktop runtime");
+  assert(!process.env.TAURI_SIGNING_PRIVATE_KEY, "Signing private key must not be present in installed quality runtime");
 
-const evidenceDir = path.resolve("artifacts", "desktop-installed-quality");
-fs.mkdirSync(evidenceDir, { recursive: true });
-const sharedDataDir = path.join(process.env.RUNNER_TEMP?.trim() || os.tmpdir(), `masterv-3l-persistence-${process.pid}`);
-fs.rmSync(sharedDataDir, { recursive: true, force: true });
+  const evidenceDir = path.resolve("artifacts", "desktop-installed-quality");
+  fs.mkdirSync(evidenceDir, { recursive: true });
+  const suffix = `${process.env.GITHUB_RUN_ID || Date.now()}${process.env.GITHUB_RUN_ATTEMPT || "1"}${process.pid}`.replace(/[^A-Za-z0-9_-]/g, "");
+  const dataDir = path.join(evidenceDir, `restart-profile-${suffix}`);
+  const nativeId = `MVIL${suffix}`;
+  const sourceId = `yt:${nativeId}`;
+  const label = `Installed EXIT-2C fixture ${suffix}`;
+  let first;
+  let second;
+  let failure;
+  let cleanupFailure;
+  let evidence;
 
-let first;
-let second;
-let firstState;
-let restartState;
-let logoutState;
-try {
-  first = await attachMasterV(binary, evidenceDir, "arch3l-installed-first", { dataDir: sharedDataDir, reuseDataDir: false });
-  firstState = await login(first, email, password);
-  assert(firstState.surface === "desktop", `Installed Desktop surface mismatch: ${firstState.surface}`);
-  assertNoPersistentAuthKeys(firstState, "authenticated installed runtime");
-  assertNetworkIsolation(firstState.resources, "authenticated installed runtime");
-  await first.close();
-  first = null;
-  await delay(1200);
+  try {
+    first = await attachMasterV(binary, evidenceDir, "masterv-installed-exit2c-first", { dataDir, reuseDataDir: false });
+    const initial = await waitState(first, (snapshot) => snapshot.auth === "LOCAL ONLY" && snapshot.api === "LOCAL ONLY" && snapshot.libraryStatus === "READY / LOCAL" && snapshot.workspace === "local:masterv", "installed local-first startup", 45_000);
+    assert(initial.surface === "desktop" && initial.migrationStage === "MV-SUPABASE-EXIT-2C", "installed runtime surface/stage mismatch");
+    assert(initial.tauriGlobal, "installed runtime is missing the Tauri global invoke bridge");
+    assert(initial.activationForm && !initial.loginForm, "installed runtime did not cut over visible authentication to Product Key");
+    assert(initial.localKeys.length === 0 && initial.sessionKeys.length === 0, "fresh installed runtime has persistent browser auth storage");
 
-  second = await attachMasterV(binary, evidenceDir, "arch3l-installed-restart", { dataDir: sharedDataDir, reuseDataDir: true });
-  restartState = await waitState(second, (s) => s.auth === "SIGNED OUT", "installed Desktop restart signed-out state", 20_000);
-  assert(restartState.libraryHidden === true, "Reference Library must remain hidden after process restart without a session");
-  assertNoPersistentAuthKeys(restartState, "restarted installed runtime");
-  assertNetworkIsolation(restartState.resources, "restarted installed runtime");
+    await invokeNative(first, "desktop_local_reference_upsert", { input: fixture(nativeId, label) });
+    await execute(first.driverPort, first.sessionId, "document.querySelector('#library-refresh')?.click(); return true;");
+    await waitState(first, (snapshot) => snapshot.sourceIds.includes(sourceId), "installed local fixture visibility");
 
-  await login(second, email, password);
-  await execute(second.driverPort, second.sessionId, "document.querySelector('#logout-button')?.click(); return true;");
-  logoutState = await waitState(second, (s) => s.auth === "SIGNED OUT" && s.libraryHidden === true, "installed Desktop explicit logout", 15_000);
-  assertNoPersistentAuthKeys(logoutState, "explicit logout");
-  await second.close();
-  second = null;
-} finally {
-  if (first) await first.close().catch(() => undefined);
-  if (second) await second.close().catch(() => undefined);
-}
+    await first.close();
+    first = null;
+    second = await attachMasterV(binary, evidenceDir, "masterv-installed-exit2c-restart", { dataDir, reuseDataDir: true });
+    const restarted = await waitState(second, (snapshot) => snapshot.auth === "LOCAL ONLY" && snapshot.libraryStatus === "READY / LOCAL" && snapshot.sourceIds.includes(sourceId), "installed local data after process restart", 45_000);
+    assert(restarted.localKeys.length === 0 && restarted.sessionKeys.length === 0, "process_restart_without_logout introduced persistent browser auth storage");
+    const persistent_auth_storage = false;
+    const resourceUrls = [...new Set(restarted.resources)];
+    const direct_gemini_requests = resourceUrls.filter((url) => url.includes("generativelanguage.googleapis.com"));
+    const direct_youtube_data_api_requests = resourceUrls.filter((url) => url.includes("youtube.googleapis.com"));
+    const local_next_api_requests = resourceUrls.filter((url) => /\/api\//.test(url));
+    assert(direct_gemini_requests.length === 0 && direct_youtube_data_api_requests.length === 0 && local_next_api_requests.length === 0, "installed local-only restart emitted forbidden direct provider/local API traffic");
 
-const uninstallResult = spawnSync(uninstaller, ["/S"], { encoding: "utf8", timeout: 180_000, windowsHide: true });
-assert(uninstallResult.status === 0, `MasterV silent uninstall failed (${uninstallResult.status}): ${uninstallResult.stderr || uninstallResult.stdout}`);
+    await invokeNative(second, "desktop_local_reference_delete", { sourceId });
+    await execute(second.driverPort, second.sessionId, "document.querySelector('#library-refresh')?.click(); return true;");
+    await waitState(second, (snapshot) => !snapshot.sourceIds.includes(sourceId), "installed fixture cleanup");
+    await second.close();
+    second = null;
 
-const uninstallCleanup = await waitForUninstallCleanup(binary, 60_000);
-assert(!fs.existsSync(binary), `Installed executable still exists after bounded uninstall cleanup: ${binary}`);
-assert(uninstallCleanup.registryCount === 0, `MasterV uninstall registry entry remains after bounded cleanup: ${uninstallCleanup.registryCount}`);
+    const uninstall = spawnSync(uninstaller, ["/S"], { encoding: "utf8", windowsHide: true });
+    assert(uninstall.status === 0, `Uninstaller failed: ${uninstall.stderr || uninstall.stdout}`);
+    const cleanup = await waitForUninstallCleanup(binary, uninstallKeyName, 60_000);
+    const uninstall_registry_removed = cleanup.registryCount === 0;
+    const autorun_residue = shellLines(`Get-CimInstance Win32_StartupCommand -ErrorAction SilentlyContinue | Where-Object { ($_.Name -match 'MasterV') -or ($_.Command -like '*masterv-desktop.exe*') } | ForEach-Object { $_.Name }`);
+    const service_residue = shellLines(`Get-CimInstance Win32_Service -ErrorAction SilentlyContinue | Where-Object { ($_.Name -match 'MasterV') -or ($_.DisplayName -match 'MasterV') -or ($_.PathName -like '*masterv-desktop.exe*') } | ForEach-Object { $_.Name }`);
+    const scheduled_task_residue = shellLines(`Get-ScheduledTask -ErrorAction SilentlyContinue | Where-Object { ($_.TaskName -match 'MasterV') -or (($_.Actions | ForEach-Object Execute) -like '*masterv-desktop.exe*') } | ForEach-Object { $_.TaskName }`);
+    assert(autorun_residue.length === 0, `Unexpected autorun residue: ${autorun_residue.join(", ")}`);
+    assert(service_residue.length === 0, `Unexpected service residue: ${service_residue.join(", ")}`);
+    assert(scheduled_task_residue.length === 0, `Unexpected scheduled-task residue: ${scheduled_task_residue.join(", ")}`);
 
-const autorunAfter = powershell(`
-$hits=@(); foreach($p in @('HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Run','HKLM:\\Software\\Microsoft\\Windows\\CurrentVersion\\Run')){if(Test-Path $p){$i=Get-ItemProperty $p;foreach($x in $i.PSObject.Properties){if($x.Name -notmatch '^PS' -and ("$($x.Name) $($x.Value)") -match '(?i)masterv'){$hits+="$($x.Name)=$($x.Value)"}}}}; $hits -join [Environment]::NewLine
-`);
-assert(!autorunAfter, `MasterV autorun residue remains after uninstall: ${autorunAfter}`);
-const servicesAfter = powershell(`(Get-Service -ErrorAction SilentlyContinue | Where-Object { $_.Name -match '(?i)masterv' -or $_.DisplayName -match '(?i)masterv' } | Select-Object -ExpandProperty Name) -join [Environment]::NewLine`);
-assert(!servicesAfter, `MasterV service residue remains after uninstall: ${servicesAfter}`);
-const tasksAfter = powershell(`(Get-ScheduledTask -ErrorAction SilentlyContinue | Where-Object { $_.TaskName -match '(?i)masterv' -or $_.TaskPath -match '(?i)masterv' } | ForEach-Object { "$($_.TaskPath)$($_.TaskName)" }) -join [Environment]::NewLine`);
-assert(!tasksAfter, `MasterV scheduled-task residue remains after uninstall: ${tasksAfter}`);
-
-let installDirExists = fs.existsSync(installDir);
-if (installDirExists) {
-  const directoryDeadline = Date.now() + 15_000;
-  while (Date.now() < directoryDeadline && fs.existsSync(installDir) && fs.readdirSync(installDir).length > 0) await delay(500);
-  installDirExists = fs.existsSync(installDir);
-  if (installDirExists) {
-    const residualFiles = fs.readdirSync(installDir);
-    assert(residualFiles.length === 0, `Installer-created directory contains residual files after uninstall: ${residualFiles.join(", ")}`);
+    evidence = {
+      status: "MASTERV_DESKTOP_INSTALLED_SESSION_UNINSTALL_PASS",
+      migration_stage: "MV-SUPABASE-EXIT-2C",
+      process_restart_without_logout: true,
+      local_data_survived_process_restart: true,
+      local_data_access_without_gateway_session: true,
+      persistent_auth_storage,
+      localStorage: restarted.localKeys,
+      sessionStorage: restarted.sessionKeys,
+      direct_gemini_requests: direct_gemini_requests.length,
+      direct_youtube_data_api_requests: direct_youtube_data_api_requests.length,
+      local_next_api_requests: local_next_api_requests.length,
+      fixture_cleanup: true,
+      uninstall_registry_removed,
+      autorun_residue,
+      service_residue,
+      scheduled_task_residue,
+      uninstall_cleanup_wait_ms: cleanup.waitedMs
+    };
+  } catch (error) {
+    failure = error;
+  } finally {
+    if (first) await first.close();
+    if (second) {
+      try { await invokeNative(second, "desktop_local_reference_delete", { sourceId }); }
+      catch (error) { cleanupFailure = error; }
+      await second.close();
+    }
   }
-}
-fs.rmSync(sharedDataDir, { recursive: true, force: true });
 
-const evidence = {
-  status: "MASTERV_WINDOWS_INSTALLED_QUALITY_PASS",
-  installed_launch: "PASS",
-  authenticated_runtime: firstState?.auth === "AUTHENTICATED" ? "PASS" : "FAIL",
-  process_restart_without_logout: "PASS",
-  restart_auth_status: restartState?.auth || null,
-  persistent_auth_storage: false,
-  explicit_logout_clear: logoutState?.auth === "SIGNED OUT",
-  direct_gemini_requests: 0,
-  direct_youtube_data_api_requests: 0,
-  local_next_api_requests: 0,
-  uninstall: "PASS",
-  uninstall_cleanup_wait_ms: uninstallCleanup.elapsedMs,
-  installed_executable_removed: !fs.existsSync(binary),
-  uninstall_registry_removed: uninstallCleanup.registryCount === 0,
-  autorun_residue: false,
-  service_residue: false,
-  scheduled_task_residue: false,
-  installer_created_directory_present_after_uninstall: installDirExists,
-  updater_created: false,
-  activation: false
-};
-fs.writeFileSync(path.join(evidenceDir, "installed-quality-evidence.json"), JSON.stringify(evidence, null, 2));
-console.log(JSON.stringify(evidence));
+  if (cleanupFailure) throw new Error(`${failure instanceof Error ? failure.message : failure || "installed lifecycle failed"}; cleanup also failed: ${cleanupFailure instanceof Error ? cleanupFailure.message : cleanupFailure}`);
+  if (failure) throw failure;
+  assert(evidence, "installed lifecycle did not produce evidence");
+  fs.writeFileSync(path.join(evidenceDir, "session-uninstall-evidence.json"), JSON.stringify(evidence, null, 2));
+  console.log(JSON.stringify(evidence));
+}
+
+main().catch((error) => {
+  console.error(error instanceof Error ? error.stack || error.message : String(error));
+  process.exitCode = 1;
+});
