@@ -1,6 +1,23 @@
 # MV-SUPABASE-EXIT-1B-CLOSEOUT — Provider / Config Boundary Final Audit
 
-Status: AUDIT CANDIDATE
+Status: CLOSED
+
+## Closeout Evidence
+
+Initial closeout audit evidence:
+
+- audited implementation head: `180d3b4a6d40b99a4480b31f4177f987d41905a9`
+- workflow: `MV Supabase Exit 1B Closeout Audit`
+- run: `32200312823` / run #2
+- conclusion: `SUCCESS`
+- generic Desktop runtime files audited: `8`
+- allowed legacy runtime files: exactly `3`
+- generic vendor config couplings: `0`
+- generic direct fetch paths: `0`
+- session bridge paths: `0`
+- generic builder vendor env-name ownership: `0`
+
+This closure is limited to the EXIT-1B provider/config boundary. It is not a declaration of the final 0.1.3 Supabase clean cut.
 
 ## Purpose
 
