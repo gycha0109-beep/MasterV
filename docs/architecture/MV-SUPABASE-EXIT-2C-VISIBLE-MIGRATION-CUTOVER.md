@@ -14,6 +14,7 @@ Primary runtime authority after this change:
 - Payment / subscription / entitlement / usage: Polar authority enforced through the Gateway.
 - Reference Library / analysis results / comparison / Production Guidance: Local SQLite.
 - Discovery / Deep Analysis / Production Guidance request execution: Stateless MasterV Gateway.
+- Background operations: Desktop session-local orchestration + existing Gateway analyze execution + Local SQLite analysis-result persistence.
 - Reference Compare: local canonical compiler built from the existing `lib/reference-compare.ts` and `lib/evidence-rules.ts` modules.
 - Legacy Supabase: existing-data migration only in the visible 0.1.2 runtime.
 
@@ -78,11 +79,29 @@ selected source ids
 
 User Reference Library data does not cross the Gateway boundary for comparison.
 
+## Background operations boundary
+
+The previous hosted Background Batch implementation depended on a Supabase-backed durable ledger. Promoting that implementation unchanged would violate the target requirement that the Gateway remain stateless and DB-less.
+
+EXIT-2C therefore cuts the visible Product-Key runtime to a bounded local orchestrator:
+
+```text
+Desktop Product-Key session
+  -> create request_id in Desktop
+  -> session-local job map (QUEUED / RUNNING / SUCCEEDED / FAILED)
+  -> existing Gateway /v1/analyze execution
+  -> Gateway entitlement / usage enforcement
+  -> successful analysis result persisted to Local SQLite
+```
+
+No new `/v1/background*` Gateway route and no MasterV-owned central job DB are introduced. The session-local queue itself is **not** claimed to survive an app restart in 0.1.2. Durable user analysis results continue to use Local SQLite authority. Legacy Supabase Background Batch code remains only as historical transition code pending EXIT-3 removal and is not the visible primary path.
+
 ## Remote result persistence
 
 Gateway remains stateless and reports `persistence_authority = none`. The Desktop transition adapter persists successful results after they return:
 
 - Deep Analysis -> `analysis_results`
+- Background analysis -> `analysis_results`
 - Production Guidance -> `production_guidance`
 - Reference Compare -> `comparison_entries`
 
@@ -95,7 +114,7 @@ Still present for migration compatibility:
 - legacy Supabase runtime config
 - legacy Supabase session adapter
 - legacy Supabase work-data adapter
-- legacy hosted API adapter code
+- legacy hosted API adapter/code
 - Supabase network/CSP allowances needed by the migration bridge
 
 Not primary:
@@ -106,12 +125,13 @@ Not primary:
 - Discovery
 - Deep Analysis
 - Production Guidance
+- Background operations
 
 Removal of these remaining artifacts is EXIT-3 / 0.1.3 Clean Cut.
 
 ## Validation contract
 
-`MASTERV_SUPABASE_EXIT_2C_VISIBLE_MIGRATION_CUTOVER_PASS` requires:
+`MASTERV_SUPABASE_EXIT_2C_VISIBLE_MIGRATION_CUTOVER_PASS` and `MASTERV_SUPABASE_EXIT_2C_BACKGROUND_GATEWAY_CUTOVER_PASS` require:
 
 - visible Product Key activation and device resume
 - no visible normal email/password login form
@@ -119,6 +139,10 @@ Removal of these remaining artifacts is EXIT-3 / 0.1.3 Clean Cut.
 - local workspace/Reference Library available without Gateway session
 - Gateway primary for paid remote operations
 - local canonical Reference Compare with zero Gateway user-work-data routes
+- Background operations use session-local orchestration + existing Gateway analyze execution
+- no new central Background job DB or Gateway Background route
+- Background analysis result persists to Local SQLite
+- no false queue restart-durability claim
 - legacy migration read before native backup/import
 - backup-first + transactional + local-wins + idempotent migration primitive
 - post-import integrity verification

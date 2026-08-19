@@ -21,14 +21,7 @@
   const legacySession = legacySessionFactory.create(legacyConfig);
   const legacyWorkData = legacyWorkDataFactory.create(legacyConfig);
   const legacyRemote = legacyRemoteFactory.create(legacyConfig);
-  const transition = transitionFactory.create({
-    gatewaySession,
-    legacySession,
-    localWorkData,
-    legacyWorkData,
-    gatewayRemote,
-    legacyRemote
-  });
+  const transition = transitionFactory.create({ gatewaySession, legacySession, localWorkData, legacyWorkData, gatewayRemote, legacyRemote });
 
   const backend = contract.createBackendProvider({
     session: transition.session,
@@ -70,5 +63,26 @@
 
   if (typeof window.dispatchEvent === "function" && typeof CustomEvent === "function") {
     window.dispatchEvent(new CustomEvent("masterv:backend-ready"));
+  }
+
+  const deepPanel = document.getElementById("deep-analysis-panel");
+  if (deepPanel) {
+    deepPanel.dataset.providerAuthority = "masterv-gateway";
+    deepPanel.dataset.computeAuthority = "gateway-deep-analysis";
+    deepPanel.dataset.persistenceAuthority = "local-sqlite";
+    deepPanel.dataset.transportAuthority = "native-gateway-provider";
+  }
+  const guidancePanel = document.getElementById("production-guidance-panel");
+  if (guidancePanel) {
+    guidancePanel.dataset.providerAuthority = "masterv-gateway";
+    guidancePanel.dataset.computeAuthority = "gateway-production-guidance";
+    guidancePanel.dataset.referenceAnalysisAuthority = "validated-gateway-result-transit";
+    guidancePanel.dataset.persistenceAuthority = "local-sqlite";
+    guidancePanel.dataset.backgroundBatchMigrated = "true";
+    guidancePanel.dataset.transportAuthority = "native-gateway-provider";
+  }
+  const diagnosticsNote = document.querySelector("#developer-diagnostics .muted.small");
+  if (diagnosticsNote) {
+    diagnosticsNote.textContent = "Gateway execution, Local SQLite persistence, local Reference Compare, session-local Background orchestration 경계를 확인합니다.";
   }
 })();
