@@ -1,14 +1,10 @@
 name: MV Supabase Exit 1C Stateless Gateway
 
 on:
-  pull_request:
+  workflow_dispatch:
 
 permissions:
   contents: read
-
-concurrency:
-  group: mv-supabase-exit-1c-${{ github.event.pull_request.number }}
-  cancel-in-progress: true
 
 jobs:
   stateless-gateway:
