@@ -14,6 +14,8 @@
     "first_saved_at",
     "updated_at"
   ]);
+  const MIGRATION_PAGE_SIZE = 250;
+  const MAX_MIGRATION_PAGES = 100000;
 
   function normalizedBaseUrl(value) {
     return String(value || "").trim().replace(/\/+$/, "");
@@ -65,13 +67,15 @@
       return workspaceId;
     }
 
-    async function listReferenceLibrary(session, workspaceId, projection) {
+    async function fetchReferenceLibraryPage(session, workspaceId, projection, page = {}) {
       requireSession(session);
       if (!Array.isArray(projection) || projection.length === 0) throw new Error("Reference Library projection is required");
       const params = new URLSearchParams();
       params.set("select", projection.join(","));
       params.set("workspace_id", `eq.${workspaceId}`);
-      params.set("order", "updated_at.desc,source_id.asc");
+      params.set("order", "updated_at.desc,source_id.asc,source_platform.asc");
+      if (Number.isInteger(page.limit)) params.set("limit", String(page.limit));
+      if (Number.isInteger(page.offset)) params.set("offset", String(page.offset));
       const response = await fetchImpl(`${supabaseUrl}/rest/v1/reference_library_entries?${params.toString()}`, {
         method: "GET",
         headers: authHeaders(session, { Accept: "application/json" })
@@ -82,9 +86,39 @@
       return body;
     }
 
+    async function listReferenceLibrary(session, workspaceId, projection) {
+      return await fetchReferenceLibraryPage(session, workspaceId, projection);
+    }
+
     async function exportReferenceLibraryForMigration(session, workspaceId) {
       requireSession(session);
-      const rows = await listReferenceLibrary(session, workspaceId, MIGRATION_PROJECTION);
+      const rows = [];
+      const seen = new Set();
+      let offset = 0;
+      let exhausted = false;
+
+      for (let pageIndex = 0; pageIndex < MAX_MIGRATION_PAGES; pageIndex += 1) {
+        const page = await fetchReferenceLibraryPage(session, workspaceId, MIGRATION_PROJECTION, {
+          limit: MIGRATION_PAGE_SIZE,
+          offset
+        });
+        if (page.length === 0) {
+          exhausted = true;
+          break;
+        }
+        for (const row of page) {
+          const key = `${String(row.source_platform || "")}\u0000${String(row.source_id || "")}`;
+          if (seen.has(key)) {
+            throw new Error(`Legacy Reference Library pagination did not advance deterministically at ${JSON.stringify(key)}`);
+          }
+          seen.add(key);
+          rows.push(row);
+        }
+        offset += page.length;
+      }
+
+      if (!exhausted) throw new Error(`Legacy Reference Library migration exceeded ${MAX_MIGRATION_PAGES} pages`);
+
       return rows.map((row) => Object.freeze({
         source_platform: row.source_platform,
         source_id: row.source_id,
@@ -141,5 +175,9 @@
     });
   }
 
-  window.MASTERV_LEGACY_SUPABASE_WORK_DATA_PROVIDER = Object.freeze({ create, MIGRATION_PROJECTION });
+  window.MASTERV_LEGACY_SUPABASE_WORK_DATA_PROVIDER = Object.freeze({
+    create,
+    MIGRATION_PROJECTION,
+    MIGRATION_PAGE_SIZE
+  });
 })();
