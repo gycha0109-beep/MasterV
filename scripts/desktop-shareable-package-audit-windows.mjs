@@ -24,6 +24,7 @@ const diagnostic = {
   status: "MASTERV_PRIVATE_SHARE_AUDIT_DIAGNOSTIC",
   phase: "initializing"
 };
+
 function checkpoint(phase, values = {}) {
   diagnostic.phase = phase;
   Object.assign(diagnostic, values);
@@ -72,26 +73,59 @@ try {
   assert(installText.includes("코드 서명이 없는 비공개 테스트 빌드"), "INSTALL.txt must disclose unsigned private-test status");
 
   const installEvidencePath = path.join(root, "artifacts/desktop-installed-quality/install-evidence.json");
-  const qualityEvidencePath = path.join(root, "artifacts/desktop-installed-quality/installed-quality-evidence.json");
+  const runtimeEvidencePath = path.join(root, "artifacts/desktop-windows-runtime/runtime-evidence.json");
+  const lifecycleEvidencePath = path.join(root, "artifacts/desktop-installed-quality/session-uninstall-evidence.json");
   assert(fs.existsSync(installEvidencePath), "Installed preparation evidence is missing");
-  assert(fs.existsSync(qualityEvidencePath), "Installed lifecycle evidence is missing");
+  assert(fs.existsSync(runtimeEvidencePath), "Local-first native runtime evidence is missing");
+  assert(fs.existsSync(lifecycleEvidencePath), "Installed local-first lifecycle evidence is missing");
   const installEvidence = readJson(installEvidencePath);
-  const qualityEvidence = readJson(qualityEvidencePath);
-  checkpoint("installed-evidence", { install_evidence: installEvidence, quality_evidence: qualityEvidence });
+  const runtimeEvidence = readJson(runtimeEvidencePath);
+  const lifecycleEvidence = readJson(lifecycleEvidencePath);
+  checkpoint("installed-evidence", {
+    install_evidence: installEvidence,
+    runtime_evidence: runtimeEvidence,
+    lifecycle_evidence: lifecycleEvidence
+  });
+
   assert(installEvidence.status === "MASTERV_WINDOWS_INSTALLED_PREPARE_PASS", `Installed preparation did not pass: ${installEvidence.status}`);
   assert(installEvidence.installer_sha256 === packagedSha, `Installed candidate hash differs from packaged installer hash: installed=${installEvidence.installer_sha256} packaged=${packagedSha}`);
   assert(installEvidence.signing === false && installEvidence.updater === false && installEvidence.activation === false, "Installed preparation crossed a forbidden lifecycle boundary");
-  assert(qualityEvidence.status === "MASTERV_WINDOWS_INSTALLED_QUALITY_PASS", `Installed quality lifecycle did not pass: ${qualityEvidence.status}`);
-  assert(qualityEvidence.installed_launch === "PASS", "Installed MasterV launch was not verified");
-  assert(qualityEvidence.authenticated_runtime === "PASS", "Installed authenticated runtime was not verified");
-  assert(qualityEvidence.process_restart_without_logout === "PASS", "Installed process restart lifecycle was not verified");
-  assert(qualityEvidence.restart_auth_status === "SIGNED OUT", `Installed restart must remain signed out, got ${qualityEvidence.restart_auth_status}`);
-  assert(qualityEvidence.explicit_logout_clear === true, "Installed explicit logout clear was not verified");
-  assert(qualityEvidence.uninstall === "PASS", "Installed uninstall was not verified");
-  assert(qualityEvidence.installed_executable_removed === true, "Installed executable residue remains after uninstall");
-  assert(qualityEvidence.uninstall_registry_removed === true, "Uninstall registry residue remains after uninstall");
-  assert(qualityEvidence.autorun_residue === false && qualityEvidence.service_residue === false && qualityEvidence.scheduled_task_residue === false, "Installed lifecycle left forbidden OS persistence residue");
-  assert(qualityEvidence.updater_created === false && qualityEvidence.activation === false, "Installed lifecycle crossed updater/activation boundary");
+
+  assert(runtimeEvidence.status === "MASTERV_WINDOWS_DESKTOP_RUNTIME_PASS", `Native local-first runtime did not pass: ${runtimeEvidence.status}`);
+  assert(runtimeEvidence.migration_stage === "MV-SUPABASE-EXIT-2C", `Unexpected runtime migration stage: ${runtimeEvidence.migration_stage}`);
+  assert(runtimeEvidence.fresh_runtime_auth_state === "LOCAL ONLY", `Native runtime must start LOCAL ONLY, got ${runtimeEvidence.fresh_runtime_auth_state}`);
+  assert(runtimeEvidence.tauri_global_invoke_bridge === true, "Native runtime Tauri invoke bridge was not verified");
+  assert(runtimeEvidence.local_sqlite_crud === "PASS", "Native runtime Local SQLite CRUD was not verified");
+  assert(runtimeEvidence.local_sqlite_process_restart_persistence === "PASS", "Native runtime Local SQLite restart persistence was not verified");
+  assert(runtimeEvidence.reference_detail_local_read === "PASS", "Native runtime local detail read was not verified");
+  assert(runtimeEvidence.reference_compare_local_canonical === "PASS", "Native runtime local canonical compare was not verified");
+  assert(runtimeEvidence.product_key_ui_present === true && runtimeEvidence.legacy_login_ui_present === false, "Visible Product-Key cutover was not verified");
+  assert(runtimeEvidence.legacy_migration_ui_present === true, "0.1.2 legacy migration surface was not verified");
+  assert(runtimeEvidence.persistent_auth_storage === false, "Native runtime persisted browser auth credentials");
+  assert(runtimeEvidence.direct_provider_requests === 0 && runtimeEvidence.local_next_api_requests === 0, "Native local-first runtime emitted forbidden direct provider/local API requests");
+  assert(runtimeEvidence.fixture_cleanup === "PASS", "Native runtime fixture cleanup was not verified");
+
+  assert(lifecycleEvidence.status === "MASTERV_DESKTOP_INSTALLED_SESSION_UNINSTALL_PASS", `Installed lifecycle did not pass: ${lifecycleEvidence.status}`);
+  assert(lifecycleEvidence.migration_stage === "MV-SUPABASE-EXIT-2C", `Unexpected installed lifecycle migration stage: ${lifecycleEvidence.migration_stage}`);
+  assert(lifecycleEvidence.installed_launch === "PASS", "Installed MasterV launch was not verified");
+  assert(lifecycleEvidence.runtime_mode === "LOCAL ONLY", `Installed runtime must remain LOCAL ONLY before activation, got ${lifecycleEvidence.runtime_mode}`);
+  assert(lifecycleEvidence.native_invoke_bridge === true, "Installed native invoke bridge was not verified");
+  assert(lifecycleEvidence.local_sqlite_write === "PASS", "Installed Local SQLite write was not verified");
+  assert(lifecycleEvidence.local_sqlite_read_after_restart === "PASS", "Installed Local SQLite restart read was not verified");
+  assert(lifecycleEvidence.local_sqlite_delete === "PASS", "Installed Local SQLite delete was not verified");
+  assert(lifecycleEvidence.local_data_survived_process_restart === true, "Installed Local SQLite data did not survive process restart");
+  assert(lifecycleEvidence.local_data_access_without_gateway_session === true, "Installed Local SQLite data required a Gateway session");
+  assert(lifecycleEvidence.persistent_auth_storage === false && lifecycleEvidence.session_credential_persisted === false, "Installed runtime persisted a session credential");
+  assert(Array.isArray(lifecycleEvidence.localStorage) && lifecycleEvidence.localStorage.length === 0, "Installed runtime persisted Local Storage auth state");
+  assert(Array.isArray(lifecycleEvidence.sessionStorage) && lifecycleEvidence.sessionStorage.length === 0, "Installed runtime persisted Session Storage auth state");
+  assert(lifecycleEvidence.direct_gemini_requests === 0 && lifecycleEvidence.direct_youtube_data_api_requests === 0 && lifecycleEvidence.local_next_api_requests === 0, "Installed runtime emitted forbidden direct provider/local API requests");
+  assert(lifecycleEvidence.fixture_cleanup === true, "Installed Local SQLite fixture cleanup was not verified");
+  assert(lifecycleEvidence.uninstall === "PASS", "Installed uninstall was not verified");
+  assert(lifecycleEvidence.installed_executable_removed === true, "Installed executable residue remains after uninstall");
+  assert(lifecycleEvidence.uninstall_registry_removed === true, "Uninstall registry residue remains after uninstall");
+  assert(Array.isArray(lifecycleEvidence.autorun_residue) && lifecycleEvidence.autorun_residue.length === 0, "Installed lifecycle left autorun residue");
+  assert(Array.isArray(lifecycleEvidence.service_residue) && lifecycleEvidence.service_residue.length === 0, "Installed lifecycle left service residue");
+  assert(Array.isArray(lifecycleEvidence.scheduled_task_residue) && lifecycleEvidence.scheduled_task_residue.length === 0, "Installed lifecycle left scheduled-task residue");
 
   for (const [key, expected] of Object.entries({
     signed: false,
@@ -134,12 +168,21 @@ try {
     signature_status: "NotSigned",
     signed: false,
     installed_runtime_verified: true,
-    installed_launch: qualityEvidence.installed_launch,
-    authenticated_runtime: qualityEvidence.authenticated_runtime,
-    process_restart_without_logout: qualityEvidence.process_restart_without_logout,
-    restart_auth_status: qualityEvidence.restart_auth_status,
-    explicit_logout_clear: qualityEvidence.explicit_logout_clear,
-    uninstall: qualityEvidence.uninstall,
+    runtime_mode: lifecycleEvidence.runtime_mode,
+    visible_auth: runtimeEvidence.visible_auth,
+    local_sqlite_crud: runtimeEvidence.local_sqlite_crud,
+    local_sqlite_process_restart_persistence: runtimeEvidence.local_sqlite_process_restart_persistence,
+    installed_local_sqlite_write: lifecycleEvidence.local_sqlite_write,
+    installed_local_sqlite_read_after_restart: lifecycleEvidence.local_sqlite_read_after_restart,
+    installed_local_sqlite_delete: lifecycleEvidence.local_sqlite_delete,
+    native_invoke_bridge: lifecycleEvidence.native_invoke_bridge,
+    persistent_auth_storage: lifecycleEvidence.persistent_auth_storage,
+    session_credential_persisted: lifecycleEvidence.session_credential_persisted,
+    direct_provider_requests: runtimeEvidence.direct_provider_requests,
+    installed_direct_gemini_requests: lifecycleEvidence.direct_gemini_requests,
+    installed_direct_youtube_data_api_requests: lifecycleEvidence.direct_youtube_data_api_requests,
+    local_next_api_requests: lifecycleEvidence.local_next_api_requests,
+    uninstall: lifecycleEvidence.uninstall,
     uninstall_residue: false,
     distribution: "private-direct-share",
     private_distribution_ready: true,

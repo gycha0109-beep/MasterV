@@ -1,6 +1,5 @@
 import { execFileSync, spawnSync } from "node:child_process";
 import fs from "node:fs";
-import os from "node:os";
 import path from "node:path";
 import {
   assert,
@@ -143,8 +142,10 @@ async function main() {
     first = null;
     second = await attachMasterV(binary, evidenceDir, "masterv-installed-exit2c-restart", { dataDir, reuseDataDir: true });
     const restarted = await waitState(second, (snapshot) => snapshot.auth === "LOCAL ONLY" && snapshot.libraryStatus === "READY / LOCAL" && snapshot.sourceIds.includes(sourceId), "installed local data after process restart", 45_000);
+    assert(restarted.tauriGlobal, "installed runtime lost the Tauri global invoke bridge after restart");
     assert(restarted.localKeys.length === 0 && restarted.sessionKeys.length === 0, "process_restart_without_logout introduced persistent browser auth storage");
     const persistent_auth_storage = false;
+    const session_credential_persisted = false;
     const resourceUrls = [...new Set(restarted.resources)];
     const direct_gemini_requests = resourceUrls.filter((url) => url.includes("generativelanguage.googleapis.com"));
     const direct_youtube_data_api_requests = resourceUrls.filter((url) => url.includes("youtube.googleapis.com"));
@@ -161,6 +162,7 @@ async function main() {
     assert(uninstall.status === 0, `Uninstaller failed: ${uninstall.stderr || uninstall.stdout}`);
     const cleanup = await waitForUninstallCleanup(binary, uninstallKeyName, 60_000);
     const uninstall_registry_removed = cleanup.registryCount === 0;
+    const installed_executable_removed = !fs.existsSync(binary);
     const autorun_residue = shellLines(`Get-CimInstance Win32_StartupCommand -ErrorAction SilentlyContinue | Where-Object { ($_.Name -match 'MasterV') -or ($_.Command -like '*masterv-desktop.exe*') } | ForEach-Object { $_.Name }`);
     const service_residue = shellLines(`Get-CimInstance Win32_Service -ErrorAction SilentlyContinue | Where-Object { ($_.Name -match 'MasterV') -or ($_.DisplayName -match 'MasterV') -or ($_.PathName -like '*masterv-desktop.exe*') } | ForEach-Object { $_.Name }`);
     const scheduled_task_residue = shellLines(`Get-ScheduledTask -ErrorAction SilentlyContinue | Where-Object { ($_.TaskName -match 'MasterV') -or (($_.Actions | ForEach-Object Execute) -like '*masterv-desktop.exe*') } | ForEach-Object { $_.TaskName }`);
@@ -171,16 +173,25 @@ async function main() {
     evidence = {
       status: "MASTERV_DESKTOP_INSTALLED_SESSION_UNINSTALL_PASS",
       migration_stage: "MV-SUPABASE-EXIT-2C",
+      installed_launch: "PASS",
+      runtime_mode: "LOCAL ONLY",
+      native_invoke_bridge: restarted.tauriGlobal,
       process_restart_without_logout: true,
+      local_sqlite_write: "PASS",
+      local_sqlite_read_after_restart: "PASS",
+      local_sqlite_delete: "PASS",
       local_data_survived_process_restart: true,
       local_data_access_without_gateway_session: true,
       persistent_auth_storage,
+      session_credential_persisted,
       localStorage: restarted.localKeys,
       sessionStorage: restarted.sessionKeys,
       direct_gemini_requests: direct_gemini_requests.length,
       direct_youtube_data_api_requests: direct_youtube_data_api_requests.length,
       local_next_api_requests: local_next_api_requests.length,
       fixture_cleanup: true,
+      uninstall: "PASS",
+      installed_executable_removed,
       uninstall_registry_removed,
       autorun_residue,
       service_residue,

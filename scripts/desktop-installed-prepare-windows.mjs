@@ -66,14 +66,16 @@ $paths = @(
 )
 $entry = Get-ItemProperty $paths -ErrorAction SilentlyContinue |
   Where-Object { $_.DisplayName -eq 'MasterV' } |
-  Select-Object -First 1 DisplayName,InstallLocation,UninstallString,QuietUninstallString,PSPath
+  Select-Object -First 1 DisplayName,InstallLocation,UninstallString,QuietUninstallString,PSPath,PSChildName
 if ($null -eq $entry) { throw 'MasterV uninstall registry entry not found after install' }
 $entry | ConvertTo-Json -Compress
 `);
 const registry = JSON.parse(registryJson);
 const uninstallCommand = registry.QuietUninstallString || registry.UninstallString || "";
 const uninstallerPath = parseExecutable(uninstallCommand);
+const uninstallKeyName = String(registry.PSChildName || "").trim();
 assert(uninstallerPath && fs.existsSync(uninstallerPath), `MasterV uninstaller not found: ${uninstallerPath || uninstallCommand}`);
+assert(uninstallKeyName.length > 0 && !/[\r\n]/.test(uninstallKeyName), `MasterV uninstall registry key is invalid: ${JSON.stringify(uninstallKeyName)}`);
 
 const installRoots = [registry.InstallLocation, path.dirname(uninstallerPath), path.join(process.env.LOCALAPPDATA || "", "MasterV"), path.join(process.env.ProgramFiles || "", "MasterV")]
   .filter(Boolean)
@@ -117,6 +119,7 @@ const evidence = {
   installed_exe_sha256: sha256(installedBinary),
   install_dir: installDir,
   uninstaller: uninstallerPath,
+  uninstall_key: uninstallKeyName,
   installer_forbidden_credential_hits: installerHits,
   installed_exe_forbidden_credential_hits: installedHits,
   autorun_entries: 0,
@@ -130,5 +133,8 @@ fs.writeFileSync(path.join(evidenceDir, "install-evidence.json"), JSON.stringify
 
 const githubEnv = process.env.GITHUB_ENV?.trim() || "";
 assert(githubEnv, "GITHUB_ENV is required in CI so installed-binary authority persists across quality steps");
-fs.appendFileSync(githubEnv, `MASTERV_DESKTOP_APP_BINARY=${installedBinary}\nMASTERV_DESKTOP_INSTALL_DIR=${installDir}\nMASTERV_DESKTOP_UNINSTALLER=${uninstallerPath}\n`);
+fs.appendFileSync(
+  githubEnv,
+  `MASTERV_DESKTOP_APP_BINARY=${installedBinary}\nMASTERV_DESKTOP_INSTALL_DIR=${installDir}\nMASTERV_DESKTOP_UNINSTALLER=${uninstallerPath}\nMASTERV_DESKTOP_UNINSTALL_KEY=${uninstallKeyName}\n`
+);
 console.log(JSON.stringify(evidence));

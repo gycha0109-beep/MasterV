@@ -33,9 +33,12 @@ assert(!/contents:\s*write/.test(workflow), "3O workflow must not receive reposi
 assert(workflow.includes("inputs.allow_private_package == true"), "Manual private package execution must require explicit acknowledgement");
 assert(workflow.includes("ref: ${{ inputs.source_sha }}"), "Manual private package path must checkout the explicitly requested SHA");
 assert(workflow.includes("git rev-parse HEAD"), "3O must verify actual checkout SHA");
+assert(workflow.includes("npm run test:runtime-api"), "3O workflow must retain migration-bridge runtime dependency verification");
 assert(workflow.includes("npm run test:desktop-build-determinism"), "3O workflow must retain 3K build determinism authority");
 assert(workflow.includes("npm run test:desktop-release-readiness"), "3O workflow must retain 3M release-readiness authority");
 assert(workflow.includes("npm run test:desktop-shareable-package"), "3O workflow must run its static contract");
+assert(workflow.includes("npm run test:desktop-installed-quality-contract"), "3O workflow must guard the EXIT-2C installed local-first contract");
+assert(workflow.includes("npm run test:desktop-windows-runtime"), "3O must verify the local-first native runtime before packaging");
 assert(workflow.includes("npm run desktop:bundle:windows-release-candidate"), "3O must reuse the 3M unsigned NSIS release-candidate bundle path");
 assert(workflow.includes("Get-AuthenticodeSignature") && workflow.includes("NotSigned"), "3O must prove the share candidate remains unsigned");
 assert(workflow.includes("npm run desktop:prepare:shareable-package-windows"), "3O workflow must materialize the handoff package");
@@ -43,12 +46,13 @@ assert(workflow.includes("- name: Verify packaged copy Authenticode state"), "3O
 assert(workflow.includes("MASTERV_PACKAGED_AUTHENTICODE_CHECK_PASS"), "3O packaged-copy Authenticode proof marker is missing");
 assert(workflow.includes("packaged-authenticode-evidence.json"), "3O packaged-copy Authenticode evidence must be persisted");
 assert(workflow.includes("npm run test:desktop-installed-prepare-windows"), "3O must install the exact candidate it packages");
-assert(workflow.includes("npm run test:desktop-installed-session-uninstall-windows"), "3O must verify installed restart/logout/uninstall lifecycle");
+assert(workflow.includes("npm run test:desktop-installed-session-uninstall-windows"), "3O must verify installed restart/local-persistence/delete/uninstall lifecycle");
 assert(workflow.includes("npm run test:desktop-shareable-package-audit-windows"), "3O must close package evidence after installed runtime verification");
 assert(workflow.includes("git diff --exit-code -- package-lock.json src-tauri/Cargo.lock"), "3O release build must preserve lockfiles");
 assert(workflow.includes("actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02"), "3O artifact action must remain SHA-pinned");
 assert(workflow.includes("name: masterv-windows-private-share-package"), "3O artifact must use the private-share identity");
 assert(workflow.includes("artifacts/desktop-shareable-package"), "3O package and evidence must be uploaded as CI artifact only");
+assert(workflow.includes("artifacts/desktop-windows-runtime") && workflow.includes("artifacts/desktop-installed-quality"), "3O must retain native and installed local-first evidence");
 assert(/- name: Upload private share package and verification evidence[\s\S]*?if:\s*always\(\)/.test(workflow), "3O must retain package/audit evidence even when the final audit fails");
 
 for (const forbidden of [
@@ -68,6 +72,7 @@ for (const forbidden of [
 }
 assert(!/GEMINI_API_KEY\s*:|secrets\.GEMINI_API_KEY/i.test(workflow), "3O workflow must not configure a Gemini credential");
 assert(!/YOUTUBE_DATA_API_KEY\s*:|secrets\.YOUTUBE_DATA_API_KEY/i.test(workflow), "3O workflow must not configure a YouTube credential");
+assert(!workflow.includes("SUPABASE_TEST_EMAIL") && !workflow.includes("SUPABASE_TEST_PASSWORD"), "3O local-first verification must not require legacy login credentials");
 
 for (const token of [
   "MASTERV_PRIVATE_SHARE_PACKAGE_PREPARED",
@@ -91,6 +96,23 @@ for (const token of [
 for (const token of [
   "packaged-authenticode-evidence.json",
   "MASTERV_PACKAGED_AUTHENTICODE_CHECK_PASS",
+  "runtime-evidence.json",
+  "session-uninstall-evidence.json",
+  "MASTERV_WINDOWS_DESKTOP_RUNTIME_PASS",
+  "MASTERV_DESKTOP_INSTALLED_SESSION_UNINSTALL_PASS",
+  "fresh_runtime_auth_state",
+  "LOCAL ONLY",
+  "tauri_global_invoke_bridge",
+  "local_sqlite_crud",
+  "local_sqlite_process_restart_persistence",
+  "local_sqlite_write",
+  "local_sqlite_read_after_restart",
+  "local_sqlite_delete",
+  "session_credential_persisted",
+  "direct_provider_requests",
+  "direct_gemini_requests",
+  "direct_youtube_data_api_requests",
+  "local_next_api_requests",
   "MASTERV_DESKTOP_SHAREABLE_PACKAGE_PASS",
   "MASTERV_PRIVATE_SHARE_PACKAGE_VERIFIED",
   "installed_runtime_verified: true",
@@ -105,12 +127,18 @@ for (const token of [
   assert(audit.includes(token), `3O audit invariant missing: ${token}`);
 }
 
+for (const obsolete of ["authenticated_runtime", "restart_auth_status", "explicit_logout_clear", "installed-quality-evidence.json"]) {
+  assert(!audit.includes(obsolete), `3O audit still encodes obsolete Supabase-auth runtime evidence: ${obsolete}`);
+}
+
 console.log(JSON.stringify({
   status: "MASTERV_DESKTOP_SHAREABLE_PACKAGE_CONTRACT_PASS",
   package_format: "unsigned-nsis-private-share",
   manual_exact_sha_path: true,
   pr_readiness_path: true,
+  exact_sha_authority_preserved: true,
   installed_runtime_verification: true,
+  local_first_runtime_evidence: true,
   packaged_copy_authenticode_verified: true,
   forensic_evidence_retained_on_failure: true,
   signing_configured: false,
