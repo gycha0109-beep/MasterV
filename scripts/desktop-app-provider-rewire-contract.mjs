@@ -10,11 +10,12 @@ const workData = fs.readFileSync(path.join(root, "desktop", "backend", "legacy",
 const remote = fs.readFileSync(path.join(root, "desktop", "backend", "legacy", "hosted-api-client.js"), "utf8");
 const persistence = fs.readFileSync(path.join(root, "src-tauri", "src", "local_persistence.rs"), "utf8");
 
-for (const forbidden of ["MASTERV_DESKTOP_CONFIG", "supabase_url", "supabase_publishable_key", "/auth/v1", "/rest/v1", "Authorization", "apikey", "masterv-api-boundary", "masterv-background-batch-boundary"]) assert.equal(app.includes(forbidden), false, `desktop/app.js still owns backend implementation detail: ${forbidden}`);
+for (const forbidden of ["MASTERV_DESKTOP_CONFIG", "supabase_url", "supabase_publishable_key", "/auth/v1", "/rest/v1", "Authorization", "apikey", "masterv-api-boundary", "masterv-background-batch-boundary"]) {
+  assert.equal(app.includes(forbidden), false, `desktop/app.js still owns backend implementation detail: ${forbidden}`);
+}
 assert.equal(/\bfetch\s*\(/.test(app), false, "desktop/app.js must not issue network fetch directly");
 for (const required of [
   "window.MASTERV_BACKEND",
-  "backend.configured()",
   "backend.session.openSession",
   "backend.session.closeSession",
   "backend.workData.bootstrapPersonalWorkspace",
@@ -27,24 +28,34 @@ for (const required of [
 ]) assert.equal(app.includes(required), true, `desktop/app.js provider delegation missing: ${required}`);
 
 assert.match(backend, /consumer_wired:\s*true/);
-assert.match(backend, /supabase_authority_unchanged:\s*true/);
-assert.match(backend, /local_sqlite_authority_active:\s*false/);
-assert.match(backend, /gateway_active:\s*false/);
-assert.match(backend, /polar_active:\s*false/);
+assert.match(backend, /migration_stage:\s*"MV-SUPABASE-EXIT-2C"/);
+assert.match(backend, /production_ui_cutover_active:\s*true/);
+assert.match(backend, /product_authority_active:\s*true/);
+assert.match(backend, /supabase_authority_unchanged:\s*false/);
+assert.match(backend, /supabase_primary_authority_active:\s*false/);
+assert.match(backend, /local_sqlite_authority_active:\s*true/);
+assert.match(backend, /gateway_active:\s*true/);
+assert.match(backend, /polar_active:\s*true/);
+assert.match(backend, /legacy_runtime_scope:\s*"existing-data-migration-only"/);
 assert.match(workData, /\/rest\/v1\/masterv_workspace_members/);
 assert.match(workData, /\/rest\/v1\/reference_library_entries/);
+assert.match(workData, /scope:\s*"0\.1\.2-existing-data-migration-only"/);
 assert.match(remote, /masterv-api-boundary/);
 assert.match(remote, /operation:\s*"reference_workflow"/);
 assert.match(remote, /operation:\s*"youtube_discovery"/);
 
-const localAuthorityPromoted = /product_authority_active:\s*true/.test(persistence);
-if (localAuthorityPromoted) {
-  assert.match(persistence, /supabase_primary_authority_active:\s*false/);
-  assert.match(persistence, /supabase_fallback_available:\s*true/);
-} else {
-  assert.match(persistence, /product_authority_active:\s*false/);
-  assert.match(persistence, /supabase_authority_unchanged:\s*true/);
-}
+assert.match(app, /kind:\s*"product_key"/);
+assert.match(app, /kind:\s*"resume"/);
+assert.equal(app.includes('kind: "email_password"'), false, "visible app consumer must not use normal email/password session");
+assert.match(app, /backend\.workData\.migrateLegacyReferenceLibrary\(\{ email, password \}\)/);
+assert.match(app, /backend\.workData\.bootstrapPersonalWorkspace\(null\)/);
+assert.match(app, /backend\.workData\.listReferenceLibrary\(null, workspaceId/);
+assert.match(app, /backend\.remoteOperations\.compileReferenceWorkflow\(null, sourceIds\)/);
+assert.match(app, /productKeyInput\.value = ""/);
+
+assert.match(persistence, /product_authority_active:\s*true/);
+assert.match(persistence, /supabase_primary_authority_active:\s*false/);
+assert.match(persistence, /supabase_fallback_available:\s*true/);
 
 const env = {
   ...process.env,
@@ -56,9 +67,29 @@ const env = {
 const build = spawnSync(process.execPath, ["scripts/build-desktop-static.mjs"], { cwd: root, env, encoding: "utf8" });
 assert.equal(build.status, 0, `desktop static builder failed: ${build.stderr || build.stdout}`);
 const dist = path.join(root, "desktop-dist");
-for (const file of ["backend/provider-boundary.js", "backend/legacy/supabase-session-provider.js", "backend/legacy/supabase-work-data-provider.js", "backend/legacy/hosted-api-client.js", "backend/backend.js"]) assert.equal(fs.existsSync(path.join(dist, file)), true, `desktop-dist backend asset missing: ${file}`);
+for (const file of [
+  "backend/provider-boundary.js",
+  "backend/legacy/supabase-session-provider.js",
+  "backend/legacy/supabase-work-data-provider.js",
+  "backend/legacy/hosted-api-client.js",
+  "backend/gateway/gateway-session-provider.js",
+  "backend/gateway/gateway-remote-provider.js",
+  "backend/local/local-work-data-provider.js",
+  "backend/bridge/transition-provider.js",
+  "reference-compiler.js",
+  "backend/backend.js"
+]) assert.equal(fs.existsSync(path.join(dist, file)), true, `desktop-dist backend/runtime asset missing: ${file}`);
 const index = fs.readFileSync(path.join(dist, "index.html"), "utf8");
-for (const asset of ["./backend/provider-boundary.js", "./backend/legacy/supabase-session-provider.js", "./backend/legacy/supabase-work-data-provider.js", "./backend/legacy/hosted-api-client.js", "./backend/backend.js", "./app.js"]) assert.notEqual(index.indexOf(asset), -1, `runtime provider asset missing: ${asset}`);
+for (const asset of [
+  "./backend/provider-boundary.js",
+  "./backend/legacy/supabase-session-provider.js",
+  "./backend/gateway/gateway-session-provider.js",
+  "./backend/local/local-work-data-provider.js",
+  "./reference-compiler.js",
+  "./backend/bridge/transition-provider.js",
+  "./backend/backend.js",
+  "./app.js"
+]) assert.notEqual(index.indexOf(asset), -1, `runtime provider asset missing: ${asset}`);
 assert.ok(index.indexOf("./backend/backend.js") < index.indexOf("./app.js"), "backend composition must load before app.js");
 
 console.log(JSON.stringify({
@@ -66,8 +97,11 @@ console.log(JSON.stringify({
   app_direct_backend_implementation_details: 0,
   app_direct_network_fetches: 0,
   consumer: "desktop/app.js",
-  desktop_provider_local_sqlite_authority_active: false,
-  native_local_work_data_authority_active: localAuthorityPromoted,
-  supabase_fallback_available: localAuthorityPromoted,
+  visible_session: "product-key+device-resume",
+  desktop_provider_local_sqlite_authority_active: true,
+  native_local_work_data_authority_active: true,
+  gateway_active: true,
+  polar_active: true,
+  legacy_scope: "existing-data-migration-only",
   historical_provider_boundary_preserved: true
 }));

@@ -16,6 +16,8 @@ const buildSource = read("scripts/build-desktop-static.mjs");
 const backend = read("desktop/backend/backend.js");
 const boundary = read("desktop/backend/provider-boundary.js");
 const legacySession = read("desktop/backend/legacy/supabase-session-provider.js");
+const gatewaySession = read("desktop/backend/gateway/gateway-session-provider.js");
+const nativeGateway = read("src-tauri/src/gateway_transport.rs");
 const persistence = read("src-tauri/src/local_persistence.rs");
 
 assert.equal(fs.existsSync(sessionBridgePath), false, "legacy desktop/session-bridge.js must be removed");
@@ -24,7 +26,6 @@ for (const [label, source] of [["desktop index", index], ["desktop builder", bui
   assert.equal(source.includes("MASTERV_SESSION_BRIDGE"), false, `${label} still references the removed session bridge API`);
   assert.equal(source.includes("getAccessToken"), false, `${label} still reads credentials through the removed session bridge`);
 }
-
 for (const [label, source] of [["app", app], ["Deep Analysis", deep], ["Background Batch", batch], ["Updater", updater]]) {
   assert.equal(source.includes("/auth/v1/token"), false, `${label} must not observe the legacy auth token endpoint`);
   assert.equal(source.includes("/auth/v1/logout"), false, `${label} must not observe the legacy auth logout endpoint`);
@@ -41,23 +42,27 @@ assert.match(batch, /backend\.session\.subscribe/);
 assert.equal(updater.includes("backend.session"), false, "EXIT-1E updater must no longer consume backend session runtime");
 assert.equal(updater.includes("window.MASTERV_BACKEND"), false, "EXIT-1E updater must be independent of backend authority");
 assert.equal(updater.includes("window.MASTERV_UPDATER_CONFIG"), true, "EXIT-1E updater must consume independent updater config");
-assert.match(backend, /migration_stage:\s*"MV-SUPABASE-EXIT-1B-(?:4|[5-9][0-9]*)"/);
+
+assert.match(backend, /migration_stage:\s*"MV-SUPABASE-EXIT-2C"/);
 assert.match(backend, /session_bridge_active:\s*false/);
 assert.match(backend, /session_credential_observer_active:\s*false/);
 assert.match(backend, /fetch_monkey_patch_active:\s*false/);
-assert.match(backend, /supabase_authority_unchanged:\s*true/);
-assert.match(backend, /local_sqlite_authority_active:\s*false/);
+assert.match(backend, /supabase_authority_unchanged:\s*false/);
+assert.match(backend, /local_sqlite_authority_active:\s*true/);
+assert.match(backend, /gateway_active:\s*true/);
 assert.match(legacySession, /\/auth\/v1\/token\?grant_type=password/);
 assert.match(legacySession, /access_token/);
+assert.match(gatewaySession, /credentials\.kind === "product_key"/);
+assert.match(gatewaySession, /credentials\.kind === "resume"/);
+assert.match(nativeGateway, /product_key_bearer_allowed:\s*false/);
+assert.match(nativeGateway, /session_credential_persisted:\s*false/);
+assert.match(nativeGateway, /device_credential_persisted:\s*true/);
+assert.equal(app.includes('kind: "email_password"'), false, "visible app must not use legacy session as primary login");
+assert.match(app, /backend\.workData\.migrateLegacyReferenceLibrary\(\{ email, password \}\)/);
 
-const localAuthorityPromoted = /product_authority_active:\s*true/.test(persistence);
-if (localAuthorityPromoted) {
-  assert.match(persistence, /supabase_primary_authority_active:\s*false/);
-  assert.match(persistence, /supabase_fallback_available:\s*true/);
-} else {
-  assert.match(persistence, /product_authority_active:\s*false/);
-  assert.match(persistence, /supabase_authority_unchanged:\s*true/);
-}
+assert.match(persistence, /product_authority_active:\s*true/);
+assert.match(persistence, /supabase_primary_authority_active:\s*false/);
+assert.match(persistence, /supabase_fallback_available:\s*true/);
 
 const env = {
   ...process.env,
@@ -80,11 +85,11 @@ console.log(JSON.stringify({
   session_bridge_runtime_references: 0,
   credential_observer_paths: 0,
   fetch_monkey_patches_in_consumers: 0,
-  session_runtime_authority: "backend-provider",
+  session_runtime_authority: "backend-provider/masterv-gateway",
   updater_session_runtime: "none-independent-exit-1e",
-  legacy_session_adapter_retained: true,
-  desktop_provider_local_sqlite_authority_active: false,
-  native_local_work_data_authority_active: localAuthorityPromoted,
-  supabase_fallback_available: localAuthorityPromoted,
+  legacy_session_adapter_retained_for_migration: true,
+  product_key_persisted: false,
+  session_credential_memory_only: true,
+  device_credential_secure_store: "windows-dpapi",
   historical_session_boundary_preserved: true
 }));

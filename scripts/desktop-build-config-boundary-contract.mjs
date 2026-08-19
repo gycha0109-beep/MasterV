@@ -15,53 +15,40 @@ const workDataProvider = read("desktop/backend/legacy/supabase-work-data-provide
 const hostedClient = read("desktop/backend/legacy/hosted-api-client.js");
 const persistence = read("src-tauri/src/local_persistence.rs");
 
-for (const [label, source] of [
-  ["generic desktop builder", buildSource],
-  ["backend composition", backendSource],
-  ["updater UI", updaterSource],
-  ["updater preparation", updaterPrepareSource]
-]) {
+for (const [label, source] of [["generic desktop builder", buildSource], ["backend composition", backendSource], ["updater UI", updaterSource], ["updater preparation", updaterPrepareSource]]) {
   for (const forbidden of ["NEXT_PUBLIC_SUPABASE_URL", "NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY", "supabase_url", "supabase_publishable_key"]) {
     assert.equal(source.includes(forbidden), false, `${label} still owns vendor config detail: ${forbidden}`);
   }
 }
-
 for (const required of ["NEXT_PUBLIC_SUPABASE_URL", "NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY", "NEXT_PUBLIC_MASTERV_API_BASE_URL", "supabase_url", "supabase_publishable_key", "api_base_url", "api_contract_version"]) {
   assert.equal(bridgeSource.includes(required), true, `legacy config bridge must own transitional mapping: ${required}`);
 }
 for (const source of [sessionProvider, workDataProvider]) {
-  assert.equal(source.includes("config.supabase_url"), true, "legacy Supabase provider must retain current vendor config ownership");
-  assert.equal(source.includes("config.supabase_publishable_key"), true, "legacy Supabase provider must retain current publishable-key ownership");
+  assert.equal(source.includes("config.supabase_url"), true, "legacy Supabase provider must retain migration vendor config ownership");
+  assert.equal(source.includes("config.supabase_publishable_key"), true, "legacy Supabase provider must retain migration publishable-key ownership");
 }
-assert.equal(hostedClient.includes("config.api_base_url"), true, "legacy hosted client must retain API base config ownership");
-assert.equal(hostedClient.includes("config.supabase_publishable_key"), true, "legacy hosted client must retain current client-key ownership");
+assert.equal(hostedClient.includes("config.api_base_url"), true, "legacy hosted client must retain transitional API base config ownership");
+assert.equal(hostedClient.includes("config.supabase_publishable_key"), true, "legacy hosted client must retain transitional client-key ownership");
 assert.equal(backendSource.includes("window.MASTERV_LEGACY_RUNTIME_CONFIG"), true, "backend composition must consume isolated legacy runtime config");
 assert.equal(backendSource.includes("window.MASTERV_DESKTOP_CONFIG"), false, "backend composition must not consume generic desktop config");
-assert.match(backendSource, /migration_stage:\s*"MV-SUPABASE-EXIT-1B-5"/);
+assert.match(backendSource, /migration_stage:\s*"MV-SUPABASE-EXIT-2C"/);
 assert.match(backendSource, /build_config_boundary:\s*"legacy-runtime-config"/);
 assert.match(backendSource, /desktop_config_vendor_neutral:\s*true/);
 assert.match(backendSource, /legacy_runtime_config_isolated:\s*true/);
-assert.match(backendSource, /supabase_authority_unchanged:\s*true/);
-assert.match(backendSource, /local_sqlite_authority_active:\s*false/);
-assert.match(backendSource, /gateway_active:\s*false/);
-assert.match(backendSource, /polar_active:\s*false/);
-
-const localAuthorityPromoted = /product_authority_active:\s*true/.test(persistence);
-if (localAuthorityPromoted) {
-  assert.match(persistence, /supabase_primary_authority_active:\s*false/);
-  assert.match(persistence, /supabase_fallback_available:\s*true/);
-} else {
-  assert.match(persistence, /product_authority_active:\s*false/);
-  assert.match(persistence, /supabase_authority_unchanged:\s*true/);
-}
+assert.match(backendSource, /supabase_authority_unchanged:\s*false/);
+assert.match(backendSource, /local_sqlite_authority_active:\s*true/);
+assert.match(backendSource, /gateway_active:\s*true/);
+assert.match(backendSource, /polar_active:\s*true/);
+assert.match(backendSource, /legacy_runtime_scope:\s*"existing-data-migration-only"/);
+assert.match(persistence, /product_authority_active:\s*true/);
+assert.match(persistence, /supabase_primary_authority_active:\s*false/);
+assert.match(persistence, /supabase_fallback_available:\s*true/);
 
 assert.equal(updaterSource.includes("window.MASTERV_BACKEND"), false, "EXIT-1E updater UI must not consume backend session runtime");
 assert.equal(updaterSource.includes("backend.session"), false, "EXIT-1E updater UI must not subscribe to backend sessions");
 assert.equal(updaterSource.includes("window.MASTERV_UPDATER_CONFIG"), true, "EXIT-1E updater UI must consume independent updater config");
 assert.equal(updaterSource.includes("subscription_independent"), true, "EXIT-1E updater must declare subscription independence");
-for (const forbidden of ["MASTERV_SESSION_BRIDGE", "getAccessToken", "session-bridge.js", "client_key"]) {
-  assert.equal(updaterSource.includes(forbidden), false, `updater UI still owns removed or legacy session path: ${forbidden}`);
-}
+for (const forbidden of ["MASTERV_SESSION_BRIDGE", "getAccessToken", "session-bridge.js", "client_key"]) assert.equal(updaterSource.includes(forbidden), false, `updater UI still owns removed or legacy session path: ${forbidden}`);
 assert.equal(updaterPrepareSource.includes("desktop-legacy-config-bridge.mjs"), false, "EXIT-1E updater preparation must not delegate to legacy backend config");
 assert.equal(updaterPrepareSource.includes("MASTERV_UPDATER_CONFIG"), true, "EXIT-1E updater preparation must emit independent updater config");
 assert.equal(updaterPrepareSource.includes("client_key"), false, "EXIT-1E updater preparation must not emit a client key");
@@ -77,18 +64,17 @@ const build = spawnSync(process.execPath, ["scripts/build-desktop-static.mjs"], 
 assert.equal(build.status, 0, `desktop static builder failed: ${build.stderr || build.stdout}`);
 assert.equal(build.stdout.includes('"legacy_runtime_config_isolated":true'), true, "builder must report isolated legacy runtime config");
 assert.equal(build.stdout.includes('"desktop_config_vendor_neutral":true'), true, "builder must report vendor-neutral desktop config");
+assert.equal(build.stdout.includes('"local_reference_compiler_builder":"esbuild-js-api"'), true, "builder must use cross-platform canonical compiler build path");
 
 const dist = path.join(root, "desktop-dist");
 const genericConfig = read(path.relative(root, path.join(dist, "config.js")));
 const legacyRuntimeConfig = read(path.relative(root, path.join(dist, "backend", "legacy", "runtime-config.js")));
 const runtimeIndex = read(path.relative(root, path.join(dist, "index.html")));
-
 assert.equal(genericConfig.includes('"surface":"desktop"'), true, "generic desktop config surface missing");
 assert.equal(genericConfig.includes('"runtime_contract_version":"mv-desktop-runtime-v1"'), true, "generic runtime contract missing");
 assert.equal(genericConfig.includes('"backend_provider_contract_version":"mv-backend-provider-v1"'), true, "generic provider contract missing");
-for (const forbidden of ["supabase_url", "supabase_publishable_key", "api_base_url", "api_contract_version", "example.supabase.co", "sb_publishable_contract_fixture"]) {
-  assert.equal(genericConfig.includes(forbidden), false, `generic desktop config leaked legacy vendor config: ${forbidden}`);
-}
+assert.equal(genericConfig.includes('"migration_stage":"MV-SUPABASE-EXIT-2C"'), true, "generic Desktop stage marker missing");
+for (const forbidden of ["supabase_url", "supabase_publishable_key", "api_base_url", "api_contract_version", "example.supabase.co", "sb_publishable_contract_fixture"]) assert.equal(genericConfig.includes(forbidden), false, `generic desktop config leaked legacy vendor config: ${forbidden}`);
 assert.equal(legacyRuntimeConfig.includes("MASTERV_LEGACY_RUNTIME_CONFIG"), true, "generated legacy runtime config global missing");
 assert.equal(legacyRuntimeConfig.includes('"supabase_url":"https://example.supabase.co"'), true, "generated legacy Supabase URL missing");
 assert.equal(legacyRuntimeConfig.includes('"supabase_publishable_key":"sb_publishable_contract_fixture"'), true, "generated legacy publishable key missing");
@@ -101,6 +87,11 @@ const order = [
   "./backend/legacy/supabase-session-provider.js",
   "./backend/legacy/supabase-work-data-provider.js",
   "./backend/legacy/hosted-api-client.js",
+  "./backend/gateway/gateway-session-provider.js",
+  "./backend/gateway/gateway-remote-provider.js",
+  "./backend/local/local-work-data-provider.js",
+  "./reference-compiler.js",
+  "./backend/bridge/transition-provider.js",
   "./backend/backend.js",
   "./app.js"
 ];
@@ -131,12 +122,11 @@ console.log(JSON.stringify({
   generic_builder_vendor_env_names: 0,
   backend_generic_config_dependency: false,
   legacy_runtime_config_asset: "backend/legacy/runtime-config.js",
+  legacy_runtime_scope: "existing-data-migration-only",
   updater_session_authority: "none-independent-exit-1e",
   updater_bootstrap_config: "independent-neutral",
-  desktop_provider_local_sqlite_authority_active: false,
-  native_local_work_data_authority_active: localAuthorityPromoted,
-  supabase_fallback_available: localAuthorityPromoted,
-  gateway_active: false,
-  polar_active: false,
+  desktop_provider_local_sqlite_authority_active: true,
+  gateway_active: true,
+  polar_active: true,
   historical_config_boundary_preserved: true
 }));

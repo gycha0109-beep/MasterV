@@ -11,6 +11,7 @@ const app = read("desktop/app.js");
 const deep = read("desktop/deep-analysis.js");
 const batch = read("desktop/background-batch.js");
 const remote = read("desktop/backend/legacy/hosted-api-client.js");
+const transition = read("desktop/backend/bridge/transition-provider.js");
 const persistence = read("src-tauri/src/local_persistence.rs");
 
 for (const [label, source] of [["Deep Analysis", deep], ["Background Batch", batch]]) {
@@ -41,25 +42,23 @@ assert.match(boundary, /current\(\)/);
 assert.match(boundary, /subscribe\(listener\)/);
 assert.match(boundary, /currentCapabilities\(\)/);
 assert.match(boundary, /subscribeCapabilities\(listener\)/);
-const stageMatch = backend.match(/migration_stage:\s*"MV-SUPABASE-EXIT-1B-(\d+)"/);
-assert.ok(stageMatch && Number(stageMatch[1]) >= 3, "remote consumer wiring requires migration stage 1B-3 or later");
+assert.match(backend, /migration_stage:\s*"MV-SUPABASE-EXIT-2C"/);
 assert.match(backend, /deep_analysis_consumer_wired:\s*true/);
 assert.match(backend, /background_batch_consumer_wired:\s*true/);
 assert.match(backend, /fetch_monkey_patch_active:\s*false/);
-assert.match(backend, /supabase_authority_unchanged:\s*true/);
-assert.match(backend, /local_sqlite_authority_active:\s*false/);
+assert.match(backend, /supabase_authority_unchanged:\s*false/);
+assert.match(backend, /local_sqlite_authority_active:\s*true/);
+assert.match(backend, /gateway_active:\s*true/);
+assert.match(backend, /polar_active:\s*true/);
 assert.match(remote, /masterv-api-boundary/);
 assert.match(remote, /masterv-background-batch-boundary/);
+assert.match(transition, /primary:\s*"masterv-gateway"/);
+assert.match(transition, /reference_compare:\s*"local-canonical"/);
+assert.match(transition, /legacy_scope:\s*"0\.1\.2-migration-only"/);
 assert.equal(app.includes("supabase_publishable_key"), false, "app consumer regression reintroduced Supabase coupling");
-
-const localAuthorityPromoted = /product_authority_active:\s*true/.test(persistence);
-if (localAuthorityPromoted) {
-  assert.match(persistence, /supabase_primary_authority_active:\s*false/);
-  assert.match(persistence, /supabase_fallback_available:\s*true/);
-} else {
-  assert.match(persistence, /product_authority_active:\s*false/);
-  assert.match(persistence, /supabase_authority_unchanged:\s*true/);
-}
+assert.match(persistence, /product_authority_active:\s*true/);
+assert.match(persistence, /supabase_primary_authority_active:\s*false/);
+assert.match(persistence, /supabase_fallback_available:\s*true/);
 
 const window = {};
 window.window = window;
@@ -75,7 +74,7 @@ const fakeSession = {
 };
 const fakeWorkData = {
   configured: () => true,
-  bootstrapPersonalWorkspace: async () => "user:user-1",
+  bootstrapPersonalWorkspace: async () => "local:masterv",
   listReferenceLibrary: async () => [],
   fetchReferenceDetail: async () => ({}),
   deleteReferenceLibraryEntry: async () => undefined
@@ -116,8 +115,8 @@ console.log(JSON.stringify({
   fetch_monkey_patches: 0,
   session_runtime: "provider-boundary",
   capability_runtime: "provider-boundary",
-  desktop_provider_local_sqlite_authority_active: false,
-  native_local_work_data_authority_active: localAuthorityPromoted,
-  supabase_fallback_available: localAuthorityPromoted,
+  desktop_provider_local_sqlite_authority_active: true,
+  gateway_active: true,
+  legacy_scope: "migration-only",
   historical_remote_boundary_preserved: true
 }));
