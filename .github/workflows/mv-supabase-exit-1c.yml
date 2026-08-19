@@ -1,0 +1,37 @@
+name: MV Supabase Exit 1C Stateless Gateway
+
+on:
+  pull_request:
+  push:
+    branches:
+      - feat/mvp-foundation
+
+permissions:
+  contents: read
+
+jobs:
+  stateless-gateway:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: 24.19.0
+      - run: npm ci
+      - name: Verify EXIT-1B closeout regression
+        run: node scripts/desktop-provider-config-closeout-contract.mjs
+      - name: Verify stateless Gateway contract
+        run: ./node_modules/.bin/tsx scripts/gateway-stateless-contract.ts
+      - name: Verify TypeScript
+        run: npm run typecheck
+      - name: Verify canonical YouTube core regression
+        run: npm run test:youtube-discovery
+      - name: Verify canonical production guidance regression
+        run: npm run test:single-video-production
+      - name: Verify Gemini rate-limit normalization regression
+        run: npm run test:gemini-rate-limit
+      - name: Verify gateway source has no Supabase or central DB dependency
+        shell: bash
+        run: |
+          ! grep -RinE 'supabase|postgres|redis|sqlite|prisma|cloudflare[[:space:]]+d1' gateway
+          ! grep -RinE 'reference_library_entries|background_batch_ledger' gateway
