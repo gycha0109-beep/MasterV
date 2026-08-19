@@ -5,7 +5,10 @@ on:
   push:
     branches:
       - main
-      - feat/mvp-foundation
+
+concurrency:
+  group: ci-${{ github.event_name }}-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   validate:
