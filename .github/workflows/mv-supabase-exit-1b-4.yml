@@ -2,12 +2,13 @@ name: MV Supabase Exit 1B-4 Session Runtime Cleanup
 
 on:
   pull_request:
-  push:
-    branches:
-      - feat/mvp-foundation
 
 permissions:
   contents: read
+
+concurrency:
+  group: mv-supabase-exit-1b-4-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
 
 jobs:
   session-runtime-cleanup:

@@ -2,12 +2,13 @@ name: MV Supabase Exit 1D Product Key Polar
 
 on:
   pull_request:
-  push:
-    branches:
-      - feat/mvp-foundation
 
 permissions:
   contents: read
+
+concurrency:
+  group: mv-supabase-exit-1d-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
 
 jobs:
   product-key-polar:

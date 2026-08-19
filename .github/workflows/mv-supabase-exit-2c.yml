@@ -2,12 +2,13 @@ name: MV Supabase Exit 2C Visible Migration Cutover
 
 on:
   pull_request:
-  push:
-    branches:
-      - feat/mvp-foundation
 
 permissions:
   contents: read
+
+concurrency:
+  group: mv-supabase-exit-2c-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
 
 jobs:
   source-contract:

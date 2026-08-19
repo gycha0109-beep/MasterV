@@ -2,12 +2,13 @@ name: MV Supabase Exit 2A Local Authority Secure Device
 
 on:
   pull_request:
-  push:
-    branches:
-      - feat/mvp-foundation
 
 permissions:
   contents: read
+
+concurrency:
+  group: mv-supabase-exit-2a-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
 
 jobs:
   source-contract:

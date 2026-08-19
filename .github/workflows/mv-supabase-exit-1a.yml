@@ -2,12 +2,13 @@ name: MV Supabase Exit 1A Local SQLite
 
 on:
   pull_request:
-  push:
-    branches:
-      - feat/mvp-foundation
 
 permissions:
   contents: read
+
+concurrency:
+  group: mv-supabase-exit-1a-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
 
 jobs:
   static-contract:

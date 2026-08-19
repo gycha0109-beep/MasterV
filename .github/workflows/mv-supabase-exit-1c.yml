@@ -2,12 +2,13 @@ name: MV Supabase Exit 1C Stateless Gateway
 
 on:
   pull_request:
-  push:
-    branches:
-      - feat/mvp-foundation
 
 permissions:
   contents: read
+
+concurrency:
+  group: mv-supabase-exit-1c-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
 
 jobs:
   stateless-gateway:

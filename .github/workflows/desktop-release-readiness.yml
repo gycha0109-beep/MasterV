@@ -17,6 +17,10 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: desktop-release-readiness-${{ github.event_name }}-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   release-readiness:
     if: ${{ github.event_name == 'pull_request' || inputs.allow_unsigned_rc == true }}

@@ -2,12 +2,13 @@ name: MV Supabase Exit 1E Independent Updater
 
 on:
   pull_request:
-  push:
-    branches:
-      - feat/mvp-foundation
 
 permissions:
   contents: read
+
+concurrency:
+  group: mv-supabase-exit-1e-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
 
 jobs:
   independent-updater:
