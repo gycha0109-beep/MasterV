@@ -1,16 +1,16 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "MasterV",
+  "productName": "MasterV Desktop",
   "version": "0.1.0",
   "identifier": "com.masterv.desktop",
   "build": {
-    "beforeBuildCommand": "npm run desktop:prepare",
-    "frontendDist": "../desktop-dist"
+    "frontendDist": "../desktop-dist",
+    "beforeBuildCommand": "npm run desktop:prepare"
   },
   "app": {
-    "windows": [],
+    "withGlobalTauri": true,
     "security": {
-      "csp": "default-src 'self'; connect-src 'self' https://euqkjrmrhhvnyzasppnd.supabase.co; img-src 'self' data:; style-src 'self'; script-src 'self'"
+      "csp": "default-src 'self'; connect-src 'self' https://*.supabase.co wss://*.supabase.co; img-src 'self' data: blob: https://i.ytimg.com; style-src 'self' 'unsafe-inline'; script-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'"
     }
   },
   "bundle": {

@@ -30,6 +30,8 @@ jobs:
         run: node scripts/desktop-gateway-parallel-adapter-contract.mjs
       - name: Verify EXIT-2C visible migration cutover
         run: node scripts/desktop-visible-migration-cutover-contract.mjs
+      - name: Verify EXIT-2C Tauri runtime bridge
+        run: node scripts/desktop-tauri-runtime-bridge-contract.mjs
       - name: Verify EXIT-2C Background Gateway cutover
         run: node scripts/desktop-background-gateway-cutover-contract.mjs
       - name: Verify changed JavaScript syntax
@@ -42,6 +44,7 @@ jobs:
           node --check desktop/backend/local/local-work-data-provider.js
           node --check scripts/build-desktop-static.mjs
           node --check scripts/desktop-visible-migration-cutover-contract.mjs
+          node --check scripts/desktop-tauri-runtime-bridge-contract.mjs
           node --check scripts/desktop-background-gateway-cutover-contract.mjs
 
   native-cutover:
