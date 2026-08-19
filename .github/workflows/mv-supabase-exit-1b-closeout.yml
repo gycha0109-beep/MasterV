@@ -1,14 +1,10 @@
 name: MV Supabase Exit 1B Closeout Audit
 
 on:
-  pull_request:
+  workflow_dispatch:
 
 permissions:
   contents: read
-
-concurrency:
-  group: mv-supabase-exit-1b-closeout-${{ github.event.pull_request.number }}
-  cancel-in-progress: true
 
 jobs:
   exit-1b-closeout:

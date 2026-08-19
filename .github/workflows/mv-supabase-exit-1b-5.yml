@@ -1,14 +1,10 @@
 name: MV Supabase Exit 1B-5 Build Config Boundary
 
 on:
-  pull_request:
+  workflow_dispatch:
 
 permissions:
   contents: read
-
-concurrency:
-  group: mv-supabase-exit-1b-5-${{ github.event.pull_request.number }}
-  cancel-in-progress: true
 
 jobs:
   build-config-boundary:

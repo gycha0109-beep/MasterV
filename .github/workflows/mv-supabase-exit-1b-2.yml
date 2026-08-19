@@ -1,14 +1,10 @@
 name: MV Supabase Exit 1B-2 App Provider Rewiring
 
 on:
-  pull_request:
+  workflow_dispatch:
 
 permissions:
   contents: read
-
-concurrency:
-  group: mv-supabase-exit-1b-2-${{ github.event.pull_request.number }}
-  cancel-in-progress: true
 
 jobs:
   app-provider-rewire:

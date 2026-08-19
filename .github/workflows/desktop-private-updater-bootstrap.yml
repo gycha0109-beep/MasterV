@@ -1,33 +1,13 @@
 name: Desktop Independent Updater Bootstrap
 
 on:
-  pull_request:
-    branches: [main]
-    paths:
-      - "desktop/updater.js"
-      - "scripts/prepare-desktop-updater-bootstrap.mjs"
-      - "scripts/desktop-private-updater-contract.mjs"
-      - "scripts/desktop-independent-updater-contract.mjs"
-      - "scripts/desktop-independent-update-manifest.mjs"
-      - "scripts/desktop-independent-updater-installed-launch-windows.mjs"
-      - "src-tauri/src/main.rs"
-      - "src-tauri/src/updater.rs"
-      - "src-tauri/Cargo.toml"
-      - "src-tauri/Cargo.lock"
-      - "src-tauri/tauri.windows-updater-bootstrap.conf.json"
-      - "src-tauri/tauri.windows-independent-updater-release.conf.json"
-      - ".github/workflows/desktop-private-updater-bootstrap.yml"
   workflow_dispatch:
 
 permissions:
   contents: read
 
-concurrency:
-  group: desktop-independent-updater-bootstrap-${{ github.ref }}
-  cancel-in-progress: true
-
 env:
-  SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+  SOURCE_SHA: ${{ github.sha }}
 
 jobs:
   bootstrap:
