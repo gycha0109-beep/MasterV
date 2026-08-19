@@ -1,15 +1,17 @@
 use rusqlite::backup::Progress;
 use rusqlite::{params, Connection, DatabaseName, OptionalExtension, TransactionBehavior};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use tauri::State;
 
-pub const CURRENT_SCHEMA_VERSION: i64 = 1;
+pub const CURRENT_SCHEMA_VERSION: i64 = 2;
+pub const LOCAL_WORKSPACE_ID: &str = "local:masterv";
 const DATABASE_FILE: &str = "masterv.db";
 const BACKUP_DIRECTORY: &str = "backups";
+const LEGACY_REFERENCE_MIGRATION_ID: &str = "supabase-reference-library-v1";
 
 #[derive(Clone, Debug)]
 pub struct LocalPersistence {
@@ -22,8 +24,83 @@ pub struct LocalPersistenceStatus {
     pub schema_version: i64,
     pub database_path: String,
     pub backup_directory: String,
+    pub workspace_id: &'static str,
     pub product_authority_active: bool,
-    pub supabase_authority_unchanged: bool,
+    pub supabase_primary_authority_active: bool,
+    pub supabase_fallback_available: bool,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct ReferenceLibraryUpsertInput {
+    pub source_platform: String,
+    pub source_id: String,
+    pub native_id: String,
+    pub canonical_url: String,
+    pub label: String,
+    pub analysis: Value,
+    pub analysis_cache_key: String,
+    pub analysis_provenance: String,
+    pub schema_version: String,
+    pub first_saved_at: Option<String>,
+    pub updated_at: Option<String>,
+}
+
+#[derive(Clone, Debug, Serialize)]
+pub struct ReferenceLibrarySummary {
+    pub source_id: String,
+    pub canonical_url: String,
+    pub label: String,
+    pub analysis_provenance: String,
+    pub revision: i64,
+    pub first_saved_at: String,
+    pub updated_at: String,
+}
+
+#[derive(Clone, Debug, Serialize)]
+pub struct ReferenceLibraryDetail {
+    pub source_id: String,
+    pub canonical_url: String,
+    pub label: String,
+    pub analysis_provenance: String,
+    pub revision: i64,
+    pub first_saved_at: String,
+    pub updated_at: String,
+    pub analysis: Value,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+pub struct AnalysisResultInput {
+    pub id: String,
+    pub source_platform: String,
+    pub source_id: String,
+    pub analysis: Value,
+    pub analysis_cache_key: Option<String>,
+    pub schema_version: String,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+pub struct ComparisonEntryInput {
+    pub id: String,
+    pub payload: Value,
+    pub schema_version: String,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+pub struct ProductionGuidanceInput {
+    pub id: String,
+    pub source_platform: String,
+    pub source_id: String,
+    pub guidance: Value,
+    pub schema_version: String,
+}
+
+#[derive(Clone, Debug, Serialize)]
+pub struct LegacyReferenceMigrationResult {
+    pub migration_id: &'static str,
+    pub already_completed: bool,
+    pub received_count: usize,
+    pub imported_count: usize,
+    pub backup_path: String,
 }
 
 impl LocalPersistence {
@@ -76,8 +153,10 @@ impl LocalPersistence {
             schema_version: read_schema_version(&connection)?,
             database_path: self.db_path.to_string_lossy().into_owned(),
             backup_directory: self.backup_dir.to_string_lossy().into_owned(),
-            product_authority_active: false,
-            supabase_authority_unchanged: true,
+            workspace_id: LOCAL_WORKSPACE_ID,
+            product_authority_active: true,
+            supabase_primary_authority_active: false,
+            supabase_fallback_available: true,
         })
     }
 
@@ -110,6 +189,203 @@ impl LocalPersistence {
         encoded
             .map(|value| serde_json::from_str(&value).map_err(error_string))
             .transpose()
+    }
+
+    pub fn list_reference_library(&self) -> Result<Vec<ReferenceLibrarySummary>, String> {
+        let connection = open_connection(&self.db_path)?;
+        let mut statement = connection
+            .prepare(
+                "SELECT source_id, canonical_url, label, analysis_provenance, revision, first_saved_at, updated_at\n                 FROM reference_library_entries\n                 WHERE workspace_id = ?1\n                 ORDER BY updated_at DESC, source_id ASC",
+            )
+            .map_err(error_string)?;
+        let rows = statement
+            .query_map([LOCAL_WORKSPACE_ID], |row| {
+                Ok(ReferenceLibrarySummary {
+                    source_id: row.get(0)?,
+                    canonical_url: row.get(1)?,
+                    label: row.get(2)?,
+                    analysis_provenance: row.get(3)?,
+                    revision: row.get(4)?,
+                    first_saved_at: row.get(5)?,
+                    updated_at: row.get(6)?,
+                })
+            })
+            .map_err(error_string)?;
+        rows.collect::<Result<Vec<_>, _>>().map_err(error_string)
+    }
+
+    pub fn fetch_reference_detail(
+        &self,
+        source_id: &str,
+    ) -> Result<ReferenceLibraryDetail, String> {
+        require_nonempty("source_id", source_id)?;
+        let connection = open_connection(&self.db_path)?;
+        let mut statement = connection
+            .prepare(
+                "SELECT source_id, canonical_url, label, analysis_provenance, revision, first_saved_at, updated_at, analysis_json\n                 FROM reference_library_entries\n                 WHERE workspace_id = ?1 AND source_id = ?2\n                 ORDER BY source_platform ASC\n                 LIMIT 2",
+            )
+            .map_err(error_string)?;
+        let mut rows = statement
+            .query(params![LOCAL_WORKSPACE_ID, source_id])
+            .map_err(error_string)?;
+        let first = rows
+            .next()
+            .map_err(error_string)?
+            .ok_or_else(|| format!("reference not found: {source_id}"))?;
+        let encoded: String = first.get(7).map_err(error_string)?;
+        let detail = ReferenceLibraryDetail {
+            source_id: first.get(0).map_err(error_string)?,
+            canonical_url: first.get(1).map_err(error_string)?,
+            label: first.get(2).map_err(error_string)?,
+            analysis_provenance: first.get(3).map_err(error_string)?,
+            revision: first.get(4).map_err(error_string)?,
+            first_saved_at: first.get(5).map_err(error_string)?,
+            updated_at: first.get(6).map_err(error_string)?,
+            analysis: serde_json::from_str(&encoded).map_err(error_string)?,
+        };
+        if rows.next().map_err(error_string)?.is_some() {
+            return Err(format!(
+                "reference source_id is ambiguous across platforms: {source_id}"
+            ));
+        }
+        Ok(detail)
+    }
+
+    pub fn upsert_reference_library(
+        &self,
+        input: &ReferenceLibraryUpsertInput,
+    ) -> Result<(), String> {
+        validate_reference_input(input)?;
+        let connection = open_connection(&self.db_path)?;
+        upsert_reference_row(&connection, input, false)?;
+        Ok(())
+    }
+
+    pub fn delete_reference_library(&self, source_id: &str) -> Result<usize, String> {
+        require_nonempty("source_id", source_id)?;
+        let connection = open_connection(&self.db_path)?;
+        connection
+            .execute(
+                "DELETE FROM reference_library_entries WHERE workspace_id = ?1 AND source_id = ?2",
+                params![LOCAL_WORKSPACE_ID, source_id],
+            )
+            .map_err(error_string)
+    }
+
+    pub fn save_analysis_result(&self, input: &AnalysisResultInput) -> Result<(), String> {
+        for (label, value) in [
+            ("id", input.id.as_str()),
+            ("source_platform", input.source_platform.as_str()),
+            ("source_id", input.source_id.as_str()),
+            ("schema_version", input.schema_version.as_str()),
+        ] {
+            require_nonempty(label, value)?;
+        }
+        let encoded = serde_json::to_string(&input.analysis).map_err(error_string)?;
+        let connection = open_connection(&self.db_path)?;
+        connection
+            .execute(
+                "INSERT INTO analysis_results (id, source_platform, source_id, analysis_json, analysis_cache_key, schema_version, created_at, updated_at)\n                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, strftime('%Y-%m-%dT%H:%M:%fZ','now'), strftime('%Y-%m-%dT%H:%M:%fZ','now'))\n                 ON CONFLICT(id) DO UPDATE SET\n                   analysis_json = excluded.analysis_json,\n                   analysis_cache_key = excluded.analysis_cache_key,\n                   schema_version = excluded.schema_version,\n                   updated_at = excluded.updated_at",
+                params![
+                    input.id,
+                    input.source_platform,
+                    input.source_id,
+                    encoded,
+                    input.analysis_cache_key,
+                    input.schema_version
+                ],
+            )
+            .map_err(error_string)?;
+        Ok(())
+    }
+
+    pub fn save_comparison_entry(&self, input: &ComparisonEntryInput) -> Result<(), String> {
+        require_nonempty("id", &input.id)?;
+        require_nonempty("schema_version", &input.schema_version)?;
+        let encoded = serde_json::to_string(&input.payload).map_err(error_string)?;
+        let connection = open_connection(&self.db_path)?;
+        connection
+            .execute(
+                "INSERT INTO comparison_entries (id, payload_json, schema_version, created_at, updated_at)\n                 VALUES (?1, ?2, ?3, strftime('%Y-%m-%dT%H:%M:%fZ','now'), strftime('%Y-%m-%dT%H:%M:%fZ','now'))\n                 ON CONFLICT(id) DO UPDATE SET\n                   payload_json = excluded.payload_json,\n                   schema_version = excluded.schema_version,\n                   updated_at = excluded.updated_at",
+                params![input.id, encoded, input.schema_version],
+            )
+            .map_err(error_string)?;
+        Ok(())
+    }
+
+    pub fn save_production_guidance(
+        &self,
+        input: &ProductionGuidanceInput,
+    ) -> Result<(), String> {
+        for (label, value) in [
+            ("id", input.id.as_str()),
+            ("source_platform", input.source_platform.as_str()),
+            ("source_id", input.source_id.as_str()),
+            ("schema_version", input.schema_version.as_str()),
+        ] {
+            require_nonempty(label, value)?;
+        }
+        let encoded = serde_json::to_string(&input.guidance).map_err(error_string)?;
+        let connection = open_connection(&self.db_path)?;
+        connection
+            .execute(
+                "INSERT INTO production_guidance (id, source_platform, source_id, guidance_json, schema_version, created_at, updated_at)\n                 VALUES (?1, ?2, ?3, ?4, ?5, strftime('%Y-%m-%dT%H:%M:%fZ','now'), strftime('%Y-%m-%dT%H:%M:%fZ','now'))\n                 ON CONFLICT(id) DO UPDATE SET\n                   guidance_json = excluded.guidance_json,\n                   schema_version = excluded.schema_version,\n                   updated_at = excluded.updated_at",
+                params![
+                    input.id,
+                    input.source_platform,
+                    input.source_id,
+                    encoded,
+                    input.schema_version
+                ],
+            )
+            .map_err(error_string)?;
+        Ok(())
+    }
+
+    pub fn migrate_legacy_reference_library(
+        &self,
+        records: &[ReferenceLibraryUpsertInput],
+    ) -> Result<LegacyReferenceMigrationResult, String> {
+        let connection = open_connection(&self.db_path)?;
+        if let Some((count, backup_path)) = migration_completion(&connection)? {
+            return Ok(LegacyReferenceMigrationResult {
+                migration_id: LEGACY_REFERENCE_MIGRATION_ID,
+                already_completed: true,
+                received_count: records.len(),
+                imported_count: count as usize,
+                backup_path,
+            });
+        }
+        for record in records {
+            validate_reference_input(record)?;
+        }
+        let backup = create_snapshot(&connection, &self.backup_dir, "pre-supabase-reference-import")?;
+        drop(connection);
+
+        let mut connection = open_connection(&self.db_path)?;
+        let transaction = connection
+            .transaction_with_behavior(TransactionBehavior::Immediate)
+            .map_err(error_string)?;
+        let mut imported_count = 0usize;
+        for record in records {
+            imported_count += upsert_reference_row(&transaction, record, true)?;
+        }
+        let backup_path = backup.to_string_lossy().into_owned();
+        transaction
+            .execute(
+                "INSERT INTO migration_runs (id, source, status, imported_count, backup_path, completed_at)\n                 VALUES (?1, 'legacy-supabase', 'completed', ?2, ?3, strftime('%Y-%m-%dT%H:%M:%fZ','now'))",
+                params![LEGACY_REFERENCE_MIGRATION_ID, imported_count as i64, backup_path],
+            )
+            .map_err(error_string)?;
+        transaction.commit().map_err(error_string)?;
+
+        Ok(LegacyReferenceMigrationResult {
+            migration_id: LEGACY_REFERENCE_MIGRATION_ID,
+            already_completed: false,
+            received_count: records.len(),
+            imported_count,
+            backup_path: backup.to_string_lossy().into_owned(),
+        })
     }
 
     pub fn export_to<P: AsRef<Path>>(&self, destination: P) -> Result<(), String> {
@@ -190,11 +466,192 @@ impl LocalPersistence {
     }
 }
 
+fn require_nonempty(label: &str, value: &str) -> Result<(), String> {
+    if value.trim().is_empty() {
+        return Err(format!("{label} must not be empty"));
+    }
+    Ok(())
+}
+
+fn validate_reference_input(input: &ReferenceLibraryUpsertInput) -> Result<(), String> {
+    for (label, value) in [
+        ("source_platform", input.source_platform.as_str()),
+        ("source_id", input.source_id.as_str()),
+        ("native_id", input.native_id.as_str()),
+        ("canonical_url", input.canonical_url.as_str()),
+        ("label", input.label.as_str()),
+        ("analysis_cache_key", input.analysis_cache_key.as_str()),
+        ("analysis_provenance", input.analysis_provenance.as_str()),
+        ("schema_version", input.schema_version.as_str()),
+    ] {
+        require_nonempty(label, value)?;
+    }
+    if input.analysis.is_null() {
+        return Err("analysis must not be null".to_string());
+    }
+    Ok(())
+}
+
+fn upsert_reference_row(
+    connection: &Connection,
+    input: &ReferenceLibraryUpsertInput,
+    local_wins: bool,
+) -> Result<usize, String> {
+    let first_saved_at = input
+        .first_saved_at
+        .as_deref()
+        .filter(|value| !value.trim().is_empty());
+    let updated_at = input
+        .updated_at
+        .as_deref()
+        .filter(|value| !value.trim().is_empty());
+    let encoded = serde_json::to_string(&input.analysis).map_err(error_string)?;
+
+    if local_wins {
+        return connection
+            .execute(
+                "INSERT INTO reference_library_entries (workspace_id, source_platform, source_id, native_id, canonical_url, label, analysis_json, analysis_cache_key, analysis_provenance, schema_version, revision, first_saved_at, updated_at)\n                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, 1, COALESCE(?11, strftime('%Y-%m-%dT%H:%M:%fZ','now')), COALESCE(?12, strftime('%Y-%m-%dT%H:%M:%fZ','now')))\n                 ON CONFLICT(workspace_id, source_platform, source_id) DO NOTHING",
+                params![
+                    LOCAL_WORKSPACE_ID,
+                    input.source_platform,
+                    input.source_id,
+                    input.native_id,
+                    input.canonical_url,
+                    input.label,
+                    encoded,
+                    input.analysis_cache_key,
+                    input.analysis_provenance,
+                    input.schema_version,
+                    first_saved_at,
+                    updated_at
+                ],
+            )
+            .map_err(error_string);
+    }
+
+    connection
+        .execute(
+            "INSERT INTO reference_library_entries (workspace_id, source_platform, source_id, native_id, canonical_url, label, analysis_json, analysis_cache_key, analysis_provenance, schema_version, revision, first_saved_at, updated_at)\n             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, 1, COALESCE(?11, strftime('%Y-%m-%dT%H:%M:%fZ','now')), COALESCE(?12, strftime('%Y-%m-%dT%H:%M:%fZ','now')))\n             ON CONFLICT(workspace_id, source_platform, source_id) DO UPDATE SET\n               native_id = excluded.native_id,\n               canonical_url = excluded.canonical_url,\n               label = excluded.label,\n               analysis_json = excluded.analysis_json,\n               analysis_cache_key = excluded.analysis_cache_key,\n               analysis_provenance = excluded.analysis_provenance,\n               schema_version = excluded.schema_version,\n               revision = reference_library_entries.revision + 1,\n               updated_at = excluded.updated_at",
+            params![
+                LOCAL_WORKSPACE_ID,
+                input.source_platform,
+                input.source_id,
+                input.native_id,
+                input.canonical_url,
+                input.label,
+                encoded,
+                input.analysis_cache_key,
+                input.analysis_provenance,
+                input.schema_version,
+                first_saved_at,
+                updated_at
+            ],
+        )
+        .map_err(error_string)
+}
+
+fn migration_completion(connection: &Connection) -> Result<Option<(i64, String)>, String> {
+    connection
+        .query_row(
+            "SELECT imported_count, backup_path FROM migration_runs WHERE id = ?1 AND status = 'completed'",
+            [LEGACY_REFERENCE_MIGRATION_ID],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )
+        .optional()
+        .map_err(error_string)
+}
+
 #[tauri::command]
 pub fn desktop_local_persistence_status(
     state: State<'_, LocalPersistence>,
 ) -> Result<LocalPersistenceStatus, String> {
     state.status()
+}
+
+#[tauri::command]
+pub fn desktop_local_workspace_id() -> &'static str {
+    LOCAL_WORKSPACE_ID
+}
+
+#[tauri::command]
+pub fn desktop_local_reference_library_list(
+    state: State<'_, LocalPersistence>,
+) -> Result<Vec<ReferenceLibrarySummary>, String> {
+    state.list_reference_library()
+}
+
+#[tauri::command]
+pub fn desktop_local_reference_detail(
+    state: State<'_, LocalPersistence>,
+    source_id: String,
+) -> Result<ReferenceLibraryDetail, String> {
+    state.fetch_reference_detail(&source_id)
+}
+
+#[tauri::command]
+pub fn desktop_local_reference_delete(
+    state: State<'_, LocalPersistence>,
+    source_id: String,
+) -> Result<usize, String> {
+    state.delete_reference_library(&source_id)
+}
+
+#[tauri::command]
+pub fn desktop_local_reference_upsert(
+    state: State<'_, LocalPersistence>,
+    input: ReferenceLibraryUpsertInput,
+) -> Result<(), String> {
+    state.upsert_reference_library(&input)
+}
+
+#[tauri::command]
+pub fn desktop_local_analysis_save(
+    state: State<'_, LocalPersistence>,
+    input: AnalysisResultInput,
+) -> Result<(), String> {
+    state.save_analysis_result(&input)
+}
+
+#[tauri::command]
+pub fn desktop_local_comparison_save(
+    state: State<'_, LocalPersistence>,
+    input: ComparisonEntryInput,
+) -> Result<(), String> {
+    state.save_comparison_entry(&input)
+}
+
+#[tauri::command]
+pub fn desktop_local_guidance_save(
+    state: State<'_, LocalPersistence>,
+    input: ProductionGuidanceInput,
+) -> Result<(), String> {
+    state.save_production_guidance(&input)
+}
+
+#[tauri::command]
+pub fn desktop_local_migrate_legacy_reference_library(
+    state: State<'_, LocalPersistence>,
+    records: Vec<ReferenceLibraryUpsertInput>,
+) -> Result<LegacyReferenceMigrationResult, String> {
+    state.migrate_legacy_reference_library(&records)
+}
+
+#[tauri::command]
+pub fn desktop_local_export_database(
+    state: State<'_, LocalPersistence>,
+    destination: String,
+) -> Result<(), String> {
+    state.export_to(destination)
+}
+
+#[tauri::command]
+pub fn desktop_local_import_database(
+    state: State<'_, LocalPersistence>,
+    source: String,
+) -> Result<String, String> {
+    state
+        .import_from(source)
+        .map(|path| path.to_string_lossy().into_owned())
 }
 
 fn open_connection(path: &Path) -> Result<Connection, String> {
@@ -259,6 +716,14 @@ fn migrate(connection: &mut Connection, from_version: i64) -> Result<(), String>
             .map_err(error_string)?;
     }
 
+    if from_version < 2 {
+        transaction
+            .execute_batch(
+                "CREATE TABLE IF NOT EXISTS migration_runs (\n                   id TEXT PRIMARY KEY,\n                   source TEXT NOT NULL,\n                   status TEXT NOT NULL,\n                   imported_count INTEGER NOT NULL DEFAULT 0 CHECK (imported_count >= 0),\n                   backup_path TEXT NOT NULL,\n                   completed_at TEXT NOT NULL\n                 );\n\n                 CREATE INDEX IF NOT EXISTS reference_library_local_source_idx\n                   ON reference_library_entries (workspace_id, source_id);",
+            )
+            .map_err(error_string)?;
+    }
+
     transaction
         .execute(
             "INSERT INTO masterv_schema_meta (id, schema_version, updated_at)\n             VALUES (1, ?1, strftime('%Y-%m-%dT%H:%M:%fZ','now'))\n             ON CONFLICT(id) DO UPDATE SET\n               schema_version = excluded.schema_version,\n               updated_at = excluded.updated_at",
@@ -285,6 +750,7 @@ fn validate_current_database(connection: &Connection) -> Result<(), String> {
         "comparison_entries",
         "production_guidance",
         "settings",
+        "migration_runs",
     ] {
         if !table_exists(connection, table)? {
             return Err(format!("required local table is missing: {table}"));
@@ -363,14 +829,32 @@ mod tests {
         let _ = fs::remove_dir_all(path);
     }
 
+    fn reference(source_id: &str, label: &str) -> ReferenceLibraryUpsertInput {
+        ReferenceLibraryUpsertInput {
+            source_platform: "youtube".to_string(),
+            source_id: source_id.to_string(),
+            native_id: source_id.to_string(),
+            canonical_url: format!("https://www.youtube.com/watch?v={source_id}"),
+            label: label.to_string(),
+            analysis: json!({"summary": label, "structure_label": "demo"}),
+            analysis_cache_key: format!("cache:{source_id}"),
+            analysis_provenance: "gateway-deep-analysis".to_string(),
+            schema_version: "video-analysis-v1".to_string(),
+            first_saved_at: None,
+            updated_at: None,
+        }
+    }
+
     #[test]
-    fn local_persistence_initializes_schema_v1() {
+    fn local_persistence_initializes_schema_v2_as_product_authority() {
         let root = test_directory("schema");
         let persistence = LocalPersistence::initialize(&root).expect("initialize");
         let status = persistence.status().expect("status");
         assert_eq!(status.schema_version, CURRENT_SCHEMA_VERSION);
-        assert!(!status.product_authority_active);
-        assert!(status.supabase_authority_unchanged);
+        assert!(status.product_authority_active);
+        assert!(!status.supabase_primary_authority_active);
+        assert!(status.supabase_fallback_available);
+        assert_eq!(status.workspace_id, LOCAL_WORKSPACE_ID);
 
         let connection = open_connection(persistence.db_path()).expect("open");
         for table in [
@@ -380,6 +864,7 @@ mod tests {
             "comparison_entries",
             "production_guidance",
             "settings",
+            "migration_runs",
         ] {
             assert!(table_exists(&connection, table).expect("table check"));
         }
@@ -404,16 +889,21 @@ mod tests {
     }
 
     #[test]
-    fn existing_v0_database_is_backed_up_before_migration() {
+    fn existing_v1_database_is_backed_up_before_v2_migration() {
         let root = test_directory("migration-backup");
         fs::create_dir_all(&root).expect("root");
         let legacy_path = root.join(DATABASE_FILE);
-        let legacy = Connection::open(&legacy_path).expect("legacy open");
+        let mut legacy = Connection::open(&legacy_path).expect("legacy open");
+        migrate(&mut legacy, 0).expect("seed schema");
         legacy
-            .execute_batch(
-                "CREATE TABLE legacy_marker (value TEXT NOT NULL);\n                 INSERT INTO legacy_marker (value) VALUES ('before-migration');",
+            .execute(
+                "UPDATE masterv_schema_meta SET schema_version = 1 WHERE id = 1",
+                [],
             )
-            .expect("legacy seed");
+            .expect("downgrade marker");
+        legacy
+            .execute_batch("DROP TABLE migration_runs; DROP INDEX reference_library_local_source_idx;")
+            .expect("remove v2 objects");
         drop(legacy);
 
         let persistence = LocalPersistence::initialize(&root).expect("initialize");
@@ -423,13 +913,117 @@ mod tests {
             .filter(|path| path.extension().and_then(|value| value.to_str()) == Some("db"))
             .collect();
         assert_eq!(backups.len(), 1);
-
         let backup = Connection::open(&backups[0]).expect("backup open");
-        let marker: String = backup
-            .query_row("SELECT value FROM legacy_marker", [], |row| row.get(0))
-            .expect("legacy marker");
-        assert_eq!(marker, "before-migration");
-        assert_eq!(read_schema_version(&backup).expect("backup schema"), 0);
+        assert_eq!(read_schema_version(&backup).expect("backup schema"), 1);
+        cleanup(&root);
+    }
+
+    #[test]
+    fn reference_library_is_local_primary_with_lazy_detail() {
+        let root = test_directory("reference");
+        let persistence = LocalPersistence::initialize(&root).expect("initialize");
+        persistence
+            .upsert_reference_library(&reference("abc", "first"))
+            .expect("insert");
+        let summaries = persistence.list_reference_library().expect("list");
+        assert_eq!(summaries.len(), 1);
+        assert_eq!(summaries[0].source_id, "abc");
+        let detail = persistence.fetch_reference_detail("abc").expect("detail");
+        assert_eq!(detail.analysis["summary"], json!("first"));
+
+        persistence
+            .upsert_reference_library(&reference("abc", "updated"))
+            .expect("update");
+        let detail = persistence.fetch_reference_detail("abc").expect("updated detail");
+        assert_eq!(detail.revision, 2);
+        assert_eq!(detail.analysis["summary"], json!("updated"));
+        assert_eq!(persistence.delete_reference_library("abc").expect("delete"), 1);
+        assert!(persistence.list_reference_library().expect("empty").is_empty());
+        cleanup(&root);
+    }
+
+    #[test]
+    fn legacy_reference_migration_is_backup_first_local_wins_and_idempotent() {
+        let root = test_directory("legacy-import");
+        let persistence = LocalPersistence::initialize(&root).expect("initialize");
+        persistence
+            .upsert_reference_library(&reference("same", "local-authority"))
+            .expect("local seed");
+        let incoming = vec![reference("same", "legacy-should-not-win"), reference("new", "legacy-new")];
+        let first = persistence
+            .migrate_legacy_reference_library(&incoming)
+            .expect("migration");
+        assert!(!first.already_completed);
+        assert_eq!(first.received_count, 2);
+        assert_eq!(first.imported_count, 1);
+        assert!(Path::new(&first.backup_path).is_file());
+        assert_eq!(
+            persistence
+                .fetch_reference_detail("same")
+                .expect("same")
+                .analysis["summary"],
+            json!("local-authority")
+        );
+        assert_eq!(
+            persistence
+                .fetch_reference_detail("new")
+                .expect("new")
+                .analysis["summary"],
+            json!("legacy-new")
+        );
+        let second = persistence
+            .migrate_legacy_reference_library(&[reference("third", "ignored")])
+            .expect("idempotent");
+        assert!(second.already_completed);
+        assert_eq!(second.imported_count, 1);
+        assert!(persistence.fetch_reference_detail("third").is_err());
+        cleanup(&root);
+    }
+
+    #[test]
+    fn analysis_comparison_and_guidance_survive_reopen() {
+        let root = test_directory("work-data");
+        let persistence = LocalPersistence::initialize(&root).expect("initialize");
+        persistence
+            .save_analysis_result(&AnalysisResultInput {
+                id: "analysis-1".to_string(),
+                source_platform: "youtube".to_string(),
+                source_id: "abc".to_string(),
+                analysis: json!({"summary": "persisted"}),
+                analysis_cache_key: Some("cache".to_string()),
+                schema_version: "v1".to_string(),
+            })
+            .expect("analysis");
+        persistence
+            .save_comparison_entry(&ComparisonEntryInput {
+                id: "comparison-1".to_string(),
+                payload: json!({"sample_size": 2}),
+                schema_version: "v1".to_string(),
+            })
+            .expect("comparison");
+        persistence
+            .save_production_guidance(&ProductionGuidanceInput {
+                id: "guidance-1".to_string(),
+                source_platform: "youtube".to_string(),
+                source_id: "abc".to_string(),
+                guidance: json!({"guide": "persisted"}),
+                schema_version: "v1".to_string(),
+            })
+            .expect("guidance");
+        drop(persistence);
+
+        let reopened = LocalPersistence::initialize(&root).expect("reopen");
+        let connection = open_connection(reopened.db_path()).expect("open");
+        for (table, expected) in [
+            ("analysis_results", 1i64),
+            ("comparison_entries", 1i64),
+            ("production_guidance", 1i64),
+        ] {
+            let count: i64 = connection
+                .query_row(&format!("SELECT COUNT(*) FROM {table}"), [], |row| row.get(0))
+                .expect("count");
+            assert_eq!(count, expected);
+        }
         cleanup(&root);
     }
 
@@ -491,7 +1085,7 @@ mod tests {
         let newer = Connection::open(&newer_path).expect("newer open");
         newer
             .execute_batch(
-                "CREATE TABLE masterv_schema_meta (\n                   id INTEGER PRIMARY KEY,\n                   schema_version INTEGER NOT NULL,\n                   updated_at TEXT NOT NULL\n                 );\n                 INSERT INTO masterv_schema_meta VALUES (1, 2, 'future');",
+                "CREATE TABLE masterv_schema_meta (\n                   id INTEGER PRIMARY KEY,\n                   schema_version INTEGER NOT NULL,\n                   updated_at TEXT NOT NULL\n                 );\n                 INSERT INTO masterv_schema_meta VALUES (1, 3, 'future');",
             )
             .expect("newer schema");
         drop(newer);
