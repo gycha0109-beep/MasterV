@@ -6,6 +6,10 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: desktop-external-pilot-readiness-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
 jobs:
   external-pilot-readiness:
     runs-on: windows-2025
