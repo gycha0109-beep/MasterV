@@ -15,6 +15,7 @@ const gatewaySessionSource = read("desktop/backend/gateway/gateway-session-provi
 const gatewayRemoteSource = read("desktop/backend/gateway/gateway-remote-provider.js");
 const localWorkSource = read("desktop/backend/local/local-work-data-provider.js");
 const transitionSource = read("desktop/backend/bridge/transition-provider.js");
+const cutoverActive = /migration_stage:\s*"MV-SUPABASE-EXIT-2C"/.test(backend);
 
 assert.match(cargo, /rust-version = "1\.85\.0"/);
 assert.match(cargo, /reqwest = \{ version = "=0\.13\.4"/);
@@ -48,10 +49,18 @@ assert.match(native, /secure_store\.save\(&DeviceIdentityRecord/);
 assert.equal(secure.includes("product_key:"), false, "Product Key must not be persisted in secure storage");
 assert.equal(secure.includes("session_credential:"), false, "short-lived session credential must remain memory-only");
 
-assert.match(backend, /migration_stage:\s*"MV-SUPABASE-EXIT-1B-5"/);
-assert.match(backend, /gateway_active:\s*false/);
-assert.match(backend, /polar_active:\s*false/);
-assert.match(backend, /local_sqlite_authority_active:\s*false/);
+if (cutoverActive) {
+  assert.match(backend, /production_ui_cutover_active:\s*true/);
+  assert.match(backend, /gateway_active:\s*true/);
+  assert.match(backend, /polar_active:\s*true/);
+  assert.match(backend, /local_sqlite_authority_active:\s*true/);
+  assert.match(backend, /supabase_primary_authority_active:\s*false/);
+} else {
+  assert.match(backend, /migration_stage:\s*"MV-SUPABASE-EXIT-1B-5"/);
+  assert.match(backend, /gateway_active:\s*false/);
+  assert.match(backend, /polar_active:\s*false/);
+  assert.match(backend, /local_sqlite_authority_active:\s*false/);
+}
 
 for (const [label, source] of [
   ["gateway session", gatewaySessionSource],
@@ -73,7 +82,8 @@ assert.match(gatewayRemoteSource, /desktop_gateway_guidance/);
 assert.match(localWorkSource, /desktop_local_reference_library_list/);
 assert.match(localWorkSource, /desktop_local_analysis_save/);
 assert.match(localWorkSource, /desktop_local_guidance_save/);
-assert.match(transitionSource, /fallback_scope:\s*"0\.1\.2-migration-only"/);
+if (cutoverActive) assert.match(transitionSource, /legacy_scope:\s*"existing-data-migration-only"/);
+else assert.match(transitionSource, /fallback_scope:\s*"0\.1\.2-migration-only"/);
 
 const calls = [];
 const fakeInvoke = async (command, args = {}) => {
@@ -82,12 +92,14 @@ const fakeInvoke = async (command, args = {}) => {
   if (command === "desktop_gateway_resume_session") return { provider: "masterv-gateway", credential: "session-b", entitlement: { capabilities: { discovery: true, analyze: true, guidance: true } } };
   if (command === "desktop_gateway_entitlement") return { entitlement: { capabilities: { discovery: true, analyze: true, guidance: true } } };
   if (command === "desktop_gateway_discover") return { provider: "youtube", candidates: [] };
-  if (command === "desktop_gateway_analyze") return { provider: "gemini", source: { source_id: "abc" }, analysis: {}, derived_metrics: {} };
-  if (command === "desktop_gateway_guidance") return { provider: "gemini", guide: {}, diagnostics: { persistence_writes: 0 } };
+  if (command === "desktop_gateway_analyze") return { provider: "gemini", request_id: "req-a", source: { platform: "youtube", source_id: "abc" }, analysis: {}, derived_metrics: {} };
+  if (command === "desktop_gateway_guidance") return { provider: "gemini", request_id: "req-g", guide: {}, diagnostics: { persistence_writes: 0 } };
   if (command === "desktop_local_workspace_id") return "local:masterv";
   if (command === "desktop_local_reference_library_list") return [];
-  if (command === "desktop_local_reference_detail") return { source_id: args.sourceId };
+  if (command === "desktop_local_reference_detail") return { source_id: args.sourceId, canonical_url: `https://youtu.be/${args.sourceId}`, label: args.sourceId, analysis: {} };
   if (command === "desktop_local_reference_delete") return 1;
+  if (["desktop_local_analysis_save", "desktop_local_comparison_save", "desktop_local_guidance_save"].includes(command)) return undefined;
+  if (command === "desktop_migrate_legacy_reference_library_verified") return { migration_id: "supabase-reference-library-v1", imported_count: 0, integrity_verified: true };
   return null;
 };
 const window = { __TAURI__: { core: { invoke: fakeInvoke } } };
@@ -114,14 +126,15 @@ assert.equal(await localWork.bootstrapPersonalWorkspace(activated), "local:maste
 
 const legacySession = {
   configured: () => true,
-  openSession: async () => ({ provider: "legacy-supabase", credential: "legacy" }),
+  openSession: async () => ({ provider: "legacy-supabase", credential: "legacy", subject_id: "legacy-user" }),
   closeSession: async () => undefined,
-  describeSession: (session) => ({ authenticated: Boolean(session?.credential) })
+  describeSession: (activeSession) => ({ authenticated: Boolean(activeSession?.credential) })
 };
 const legacyWork = {
   configured: () => true,
   bootstrapPersonalWorkspace: async () => "legacy-workspace",
   listReferenceLibrary: async () => ["legacy"],
+  exportReferenceLibraryForMigration: async () => [],
   fetchReferenceDetail: async () => ({}),
   deleteReferenceLibraryEntry: async () => 0
 };
@@ -140,8 +153,14 @@ const legacyRemote = {
 const transition = window.MASTERV_TRANSITION_PROVIDER.create({ gatewaySession, legacySession, localWorkData: localWork, legacyWorkData: legacyWork, gatewayRemote, legacyRemote });
 const productSession = await transition.session.openSession({ kind: "product_key", product_key: "KEY" });
 assert.equal(productSession.provider, "masterv-gateway");
-const legacy = await transition.session.openSession({ kind: "email_password", email: "a@b.c", password: "x" });
-assert.equal(legacy.provider, "legacy-supabase");
+if (cutoverActive) {
+  await assert.rejects(() => transition.session.openSession({ kind: "email_password", email: "a@b.c", password: "x" }));
+  const migrated = await transition.workData.migrateLegacyReferenceLibrary({ email: "a@b.c", password: "x" });
+  assert.equal(migrated.local_authority_after_migration, true);
+} else {
+  const legacy = await transition.session.openSession({ kind: "email_password", email: "a@b.c", password: "x" });
+  assert.equal(legacy.provider, "legacy-supabase");
+}
 assert.equal(await transition.workData.bootstrapPersonalWorkspace(productSession), "local:masterv");
 
 const env = {
@@ -172,6 +191,7 @@ console.log(JSON.stringify({
   gateway_remote_adapter: true,
   local_work_data_adapter: true,
   transition_adapter: true,
-  production_ui_cutover_active: false,
-  legacy_runtime_primary_unchanged_until_exit_2c: true
+  production_ui_cutover_active: cutoverActive,
+  legacy_runtime_primary_unchanged_until_exit_2c: !cutoverActive,
+  successor_cutover_aware: true
 }));
