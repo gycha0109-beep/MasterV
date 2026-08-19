@@ -30,15 +30,19 @@ jobs:
         run: node scripts/desktop-gateway-parallel-adapter-contract.mjs
       - name: Verify EXIT-2C visible migration cutover
         run: node scripts/desktop-visible-migration-cutover-contract.mjs
+      - name: Verify EXIT-2C Background Gateway cutover
+        run: node scripts/desktop-background-gateway-cutover-contract.mjs
       - name: Verify changed JavaScript syntax
         run: |
           node --check desktop/app.js
+          node --check desktop/background-batch.js
           node --check desktop/backend/backend.js
           node --check desktop/backend/bridge/transition-provider.js
           node --check desktop/backend/legacy/supabase-work-data-provider.js
           node --check desktop/backend/local/local-work-data-provider.js
           node --check scripts/build-desktop-static.mjs
           node --check scripts/desktop-visible-migration-cutover-contract.mjs
+          node --check scripts/desktop-background-gateway-cutover-contract.mjs
 
   native-cutover:
     strategy:

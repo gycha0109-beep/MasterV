@@ -4,6 +4,7 @@
   const ANALYSIS_SCHEMA_VERSION = "gateway-analysis-v1";
   const COMPARISON_SCHEMA_VERSION = "reference-compare-v1";
   const GUIDANCE_SCHEMA_VERSION = "production-guidance-v1";
+  const BACKGROUND_BATCH_CONTRACT_VERSION = "background-batch-local-gateway-v1";
 
   function requireCompiler() {
     const compiler = window.MASTERV_LOCAL_REFERENCE_COMPILER;
@@ -15,6 +16,7 @@
 
   function create({ gatewaySession, legacySession, localWorkData, legacyWorkData, gatewayRemote, legacyRemote }) {
     let latestGatewaySource = null;
+    const backgroundJobs = new Map();
 
     const session = Object.freeze({
       configured() {
@@ -94,6 +96,48 @@
       return activeSession;
     }
 
+    async function persistAnalysis(result, idPrefix = "analysis") {
+      const source = result?.source;
+      if (!source?.source_id || !source?.platform) throw new Error("Gateway analysis source identity is incomplete");
+      latestGatewaySource = Object.freeze({ platform: source.platform, source_id: source.source_id });
+      await localWorkData.saveAnalysisResult({
+        id: `${idPrefix}:${source.platform}:${source.source_id}:${result.request_id || "latest"}`,
+        source_platform: source.platform,
+        source_id: source.source_id,
+        analysis: result.analysis,
+        analysis_cache_key: null,
+        schema_version: ANALYSIS_SCHEMA_VERSION
+      });
+      return source;
+    }
+
+    function snapshotJob(job) {
+      return Object.freeze({ ...job });
+    }
+
+    async function executeBackgroundJob(activeSession, requestId) {
+      const current = backgroundJobs.get(requestId);
+      if (!current || current.status !== "QUEUED") return;
+      current.status = "RUNNING";
+      current.provider_state = "gateway-analyze";
+      current.updated_at = new Date().toISOString();
+      try {
+        const result = await gatewayRemote.analyzeYouTube(requireGatewaySession(activeSession), current.canonical_url);
+        const source = await persistAnalysis(result, `background-analysis:${requestId}`);
+        current.status = "SUCCEEDED";
+        current.source_id = source.source_id;
+        current.model = result.model || result.diagnostics?.model || "gateway";
+        current.provider_state = "gateway-complete/local-sqlite-persisted";
+        current.error = null;
+      } catch (error) {
+        current.status = "FAILED";
+        current.provider_state = "gateway-failed";
+        current.error = error instanceof Error ? error.message : String(error);
+      } finally {
+        current.updated_at = new Date().toISOString();
+      }
+    }
+
     const remoteOperations = Object.freeze({
       configured() {
         return gatewayRemote.configured();
@@ -104,7 +148,8 @@
           ...body,
           capabilities: Object.freeze({
             ...(body.capabilities || {}),
-            reference_compiler: localWorkData.configured() && Boolean(window.MASTERV_LOCAL_REFERENCE_COMPILER)
+            reference_compiler: localWorkData.configured() && Boolean(window.MASTERV_LOCAL_REFERENCE_COMPILER),
+            background_batch: true
           })
         });
       },
@@ -112,50 +157,25 @@
         if (!Array.isArray(sourceIds) || sourceIds.length < 2) throw new Error("Reference comparison requires at least two local references");
         const workspaceId = await localWorkData.bootstrapPersonalWorkspace(null);
         const records = [];
-        for (const sourceId of sourceIds) {
-          records.push(await localWorkData.fetchReferenceDetail(null, workspaceId, sourceId));
-        }
+        for (const sourceId of sourceIds) records.push(await localWorkData.fetchReferenceDetail(null, workspaceId, sourceId));
         const result = requireCompiler().compile(records);
         const sortedIds = [...sourceIds].sort();
         await localWorkData.saveComparisonEntry({
           id: `reference-compare:${sortedIds.join("|")}`,
-          payload: {
-            source_ids: sortedIds,
-            comparison: result.comparison,
-            evidence_rules: result.evidence_rules
-          },
+          payload: { source_ids: sortedIds, comparison: result.comparison, evidence_rules: result.evidence_rules },
           schema_version: COMPARISON_SCHEMA_VERSION
         });
-        return Object.freeze({
-          ...result,
-          provider: "local-canonical",
-          persistence_authority: "local-sqlite",
-          gateway_requests: 0
-        });
+        return Object.freeze({ ...result, provider: "local-canonical", persistence_authority: "local-sqlite", gateway_requests: 0 });
       },
       discoverYouTube(activeSession, ...args) {
         return gatewayRemote.discoverYouTube(requireGatewaySession(activeSession), ...args);
       },
       async analyzeYouTube(activeSession, ...args) {
         const result = await gatewayRemote.analyzeYouTube(requireGatewaySession(activeSession), ...args);
-        const source = result?.source;
-        if (!source?.source_id || !source?.platform) throw new Error("Gateway analysis source identity is incomplete");
-        latestGatewaySource = Object.freeze({ platform: source.platform, source_id: source.source_id });
-        await localWorkData.saveAnalysisResult({
-          id: `analysis:${source.platform}:${source.source_id}:${result.request_id || "latest"}`,
-          source_platform: source.platform,
-          source_id: source.source_id,
-          analysis: result.analysis,
-          analysis_cache_key: null,
-          schema_version: ANALYSIS_SCHEMA_VERSION
-        });
+        await persistAnalysis(result);
         return Object.freeze({
           ...result,
-          diagnostics: Object.freeze({
-            ...(result.diagnostics || {}),
-            persistence_writes: 1,
-            persistence_authority: "local-sqlite"
-          })
+          diagnostics: Object.freeze({ ...(result.diagnostics || {}), persistence_writes: 1, persistence_authority: "local-sqlite" })
         });
       },
       async generateProductionGuidance(activeSession, ...args) {
@@ -170,32 +190,66 @@
         });
         return Object.freeze({
           ...result,
-          diagnostics: Object.freeze({
-            ...(result.diagnostics || {}),
-            persistence_writes: 1,
-            persistence_authority: "local-sqlite"
+          diagnostics: Object.freeze({ ...(result.diagnostics || {}), persistence_writes: 1, persistence_authority: "local-sqlite" })
+        });
+      },
+      async probeBackgroundBatch(activeSession) {
+        requireGatewaySession(activeSession);
+        return Object.freeze({
+          contract_version: BACKGROUND_BATCH_CONTRACT_VERSION,
+          capabilities: Object.freeze({
+            boundary_probe: true,
+            local_session_queue: true,
+            gateway_execution: true,
+            local_analysis_persistence: true,
+            desktop_submit_enabled: true,
+            submit: true,
+            restart_durability: false
           })
         });
       },
-      async probeBackgroundBatch(activeSession, ...args) {
-        if (activeSession?.provider === "legacy-supabase") return await legacyRemote.probeBackgroundBatch(activeSession, ...args);
-        throw new Error("Background Batch is not exposed by the stateless Gateway in the 0.1.2 visible cutover");
+      async listBackgroundBatchJobs(activeSession) {
+        requireGatewaySession(activeSession);
+        const jobs = [...backgroundJobs.values()]
+          .sort((left, right) => right.created_at.localeCompare(left.created_at))
+          .map(snapshotJob);
+        return Object.freeze({ contract_version: BACKGROUND_BATCH_CONTRACT_VERSION, jobs });
       },
-      async listBackgroundBatchJobs(activeSession, ...args) {
-        if (activeSession?.provider === "legacy-supabase") return await legacyRemote.listBackgroundBatchJobs(activeSession, ...args);
-        throw new Error("Background Batch is transition-only and unavailable to Product-Key sessions");
+      async submitBackgroundBatchJob(activeSession, requestId, url) {
+        requireGatewaySession(activeSession);
+        const id = String(requestId || "").trim();
+        const canonicalUrl = String(url || "").trim();
+        if (!id || !canonicalUrl) throw new Error("Background operation request_id and URL are required");
+        const existing = backgroundJobs.get(id);
+        if (existing) return snapshotJob(existing);
+        const now = new Date().toISOString();
+        const job = {
+          request_id: id,
+          source_id: null,
+          canonical_url: canonicalUrl,
+          status: "QUEUED",
+          model: null,
+          provider_state: "local-session-queue",
+          error: null,
+          created_at: now,
+          updated_at: now
+        };
+        backgroundJobs.set(id, job);
+        void executeBackgroundJob(activeSession, id);
+        return snapshotJob(job);
       },
-      async submitBackgroundBatchJob(activeSession, ...args) {
-        if (activeSession?.provider === "legacy-supabase") return await legacyRemote.submitBackgroundBatchJob(activeSession, ...args);
-        throw new Error("Background Batch is transition-only and unavailable to Product-Key sessions");
-      },
-      async checkBackgroundBatchJob(activeSession, ...args) {
-        if (activeSession?.provider === "legacy-supabase") return await legacyRemote.checkBackgroundBatchJob(activeSession, ...args);
-        throw new Error("Background Batch is transition-only and unavailable to Product-Key sessions");
+      async checkBackgroundBatchJob(activeSession, requestId) {
+        requireGatewaySession(activeSession);
+        const job = backgroundJobs.get(String(requestId || ""));
+        if (!job) throw new Error(`Background operation not found: ${requestId}`);
+        return Object.freeze({ contract_version: BACKGROUND_BATCH_CONTRACT_VERSION, job: snapshotJob(job) });
       },
       authority: Object.freeze({
         primary: "masterv-gateway",
         reference_compare: "local-canonical",
+        background_operations: "local-session-orchestrated+gateway-executed",
+        background_job_restart_durability: false,
+        background_result_persistence: "local-sqlite",
         user_work_data_transport_to_gateway: false,
         legacy_scope: "0.1.2-migration-only"
       })

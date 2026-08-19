@@ -23,17 +23,18 @@
   let probeInFlight = false;
   let listInFlight = false;
 
-  panel.dataset.providerAuthority = "hosted-secret";
+  panel.dataset.providerAuthority = "masterv-gateway";
   panel.dataset.providerCredentialsInClient = "false";
-  panel.dataset.modelAuthority = "hosted-config";
-  panel.dataset.persistenceAuthority = "durable-ledger";
-  panel.dataset.ledgerWriteAuthority = "hosted-admin-only";
-  panel.dataset.workspaceAuthority = "jwt-derived-personal";
-  panel.dataset.createIdempotency = "request-id-reservation";
+  panel.dataset.modelAuthority = "gateway-server-config";
+  panel.dataset.persistenceAuthority = "local-sqlite-analysis-results";
+  panel.dataset.jobLedgerAuthority = "desktop-session-memory";
+  panel.dataset.workspaceAuthority = "local-device";
+  panel.dataset.createIdempotency = "request-id-local-map";
+  panel.dataset.restartDurability = "false";
   panel.dataset.autoRetry = "false";
   panel.dataset.referenceLibraryWrites = "0";
   panel.dataset.directGeminiRequests = "0";
-  panel.dataset.transportAuthority = "backend-provider";
+  panel.dataset.transportAuthority = "backend-provider/masterv-gateway";
 
   function setStatus(text, tone = "") {
     status.textContent = text;
@@ -54,12 +55,13 @@
 
   function applyCapability(body) {
     const capabilities = body?.capabilities;
-    if (body?.contract_version !== "background-batch-hosted-v1" || capabilities?.boundary_probe !== true || capabilities?.durable_ledger !== true) return false;
-    providerPrecondition.textContent = capabilities.provider_precondition_confirmed ? "CONFIRMED" : "BLOCKED";
-    liveVerified.textContent = capabilities.live_batch_verified ? "VERIFIED" : "NOT VERIFIED";
+    if (body?.contract_version !== "background-batch-local-gateway-v1" || capabilities?.boundary_probe !== true || capabilities?.local_session_queue !== true || capabilities?.gateway_execution !== true) return false;
+    providerPrecondition.textContent = capabilities.gateway_execution ? "GATEWAY" : "BLOCKED";
+    liveVerified.textContent = capabilities.local_analysis_persistence ? "LOCAL SQLITE" : "BLOCKED";
     activation.textContent = capabilities.desktop_submit_enabled ? "ENABLED" : "OFF";
+    panel.dataset.restartDurability = String(capabilities.restart_durability === true);
     setCapability(capabilities.submit === true);
-    setStatus(capabilities.submit === true ? "READY" : "PROVIDER PRECONDITION BLOCKED", capabilities.submit === true ? "ok" : "error");
+    setStatus(capabilities.submit === true ? "READY" : "GATEWAY BLOCKED", capabilities.submit === true ? "ok" : "error");
     panel.hidden = !session;
     return true;
   }
@@ -69,7 +71,7 @@
     probeInFlight = true;
     try {
       const body = await backend.remoteOperations.probeBackgroundBatch(session);
-      if (!applyCapability(body)) throw new Error("Background Batch capability contract mismatch");
+      if (!applyCapability(body)) throw new Error("Local Gateway Background operation capability contract mismatch");
     } catch (error) {
       setCapability(false);
       setStatus(error instanceof Error ? error.message : String(error), "error");
@@ -89,7 +91,7 @@
     if (rows.length === 0) {
       const empty = document.createElement("p");
       empty.className = "library-state";
-      empty.textContent = "Background Batch job이 없습니다.";
+      empty.textContent = "현재 Desktop session의 Background operation이 없습니다.";
       list.append(empty);
       return;
     }
@@ -108,15 +110,22 @@
       url.textContent = job.canonical_url || "—";
       const meta = document.createElement("div");
       meta.className = "library-meta";
-      for (const text of [job.status || "—", job.model || "—", job.provider_state || "provider pending"]) {
+      for (const text of [job.status || "—", job.model || "—", job.provider_state || "local queue"]) {
         const span = document.createElement("span");
         span.textContent = text;
         meta.append(span);
       }
-      content.append(title, url, meta);
+      if (job.error) {
+        const error = document.createElement("p");
+        error.className = "error-text small";
+        error.textContent = job.error;
+        content.append(title, url, meta, error);
+      } else {
+        content.append(title, url, meta);
+      }
       const actions = document.createElement("div");
       actions.className = "library-item-actions";
-      if (!terminal(job.status) && job.provider_job_name) {
+      if (!terminal(job.status)) {
         const check = document.createElement("button");
         check.type = "button";
         check.className = "secondary compact";
@@ -153,12 +162,13 @@
     if (!session || !submitReady || !urlInput.value.trim()) return;
     const requestId = crypto.randomUUID();
     submit.disabled = true;
-    setStatus("SUBMITTING");
+    setStatus("QUEUEING");
     try {
-      const request = { operation: "background_batch_submit", request_id: requestId, url: urlInput.value.trim() };
-      await backend.remoteOperations.submitBackgroundBatchJob(session, request.request_id, request.url);
-      setStatus("SUBMITTED", "ok");
+      await backend.remoteOperations.submitBackgroundBatchJob(session, requestId, urlInput.value.trim());
+      setStatus("QUEUED", "ok");
       await refreshJobs();
+      window.setTimeout(() => { void refreshJobs(); }, 800);
+      window.setTimeout(() => { void refreshJobs(); }, 2500);
     } catch (error) {
       setStatus(error instanceof Error ? error.message : String(error), "error");
       await refreshCapability();
@@ -171,9 +181,8 @@
     if (!session || !requestId) return;
     setStatus("CHECKING");
     try {
-      const request = { operation: "background_batch_check", request_id: requestId };
-      await backend.remoteOperations.checkBackgroundBatchJob(session, request.request_id);
-      setStatus("CHECKED", "ok");
+      const body = await backend.remoteOperations.checkBackgroundBatchJob(session, requestId);
+      setStatus(body.job?.status || "CHECKED", body.job?.status === "FAILED" ? "error" : "ok");
       await refreshJobs();
     } catch (error) {
       setStatus(error instanceof Error ? error.message : String(error), "error");
@@ -204,6 +213,10 @@
     setCapability(null);
     setStatus("CHECK REQUIRED");
     updateControls();
+    void (async () => {
+      await refreshCapability();
+      if (submitReady) await refreshJobs();
+    })();
   });
 
   form.addEventListener("submit", (event) => {
