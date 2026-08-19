@@ -1,8 +1,10 @@
-import type {
-  GatewayCapability,
-  GatewayDependencies,
-  GatewayEntitlement,
-  GatewayPrincipal
+import { randomUUID } from "node:crypto";
+import {
+  GATEWAY_USAGE_UNITS,
+  type GatewayCapability,
+  type GatewayDependencies,
+  type GatewayEntitlement,
+  type GatewayPrincipal
 } from "./contracts";
 import { asGatewayError, GatewayError } from "./errors";
 import { normalizeAnalyzeInput, normalizeDiscoveryInput, normalizeGuidanceInput } from "./input";
@@ -11,7 +13,7 @@ const JSON_HEADERS = Object.freeze({
   "Content-Type": "application/json; charset=utf-8",
   "Cache-Control": "no-store",
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, content-type",
+  "Access-Control-Allow-Headers": "authorization, content-type, x-masterv-request-id",
   "Access-Control-Allow-Methods": "GET, POST, OPTIONS"
 });
 
@@ -37,8 +39,17 @@ async function bodyObject(request: Request) {
 function bearerCredential(request: Request) {
   const authorization = request.headers.get("authorization")?.trim() ?? "";
   const match = authorization.match(/^Bearer\s+(.+)$/i);
-  if (!match?.[1]?.trim()) throw new GatewayError(401, "GATEWAY_SESSION_REQUIRED", "A session credential is required.");
+  if (!match?.[1]?.trim()) throw new GatewayError(401, "GATEWAY_SESSION_REQUIRED", "A credential is required.");
   return match[1].trim();
+}
+
+function requestOperationId(request: Request) {
+  const supplied = request.headers.get("x-masterv-request-id")?.trim();
+  if (!supplied) return randomUUID();
+  if (supplied.length > 128 || !/^[A-Za-z0-9._:-]+$/.test(supplied)) {
+    throw new GatewayError(400, "GATEWAY_REQUEST_ID_INVALID", "x-masterv-request-id is invalid.");
+  }
+  return supplied;
 }
 
 async function authorize(
@@ -54,19 +65,38 @@ async function authorize(
   if (entitlement.license_status !== "active") throw new GatewayError(403, "GATEWAY_LICENSE_INACTIVE", "The license is not active.");
   if (!entitlement.capabilities[capability]) throw new GatewayError(403, "GATEWAY_CAPABILITY_DENIED", `Capability is not available: ${capability}`);
 
-  if (capability !== "discovery") {
+  const requiredUnits = GATEWAY_USAGE_UNITS[capability];
+  if (requiredUnits > 0) {
     if (!dependencies.usage) throw new GatewayError(503, "GATEWAY_USAGE_PROVIDER_NOT_ACTIVE", "Usage enforcement is not active yet.");
-    const decision = await dependencies.usage.authorize({ principal, entitlement, capability });
+    const decision = await dependencies.usage.authorize({
+      principal,
+      entitlement,
+      capability,
+      required_units: requiredUnits
+    });
     if (!decision.allowed) throw new GatewayError(402, "GATEWAY_USAGE_DENIED", decision.reason || "Usage allowance is exhausted.");
   }
 
   return { principal, entitlement };
 }
 
-async function recordUsage(dependencies: GatewayDependencies, principal: GatewayPrincipal, capability: GatewayCapability, chargedUnits: number) {
-  if (capability === "discovery" || chargedUnits <= 0) return null;
+async function recordUsage(
+  dependencies: GatewayDependencies,
+  principal: GatewayPrincipal,
+  entitlement: GatewayEntitlement,
+  capability: GatewayCapability,
+  operationId: string
+) {
+  const chargedUnits = GATEWAY_USAGE_UNITS[capability];
+  if (chargedUnits <= 0) return null;
   if (!dependencies.usage) throw new GatewayError(503, "GATEWAY_USAGE_PROVIDER_NOT_ACTIVE", "Usage accounting is not active yet.");
-  return await dependencies.usage.record({ principal, capability, charged_units: chargedUnits });
+  return await dependencies.usage.record({
+    principal,
+    entitlement,
+    capability,
+    charged_units: chargedUnits,
+    operation_id: operationId
+  });
 }
 
 export function createGateway(dependencies: GatewayDependencies = {}) {
@@ -92,6 +122,7 @@ export function createGateway(dependencies: GatewayDependencies = {}) {
           },
           providers: {
             license: Boolean(frozenDependencies.license),
+            billing: Boolean(frozenDependencies.billing),
             credential: Boolean(frozenDependencies.credential),
             entitlement: Boolean(frozenDependencies.entitlement),
             usage: Boolean(frozenDependencies.usage),
@@ -102,19 +133,31 @@ export function createGateway(dependencies: GatewayDependencies = {}) {
       }
 
       if (request.method === "POST" && url.pathname === "/v1/license/activate") {
-        if (!frozenDependencies.license) throw new GatewayError(501, "GATEWAY_LICENSE_PROVIDER_NOT_ACTIVE", "License activation is reserved for EXIT-1D.");
-        return json({ service: "masterv-gateway", contract_version: GATEWAY_CONTRACT_VERSION, result: await frozenDependencies.license.activate(await bodyObject(request)) });
+        if (!frozenDependencies.license) throw new GatewayError(501, "GATEWAY_LICENSE_PROVIDER_NOT_ACTIVE", "License activation provider is not active.");
+        return json({
+          service: "masterv-gateway",
+          contract_version: GATEWAY_CONTRACT_VERSION,
+          result: await frozenDependencies.license.activate(await bodyObject(request))
+        });
       }
 
       if (request.method === "POST" && url.pathname === "/v1/session") {
-        if (!frozenDependencies.license) throw new GatewayError(501, "GATEWAY_LICENSE_PROVIDER_NOT_ACTIVE", "Session issuance is reserved for EXIT-1D.");
-        return json({ service: "masterv-gateway", contract_version: GATEWAY_CONTRACT_VERSION, result: await frozenDependencies.license.createSession(await bodyObject(request)) });
+        if (!frozenDependencies.license) throw new GatewayError(501, "GATEWAY_LICENSE_PROVIDER_NOT_ACTIVE", "Session issuance provider is not active.");
+        return json({
+          service: "masterv-gateway",
+          contract_version: GATEWAY_CONTRACT_VERSION,
+          result: await frozenDependencies.license.createSession(await bodyObject(request), bearerCredential(request))
+        });
       }
 
       if (request.method === "GET" && url.pathname === "/v1/entitlement") {
-        if (!frozenDependencies.credential || !frozenDependencies.entitlement) throw new GatewayError(503, "GATEWAY_ENTITLEMENT_PROVIDER_NOT_ACTIVE", "Entitlement validation is reserved for EXIT-1D activation.");
+        if (!frozenDependencies.credential || !frozenDependencies.entitlement) throw new GatewayError(503, "GATEWAY_ENTITLEMENT_PROVIDER_NOT_ACTIVE", "Entitlement validation is not active.");
         const principal = await frozenDependencies.credential.verifySession(bearerCredential(request));
-        return json({ service: "masterv-gateway", contract_version: GATEWAY_CONTRACT_VERSION, entitlement: await frozenDependencies.entitlement.getEntitlement(principal) });
+        return json({
+          service: "masterv-gateway",
+          contract_version: GATEWAY_CONTRACT_VERSION,
+          entitlement: await frozenDependencies.entitlement.getEntitlement(principal)
+        });
       }
 
       if (request.method === "POST" && url.pathname === "/v1/discovery") {
@@ -138,13 +181,15 @@ export function createGateway(dependencies: GatewayDependencies = {}) {
 
       if (request.method === "POST" && url.pathname === "/v1/analyze") {
         if (!frozenDependencies.ai) throw new GatewayError(503, "GATEWAY_AI_PROVIDER_NOT_CONFIGURED", "AI provider is not configured.");
-        const { principal } = await authorize(request, frozenDependencies, "analyze");
+        const operationId = requestOperationId(request);
+        const { principal, entitlement } = await authorize(request, frozenDependencies, "analyze");
         const input = normalizeAnalyzeInput(await bodyObject(request));
         const result = await frozenDependencies.ai.analyzeYouTube(input.source.canonical_url);
-        const usage = await recordUsage(frozenDependencies, principal, "analyze", 1);
+        const usage = await recordUsage(frozenDependencies, principal, entitlement, "analyze", operationId);
         return json({
           service: "masterv-gateway",
           contract_version: GATEWAY_CONTRACT_VERSION,
+          request_id: operationId,
           operation: "analyze",
           provider: result.provider,
           provider_authority: "gateway-secret",
@@ -165,13 +210,15 @@ export function createGateway(dependencies: GatewayDependencies = {}) {
 
       if (request.method === "POST" && url.pathname === "/v1/guidance") {
         if (!frozenDependencies.ai) throw new GatewayError(503, "GATEWAY_AI_PROVIDER_NOT_CONFIGURED", "AI provider is not configured.");
-        const { principal } = await authorize(request, frozenDependencies, "guidance");
+        const operationId = requestOperationId(request);
+        const { principal, entitlement } = await authorize(request, frozenDependencies, "guidance");
         const input = normalizeGuidanceInput(await bodyObject(request));
         const result = await frozenDependencies.ai.generateProductionGuidance(input);
-        const usage = await recordUsage(frozenDependencies, principal, "guidance", result.gemini_requests > 0 ? 1 : 0);
+        const usage = await recordUsage(frozenDependencies, principal, entitlement, "guidance", operationId);
         return json({
           service: "masterv-gateway",
           contract_version: GATEWAY_CONTRACT_VERSION,
+          request_id: operationId,
           operation: "guidance",
           provider: result.provider,
           provider_authority: result.provider === "gemini" ? "gateway-secret" : "none",
