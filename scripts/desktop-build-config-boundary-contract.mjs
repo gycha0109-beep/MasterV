@@ -48,15 +48,16 @@ assert.match(backendSource, /polar_active:\s*false/);
 assert.match(persistence, /product_authority_active:\s*false/);
 assert.match(persistence, /supabase_authority_unchanged:\s*true/);
 
-assert.equal(updaterSource.includes("window.MASTERV_BACKEND"), true, "updater UI must consume backend provider runtime");
-assert.equal(updaterSource.includes("backend.session.current()"), true, "updater UI must use backend current session");
-assert.equal(updaterSource.includes("backend.session.subscribe"), true, "updater UI must subscribe to backend session lifecycle");
-assert.equal(updaterSource.includes("window.MASTERV_UPDATER_BOOTSTRAP_CONFIG"), true, "updater UI must consume neutral updater bootstrap config");
-for (const forbidden of ["MASTERV_SESSION_BRIDGE", "getAccessToken", "session-bridge.js"]) {
-  assert.equal(updaterSource.includes(forbidden), false, `updater UI still owns removed session path: ${forbidden}`);
+assert.equal(updaterSource.includes("window.MASTERV_BACKEND"), false, "EXIT-1E updater UI must not consume backend session runtime");
+assert.equal(updaterSource.includes("backend.session"), false, "EXIT-1E updater UI must not subscribe to backend sessions");
+assert.equal(updaterSource.includes("window.MASTERV_UPDATER_CONFIG"), true, "EXIT-1E updater UI must consume independent updater config");
+assert.equal(updaterSource.includes("subscription_independent"), true, "EXIT-1E updater must declare subscription independence");
+for (const forbidden of ["MASTERV_SESSION_BRIDGE", "getAccessToken", "session-bridge.js", "client_key"]) {
+  assert.equal(updaterSource.includes(forbidden), false, `updater UI still owns removed or legacy session path: ${forbidden}`);
 }
-assert.equal(updaterPrepareSource.includes("desktop-legacy-config-bridge.mjs"), true, "updater preparation must delegate transitional client config to legacy bridge");
-assert.equal(updaterPrepareSource.includes("MASTERV_UPDATER_BOOTSTRAP_CONFIG"), true, "updater preparation must emit neutral bootstrap config");
+assert.equal(updaterPrepareSource.includes("desktop-legacy-config-bridge.mjs"), false, "EXIT-1E updater preparation must not delegate to legacy backend config");
+assert.equal(updaterPrepareSource.includes("MASTERV_UPDATER_CONFIG"), true, "EXIT-1E updater preparation must emit independent updater config");
+assert.equal(updaterPrepareSource.includes("client_key"), false, "EXIT-1E updater preparation must not emit a client key");
 
 const env = {
   ...process.env,
@@ -106,15 +107,16 @@ for (const asset of order) {
 assert.equal(runtimeIndex.includes("session-bridge.js"), false, "runtime must not resurrect session bridge");
 
 const prepare = spawnSync(process.execPath, ["scripts/prepare-desktop-updater-bootstrap.mjs"], { cwd: root, env, encoding: "utf8" });
-assert.equal(prepare.status, 0, `updater bootstrap preparation failed: ${prepare.stderr || prepare.stdout}`);
+assert.equal(prepare.status, 0, `updater preparation failed: ${prepare.stderr || prepare.stdout}`);
 const preparedConfig = read(path.relative(root, path.join(dist, "config.js")));
 const preparedIndex = read(path.relative(root, path.join(dist, "index.html")));
-assert.equal(preparedConfig.includes("MASTERV_UPDATER_BOOTSTRAP_CONFIG"), true, "neutral updater bootstrap config missing");
-assert.equal(preparedConfig.includes('"client_key":"sb_publishable_contract_fixture"'), true, "neutral updater client key fixture missing");
-assert.equal(preparedConfig.includes("supabase_publishable_key"), false, "updater bootstrap config must not expose vendor field name");
-assert.equal(preparedIndex.includes("session-bridge.js"), false, "updater bootstrap must not resurrect session bridge");
-assert.ok(preparedIndex.indexOf("./backend/backend.js") < preparedIndex.indexOf("./app.js"), "backend must load before app in updater bootstrap");
-assert.ok(preparedIndex.indexOf("./app.js") < preparedIndex.indexOf("./updater.js"), "updater UI must load after app/provider session runtime");
+assert.equal(preparedConfig.includes("MASTERV_UPDATER_CONFIG"), true, "independent updater config missing");
+assert.equal(preparedConfig.includes('"subscription_independent":true'), true, "independent updater config must declare subscription independence");
+assert.equal(preparedConfig.includes("client_key"), false, "independent updater config must not expose a client key");
+assert.equal(preparedConfig.includes("supabase_publishable_key"), false, "updater config must not expose vendor field names");
+assert.equal(preparedIndex.includes("session-bridge.js"), false, "updater preparation must not resurrect session bridge");
+assert.ok(preparedIndex.indexOf("./backend/backend.js") < preparedIndex.indexOf("./app.js"), "backend must load before app");
+assert.ok(preparedIndex.indexOf("./app.js") < preparedIndex.indexOf("./updater.js"), "updater UI must load after app");
 
 console.log(JSON.stringify({
   status: "MASTERV_SUPABASE_EXIT_1B_5_BUILD_CONFIG_BOUNDARY_CONTRACT_PASS",
@@ -122,8 +124,8 @@ console.log(JSON.stringify({
   generic_builder_vendor_env_names: 0,
   backend_generic_config_dependency: false,
   legacy_runtime_config_asset: "backend/legacy/runtime-config.js",
-  updater_session_authority: "backend-provider",
-  updater_bootstrap_config: "neutral",
+  updater_session_authority: "none-independent-exit-1e",
+  updater_bootstrap_config: "independent-neutral",
   supabase_authority_unchanged: true,
   product_authority_active: false,
   gateway_active: false,

@@ -2,7 +2,7 @@
 
 mod local_persistence;
 
-#[cfg(feature = "private-updater")]
+#[cfg(feature = "independent-updater")]
 mod updater;
 
 use std::io;
@@ -11,7 +11,7 @@ use tauri::{Manager, WebviewUrl, WebviewWindowBuilder};
 fn main() {
     let builder = tauri::Builder::default();
 
-    #[cfg(feature = "private-updater")]
+    #[cfg(feature = "independent-updater")]
     let builder = builder
         .plugin(
             tauri_plugin_updater::Builder::new()
@@ -25,7 +25,7 @@ fn main() {
             updater::desktop_update_install
         ]);
 
-    #[cfg(not(feature = "private-updater"))]
+    #[cfg(not(feature = "independent-updater"))]
     let builder = builder.invoke_handler(tauri::generate_handler![
         local_persistence::desktop_local_persistence_status
     ]);

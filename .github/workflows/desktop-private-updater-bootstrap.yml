@@ -1,21 +1,21 @@
-name: Desktop Private Updater Bootstrap
+name: Desktop Independent Updater Bootstrap
 
 on:
   pull_request:
     branches: [main]
     paths:
-      - "desktop/session-bridge.js"
       - "desktop/updater.js"
       - "scripts/prepare-desktop-updater-bootstrap.mjs"
       - "scripts/desktop-private-updater-contract.mjs"
-      - "scripts/desktop-private-updater-channel-smoke.mjs"
-      - "scripts/desktop-updater-installed-launch-windows.mjs"
-      - "scripts/desktop-windows-runtime-smoke.mjs"
+      - "scripts/desktop-independent-updater-contract.mjs"
+      - "scripts/desktop-independent-update-manifest.mjs"
+      - "scripts/desktop-independent-updater-installed-launch-windows.mjs"
       - "src-tauri/src/main.rs"
       - "src-tauri/src/updater.rs"
       - "src-tauri/Cargo.toml"
       - "src-tauri/Cargo.lock"
       - "src-tauri/tauri.windows-updater-bootstrap.conf.json"
+      - "src-tauri/tauri.windows-independent-updater-release.conf.json"
       - ".github/workflows/desktop-private-updater-bootstrap.yml"
   workflow_dispatch:
 
@@ -23,16 +23,10 @@ permissions:
   contents: read
 
 concurrency:
-  group: desktop-private-updater-bootstrap-${{ github.ref }}
+  group: desktop-independent-updater-bootstrap-${{ github.ref }}
   cancel-in-progress: true
 
 env:
-  NEXT_PUBLIC_SUPABASE_URL: https://euqkjrmrhhvnyzasppnd.supabase.co
-  NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: sb_publishable_WUdzeBz9jsYwQXP_YeyD4w_OdkRcLp2
-  NEXT_PUBLIC_MASTERV_API_BASE_URL: https://euqkjrmrhhvnyzasppnd.supabase.co/functions/v1
-  MASTERV_DESKTOP_REQUIRE_CONFIG: "1"
-  SUPABASE_TEST_EMAIL: ${{ secrets.SUPABASE_TEST_EMAIL }}
-  SUPABASE_TEST_PASSWORD: ${{ secrets.SUPABASE_TEST_PASSWORD }}
   SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
 
 jobs:
@@ -50,39 +44,12 @@ jobs:
       - run: npm ci
       - name: Verify locked updater dependency graph
         run: cargo metadata --locked --manifest-path src-tauri/Cargo.toml --no-deps | Out-Null
-      - name: Verify private updater static contract
-        run: node scripts/desktop-private-updater-contract.mjs
-      - name: Verify authenticated private channel is empty before activation
-        run: node scripts/desktop-private-updater-channel-smoke.mjs
-      - name: Build one-time updater bootstrap installer
-        run: npm run tauri -- build --features private-updater --bundles nsis --config src-tauri/tauri.windows-updater-bootstrap.conf.json
-      - name: Launch updater-enabled native runtime
-        id: updater_launch
-        continue-on-error: true
-        run: npm run test:desktop-windows-runtime
-      - name: Capture updater runtime crash diagnostics
-        if: ${{ steps.updater_launch.outcome != 'success' }}
-        shell: pwsh
-        run: |
-          New-Item -ItemType Directory -Force -Path artifacts/desktop-private-updater-bootstrap/diagnostics | Out-Null
-          if (Test-Path artifacts/desktop-windows-runtime) {
-            Copy-Item artifacts/desktop-windows-runtime/* artifacts/desktop-private-updater-bootstrap/diagnostics/ -Recurse -Force
-          }
-          $events = Get-WinEvent -FilterHashtable @{LogName='Application'; StartTime=(Get-Date).AddMinutes(-10)} -ErrorAction SilentlyContinue |
-            Where-Object { $_.ProviderName -in @('Application Error','Windows Error Reporting') -or $_.Message -match 'masterv-desktop|WebView2|msedgewebview2' } |
-            Select-Object -First 50 TimeCreated, Id, LevelDisplayName, ProviderName, Message
-          $events | Format-List | Out-String -Width 4096 | Set-Content -Encoding utf8 artifacts/desktop-private-updater-bootstrap/diagnostics/windows-application-events.txt
-          [ordered]@{
-            status = 'MASTERV_DESKTOP_PRIVATE_UPDATER_NATIVE_LAUNCH_FAILED'
-            source_sha = $env:SOURCE_SHA
-            checkout_sha = $env:GITHUB_SHA
-          } | ConvertTo-Json | Set-Content -Encoding utf8 artifacts/desktop-private-updater-bootstrap/diagnostics/launch-failure.json
-      - name: Require updater-enabled native runtime
-        if: ${{ steps.updater_launch.outcome != 'success' }}
-        shell: pwsh
-        run: throw "Updater-enabled MasterV runtime did not launch; diagnostics were captured."
-      - name: Verify installed updater bootstrap launch and uninstall
-        run: node scripts/desktop-updater-installed-launch-windows.mjs
+      - name: Verify independent updater contract
+        run: node scripts/desktop-independent-updater-contract.mjs
+      - name: Build one-time independent updater bootstrap installer
+        run: npm run tauri -- build --features independent-updater --bundles nsis --config src-tauri/tauri.windows-updater-bootstrap.conf.json
+      - name: Verify installed independent updater bootstrap launch and uninstall
+        run: node scripts/desktop-independent-updater-installed-launch-windows.mjs
       - name: Verify bootstrap installer authority
         shell: pwsh
         run: |
@@ -92,33 +59,32 @@ jobs:
           $sigFiles = @(Get-ChildItem "src-tauri/target/release/bundle/nsis" -Filter "*.sig" -ErrorAction SilentlyContinue)
           if ($sigFiles.Count -ne 0) { throw "Bootstrap build must not create updater release artifacts" }
           $hash = (Get-FileHash $installer.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
-          New-Item -ItemType Directory -Force -Path artifacts/desktop-private-updater-bootstrap | Out-Null
-          Copy-Item $installer.FullName artifacts/desktop-private-updater-bootstrap/MasterV_0.1.1_x64-setup.exe
+          New-Item -ItemType Directory -Force -Path artifacts/desktop-independent-updater-bootstrap | Out-Null
+          Copy-Item $installer.FullName artifacts/desktop-independent-updater-bootstrap/MasterV_0.1.1_x64-setup.exe
           [ordered]@{
-            status = "MASTERV_DESKTOP_PRIVATE_UPDATER_BOOTSTRAP_PASS"
+            status = "MASTERV_DESKTOP_INDEPENDENT_UPDATER_BOOTSTRAP_PASS"
             version = "0.1.1"
             source_sha = $env:SOURCE_SHA
             checkout_sha = $env:GITHUB_SHA
-            channel = "private-test"
-            cargo_feature = "private-updater"
+            channel = "stable"
+            transport = "tauri-static-signed"
+            cargo_feature = "independent-updater"
             installer_sha256 = $hash
             authenticode = "NotSigned"
             updater_client_integrated = $true
-            updater_native_launch_verified = $true
             updater_installed_launch_verified = $true
             updater_installed_uninstall_verified = $true
+            subscription_independent = $true
+            session_required = $false
             updater_artifact_created = $false
             update_release_published = $false
             automatic_install = $false
             signing_private_key_in_job = $false
-            public_release = $false
             activation_allowed = $false
-          } | ConvertTo-Json | Set-Content -Encoding utf8 artifacts/desktop-private-updater-bootstrap/bootstrap-manifest.json
+          } | ConvertTo-Json | Set-Content -Encoding utf8 artifacts/desktop-independent-updater-bootstrap/bootstrap-manifest.json
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         if: always()
         with:
-          name: masterv-windows-private-updater-bootstrap
-          path: |
-            artifacts/desktop-private-updater-bootstrap
-            artifacts/desktop-windows-runtime
+          name: masterv-windows-independent-updater-bootstrap
+          path: artifacts/desktop-independent-updater-bootstrap
           if-no-files-found: warn

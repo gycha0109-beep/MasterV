@@ -72,6 +72,7 @@ const builder = read("scripts/build-desktop-static.mjs");
 const bridge = read("scripts/desktop-legacy-config-bridge.mjs");
 const updaterPrepare = read("scripts/prepare-desktop-updater-bootstrap.mjs");
 const nativeUpdater = read("src-tauri/src/updater.rs");
+const updaterBootstrap = JSON.parse(read("src-tauri/tauri.windows-updater-bootstrap.conf.json"));
 const persistence = read("src-tauri/src/local_persistence.rs");
 
 for (const token of ["NEXT_PUBLIC_SUPABASE_URL", "NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY", "supabase_url", "supabase_publishable_key"]) {
@@ -96,17 +97,24 @@ assert.match(backend, /gateway_active:\s*false/);
 assert.match(backend, /polar_active:\s*false/);
 
 for (const [label, source] of [["app", app], ["deep", deep], ["batch", batch], ["updater", updaterUi], ["boundary", boundary]]) {
-  assert.equal(/\bfetch\s*\(/.test(source), false, `${label} bypasses provider boundary with direct fetch`);
+  assert.equal(/\bfetch\s*\(/.test(source), false, `${label} bypasses its authority boundary with direct fetch`);
 }
 assert.match(deep, /backend\.session\.subscribe/);
 assert.match(batch, /backend\.session\.subscribe/);
-assert.match(updaterUi, /backend\.session\.current\(\)/);
-assert.match(updaterUi, /backend\.session\.subscribe/);
-assert.equal(updaterUi.includes("window.MASTERV_UPDATER_BOOTSTRAP_CONFIG"), true, "updater UI lost neutral bootstrap config boundary");
+assert.equal(updaterUi.includes("backend.session"), false, "EXIT-1E updater must not consume backend session authority");
+assert.equal(updaterUi.includes("window.MASTERV_BACKEND"), false, "EXIT-1E updater must not consume backend provider authority");
+assert.equal(updaterUi.includes("window.MASTERV_UPDATER_CONFIG"), true, "EXIT-1E updater lost independent config boundary");
+assert.equal(updaterUi.includes("subscription_independent"), true, "EXIT-1E updater must remain subscription-independent");
 
-assert.equal(nativeUpdater.includes(".supabase.co"), true, "native updater transitional Supabase dependency unexpectedly changed before EXIT-1E");
-assert.equal(nativeUpdater.includes("Authorization"), true, "native updater auth header contract unexpectedly changed before EXIT-1E");
-assert.equal(nativeUpdater.includes("apikey"), true, "native updater client-key contract unexpectedly changed before EXIT-1E");
+for (const token of [".supabase.co", "Authorization", "apikey", "access_token", "product_key", "POLAR_", "GATEWAY_"]) {
+  assert.equal(nativeUpdater.includes(token), false, `native updater still depends on application authority after EXIT-1E: ${token}`);
+}
+assert.equal(nativeUpdater.includes("download_and_install"), true, "native updater install path is missing");
+assert.deepEqual(
+  updaterBootstrap.plugins?.updater?.endpoints,
+  ["https://github.com/gycha0109-beep/MasterV/releases/latest/download/latest.json"],
+  "EXIT-1E updater must use an independent static release manifest"
+);
 assert.match(persistence, /product_authority_active:\s*false/);
 assert.match(persistence, /supabase_authority_unchanged:\s*true/);
 
@@ -140,8 +148,8 @@ console.log(JSON.stringify({
   session_bridge_paths: 0,
   generic_builder_vendor_env_names: 0,
   legacy_config_bridge_isolated: true,
-  updater_ui_session_authority: "backend-provider",
-  deferred_native_updater_owner: "EXIT-1E",
+  updater_ui_session_authority: "none-independent-exit-1e",
+  deferred_native_updater_owner: "EXIT-1E-CLOSED",
   supabase_authority_unchanged: true,
   local_sqlite_product_authority_active: false,
   gateway_active: false,

@@ -1,17 +1,11 @@
 import fs from "node:fs/promises";
 import path from "node:path";
-import { readLegacyDesktopRuntimeConfig } from "./desktop-legacy-config-bridge.mjs";
 
 const root = process.cwd();
 const sourceDir = path.join(root, "desktop");
 const outputDir = path.join(root, "desktop-dist");
 const indexPath = path.join(outputDir, "index.html");
 const configPath = path.join(outputDir, "config.js");
-const legacyRuntime = readLegacyDesktopRuntimeConfig(process.env);
-
-if (!legacyRuntime.configured || !legacyRuntime.nativeInterop.clientKey) {
-  throw new Error("updater bootstrap requires a configured legacy runtime client key");
-}
 
 await fs.copyFile(path.join(sourceDir, "updater.js"), path.join(outputDir, "updater.js"));
 
@@ -24,22 +18,24 @@ html = html.replace(
 );
 await fs.writeFile(indexPath, html, "utf8");
 
-const updaterBootstrapConfig = {
+const updaterConfig = {
   enabled: true,
-  channel: "private-test",
-  client_key: legacyRuntime.nativeInterop.clientKey
+  channel: "stable",
+  transport: "tauri-static-signed",
+  subscription_independent: true
 };
 await fs.appendFile(
   configPath,
-  `window.MASTERV_UPDATER_BOOTSTRAP_CONFIG = Object.freeze(${JSON.stringify(updaterBootstrapConfig)});\n`,
+  `window.MASTERV_UPDATER_CONFIG = Object.freeze(${JSON.stringify(updaterConfig)});\n`,
   "utf8"
 );
 
 console.log(JSON.stringify({
-  status: "MASTERV_DESKTOP_UPDATER_BOOTSTRAP_PREPARE_PASS",
+  status: "MASTERV_DESKTOP_INDEPENDENT_UPDATER_PREPARE_PASS",
   updater_ui: true,
-  update_channel: updaterBootstrapConfig.channel,
-  session_authority: "backend-provider",
-  config_authority: "updater-bootstrap",
-  token_persistence: false
+  update_channel: updaterConfig.channel,
+  transport: updaterConfig.transport,
+  subscription_independent: true,
+  session_authority: "none",
+  config_authority: "independent-updater"
 }));

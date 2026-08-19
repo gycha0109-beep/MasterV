@@ -38,7 +38,9 @@ assert.match(boundary, /current\(\)/);
 assert.match(boundary, /subscribe\(listener\)/);
 assert.match(deep, /backend\.session\.subscribe/);
 assert.match(batch, /backend\.session\.subscribe/);
-assert.match(updater, /backend\.session\.subscribe/);
+assert.equal(updater.includes("backend.session"), false, "EXIT-1E updater must no longer consume backend session runtime");
+assert.equal(updater.includes("window.MASTERV_BACKEND"), false, "EXIT-1E updater must be independent of backend authority");
+assert.equal(updater.includes("window.MASTERV_UPDATER_CONFIG"), true, "EXIT-1E updater must consume independent updater config");
 assert.match(backend, /migration_stage:\s*"MV-SUPABASE-EXIT-1B-(?:4|[5-9][0-9]*)"/);
 assert.match(backend, /session_bridge_active:\s*false/);
 assert.match(backend, /session_credential_observer_active:\s*false/);
@@ -72,7 +74,7 @@ console.log(JSON.stringify({
   credential_observer_paths: 0,
   fetch_monkey_patches_in_consumers: 0,
   session_runtime_authority: "backend-provider",
-  updater_session_runtime: "backend-provider",
+  updater_session_runtime: "none-independent-exit-1e",
   legacy_session_adapter_retained: true,
   product_authority_active: false,
   supabase_authority_unchanged: true

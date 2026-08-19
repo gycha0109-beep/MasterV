@@ -8,7 +8,7 @@ rust-version = "1.77.2"
 
 [features]
 default = []
-private-updater = ["dep:tauri-plugin-updater"]
+independent-updater = ["dep:tauri-plugin-updater"]
 
 [build-dependencies]
 tauri-build = { version = "=2.6.3", features = [] }
