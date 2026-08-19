@@ -1,0 +1,42 @@
+name: MV Supabase Exit 1B Closeout Audit
+
+on:
+  pull_request:
+  push:
+    branches:
+      - feat/mvp-foundation
+
+permissions:
+  contents: read
+
+jobs:
+  exit-1b-closeout:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: 24.19.0
+      - run: npm ci
+      - name: Verify EXIT-1B-1 provider foundation
+        run: node scripts/desktop-backend-provider-contract.mjs
+      - name: Verify EXIT-1B-2 app consumer boundary
+        run: node scripts/desktop-app-provider-rewire-contract.mjs
+      - name: Verify EXIT-1B-3 remote consumer boundary
+        run: node scripts/desktop-remote-consumer-rewire-contract.mjs
+      - name: Verify EXIT-1B-4 session runtime cleanup
+        run: node scripts/desktop-session-runtime-cleanup-contract.mjs
+      - name: Verify EXIT-1B-5 build config boundary
+        run: node scripts/desktop-build-config-boundary-contract.mjs
+      - name: Run EXIT-1B closeout source audit
+        run: node scripts/desktop-provider-config-closeout-contract.mjs
+      - name: Verify Desktop shell regression
+        run: npm run test:desktop-shell
+      - name: Verify hosted Deep Analysis regression
+        run: npm run test:hosted-deep-analysis
+      - name: Verify hosted Production Guidance regression
+        run: npm run test:hosted-production-guidance
+      - name: Verify hosted Background Batch regression
+        run: npm run test:hosted-background-batch
+      - name: Verify audit script syntax
+        run: node --check scripts/desktop-provider-config-closeout-contract.mjs
