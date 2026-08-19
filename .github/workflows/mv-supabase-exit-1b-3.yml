@@ -2,12 +2,13 @@ name: MV Supabase Exit 1B-3 Remote Consumer Rewiring
 
 on:
   pull_request:
-  push:
-    branches:
-      - feat/mvp-foundation
 
 permissions:
   contents: read
+
+concurrency:
+  group: mv-supabase-exit-1b-3-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
 
 jobs:
   remote-consumer-rewire:
