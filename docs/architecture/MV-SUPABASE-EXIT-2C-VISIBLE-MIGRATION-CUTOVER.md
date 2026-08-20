@@ -1,6 +1,6 @@
 # MV-SUPABASE-EXIT-2C — Visible Migration Cutover
 
-Status: IMPLEMENTED / VALIDATION REQUIRED  
+Status: CLOSED  
 Target release: 0.1.2 Migration Bridge  
 Architecture authority: MV-ARCH-001
 
@@ -151,6 +151,47 @@ Removal of these remaining artifacts is EXIT-3 / 0.1.3 Clean Cut.
 - Windows secure device credential
 - no premature Supabase-zero claim
 
+## Closeout evidence
+
+Implementation validation authority before this closeout document commit:
+
+- Exact implementation HEAD: `d5c2de1dcfa798f99180f4f6905fdd04f4516de5`
+- CI run `#1017` / run id `32318445986`: SUCCESS
+  - `validate`: SUCCESS
+  - `desktop-shell`: SUCCESS
+  - `desktop-windows-quality`: SUCCESS
+- EXIT-2C run `#33` / run id `32318446014`: SUCCESS
+  - `source-contract`: SUCCESS
+  - `native-cutover (ubuntu-22.04)`: SUCCESS
+  - `native-cutover (windows-2025)`: SUCCESS
+
+Windows installed-runtime evidence from CI #1017:
+
+- native local-first runtime: PASS
+- visible auth: Product Key + device resume
+- fresh runtime mode: `LOCAL ONLY`
+- Local SQLite CRUD: PASS
+- Local SQLite process-restart persistence: PASS
+- Reference Detail local read: PASS
+- Reference Compare local canonical execution: PASS
+- persistent browser auth storage: false
+- direct provider requests: 0
+- local Next API requests: 0
+- unsigned NSIS build/install: PASS
+- installed launch + process restart: PASS
+- Local SQLite write/read-after-restart/delete: PASS
+- uninstall: PASS
+- installed executable removed: true
+- uninstall registry removed: true
+- autorun/service/scheduled-task residue: none
+- signing activation: false
+- updater activation: false
+- production mutation: 0
+
+The final documentation-inclusive HEAD must independently pass the same automatic `CI` and `MV Supabase Exit 2C Visible Migration Cutover` workflows before repository authority treats this closeout as final.
+
 ## EXIT-3 handoff
 
-After 0.1.2 migration confidence is established, EXIT-3 removes Supabase Auth, runtime config/keys, network allowances, adapters, hosted legacy routes, storage/DB dependencies, and Supabase-specific CI. Only that clean-cut stage may assert runtime Supabase dependency zero.
+EXIT-2C is closed, but the 0.1.2 Migration Bridge itself is **not** yet closed. The next work item is the 0.1.2 Migration Bridge closeout audit and evidence freeze.
+
+EXIT-3 / 0.1.3 remains blocked until that bridge closeout is complete. EXIT-3 then removes Supabase Auth, runtime config/keys, network allowances, adapters, hosted legacy routes, storage/DB dependencies, and Supabase-specific CI. Only that clean-cut stage may assert runtime Supabase dependency zero.
