@@ -1,13 +1,13 @@
 # MV-POST-EXIT-1 — Target Architecture Completion & 0.1.3 RC Readiness
 
-Status: CLOSED — authoritative after the documentation-inclusive exact HEAD succeeds in `CI` and `MV EXIT-3 0.1.3 Clean Cut`, including the Windows 0.1.2 → 0.1.3 upgrade dry-run  
+Status: VALIDATION PENDING  
 Architecture authority: `MV-ARCH-001`  
 Target release: `0.1.3 — Clean Cut`  
 Starting authority: `506c4c0bf36af4a2fba5eb0144878ca7819e56ef`
 
 ## Purpose
 
-This stage closes the pre-release architecture/readiness gap after Supabase Exit. It does not activate production signing or publish a release.
+This stage prepares the pre-release architecture/readiness closeout after Supabase Exit. It does not activate production signing or publish a release.
 
 The shipping Desktop version authority is `src-tauri/tauri.conf.json`, which is fixed to `0.1.3`. The npm package and Rust crate may retain internal package metadata `0.1.0`; they are not the NSIS/updater release-version authority.
 
@@ -43,6 +43,41 @@ Production publication          MV-REL-1 only
 | Supabase Storage dependency = 0 | VERIFIED |
 | User can export/import local data | VERIFIED — SQLite Online Backup/restore path and round-trip regression |
 | DB migration backup exists | VERIFIED — pre-schema-migration and pre-import recovery snapshots |
+
+## MV-ARCH-001 §8.3 Local Storage reliability closure
+
+`§8.3 Reliability Requirements` additionally requires `automatic backup`, even though it is not repeated as a checkbox in §20. MV-POST-EXIT-1 therefore treats all three persistence durability boundaries below as executable completion criteria.
+
+| Reliability criterion | MV-POST-EXIT-1 authority |
+| --- | --- |
+| Manual export/import | VERIFIED — Local SQLite Online Backup/restore + round-trip regression |
+| Pre-migration backup | VERIFIED — snapshot before schema migration; pre-import recovery snapshot also retained |
+| Automatic backup | VALIDATION PENDING — 24-hour background Online Backup cadence, user-work-data guard, integrity check, latest-7 retention, native regression suite |
+
+Automatic backup runs from a detached native background worker. Desktop setup only starts the worker; it does not perform the SQLite integrity scan or backup copy synchronously on the Tauri setup thread.
+
+Automatic backup authority:
+
+```text
+Live DB                  masterv.db
+Backup directory         backups/
+Automatic filename       masterv-automatic-<timestamp>.db
+Cadence                   24 hours
+Scheduler check cadence   6 hours
+Retention                 latest 7 automatic backups
+Copy mechanism            rusqlite SQLite Online Backup API
+Validation                PRAGMA integrity_check
+Trigger                    only when user work data exists
+```
+
+The native tests must prove:
+
+- no work data → no automatic backup
+- work data + no previous automatic backup → backup created
+- recent automatic backup → not due
+- retention → at most 7 automatic backups
+- generated backup passes `PRAGMA integrity_check`
+- persisted user data survives the backup copy
 
 ## 0.1.3 version authority
 
@@ -114,12 +149,15 @@ MV-POST-EXIT-1 adds checks inside the existing `CI` workflow and does not create
 The docs-inclusive final SHA is accepted only when:
 
 - `npm run test:post-exit-1` succeeds
+- Linux native Rust tests succeed, including Local SQLite and automatic backup regressions
 - `CI` succeeds
 - `MV EXIT-3 0.1.3 Clean Cut` succeeds
 - Windows native/local-first lifecycle succeeds
 - unsigned 0.1.2 baseline and 0.1.3 updater-enabled RC builds succeed
 - 0.1.2 → 0.1.3 Local SQLite upgrade survival succeeds
 - no production signing credential or release publication is used
+
+Until those exact-head checks succeed, this document remains `VALIDATION PENDING` and MV-POST-EXIT-1 must not be classified as closed.
 
 ## Delivery boundary
 
