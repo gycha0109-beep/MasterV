@@ -21,38 +21,42 @@ const forbiddenPaths = [
 ];
 for (const relative of forbiddenPaths) assert(!exists(relative), `clean cut residual path: ${relative}`);
 
-const runtimeFiles = [
-  ".env.example",
-  "desktop/index.html",
-  "desktop/app.js",
-  "desktop/backend/backend.js",
-  "desktop/backend/provider-boundary.js",
-  "desktop/backend/bridge/transition-provider.js",
-  "desktop/backend/local/local-work-data-provider.js",
-  "scripts/build-desktop-static.mjs",
-  "src-tauri/tauri.conf.json",
-  "src-tauri/src/main.rs",
-  ".github/workflows/ci.yml",
-  "package.json"
-];
 const forbiddenTokens = [
   "NEXT_PUBLIC_SUPABASE_URL",
   "NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY",
   "SUPABASE_SERVICE_ROLE_KEY",
   "SUPABASE_TEST_EMAIL",
   "SUPABASE_TEST_PASSWORD",
-  "*.supabase.co",
+  "https://*.supabase.co",
   ".supabase.co",
+  "@supabase/",
   "supabase-session-provider",
   "supabase-work-data-provider",
   "MASTERV_LEGACY_RUNTIME_CONFIG",
   "migrateLegacyReferenceLibrary",
   "desktop_migrate_legacy_reference_library"
 ];
-for (const relative of runtimeFiles) {
-  const text = read(relative);
-  for (const token of forbiddenTokens) assert(!text.includes(token), `${relative} retains forbidden runtime token ${token}`);
+const scanRoots = ["app", "components", "desktop", "gateway", "lib", "scripts", "src-tauri", ".github/workflows"];
+const textExtensions = new Set([".js", ".mjs", ".ts", ".tsx", ".rs", ".json", ".yml", ".yaml", ".toml", ".ps1", ".cmd", ".txt"]);
+const violations = [];
+function walk(relative) {
+  const absolute = path.join(root, relative);
+  if (!fs.existsSync(absolute)) return;
+  for (const entry of fs.readdirSync(absolute, { withFileTypes: true })) {
+    const child = path.join(relative, entry.name);
+    if (entry.isDirectory()) { walk(child); continue; }
+    if (!textExtensions.has(path.extname(entry.name))) continue;
+    if (child === path.join("scripts", "desktop-supabase-clean-cut-contract.mjs")) continue;
+    const text = read(child);
+    for (const token of forbiddenTokens) if (text.includes(token)) violations.push(`${child}: ${token}`);
+  }
 }
+for (const scanRoot of scanRoots) walk(scanRoot);
+for (const relative of [".env.example", "package.json"]) {
+  const text = read(relative);
+  for (const token of forbiddenTokens) if (text.includes(token)) violations.push(`${relative}: ${token}`);
+}
+assert(violations.length === 0, `clean-cut source scan found vendor runtime residues:\n${violations.join("\n")}`);
 
 const index = read("desktop/index.html");
 assert(index.includes("0.1.3 CLEAN CUT"), "Desktop must expose 0.1.3 clean-cut authority");
@@ -106,6 +110,7 @@ console.log(JSON.stringify({
   supabase_db_access: 0,
   supabase_storage_access: 0,
   runtime_dependency: "ZERO",
+  source_scan_violations: 0,
   work_data_primary: "local-sqlite",
   remote_primary: "masterv-gateway",
   entitlement_authority: "polar-via-gateway",
