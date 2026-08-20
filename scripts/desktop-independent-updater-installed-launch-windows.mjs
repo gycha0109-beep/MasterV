@@ -12,6 +12,10 @@ function delay(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+function psLiteral(value) {
+  return String(value).replace(/'/g, "''");
+}
+
 function powershell(script, timeout = 90_000) {
   const result = spawnSync(
     "powershell.exe",
@@ -73,6 +77,10 @@ async function waitForCdp(port, child, timeoutMs = 30_000) {
   throw new Error(`Installed independent updater WebView2 was not ready: ${lastError}`);
 }
 
+const appConfig = JSON.parse(fs.readFileSync(path.resolve("src-tauri", "tauri.conf.json"), "utf8"));
+const productName = appConfig.productName;
+const productNamePs = psLiteral(productName);
+
 function uninstallRegistryEntries() {
   const json = powershell(`
 $paths = @(
@@ -81,7 +89,7 @@ $paths = @(
   'HKLM:\\Software\\WOW6432Node\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\*'
 )
 $entries = @(Get-ItemProperty $paths -ErrorAction SilentlyContinue |
-  Where-Object { $_.DisplayName -eq 'MasterV' } |
+  Where-Object { $_.DisplayName -eq '${productNamePs}' } |
   Select-Object DisplayName,InstallLocation,UninstallString,QuietUninstallString)
 $entries | ConvertTo-Json -Compress
 `);
@@ -93,43 +101,37 @@ $entries | ConvertTo-Json -Compress
 async function main() {
   if (process.platform !== "win32") throw new Error("Independent updater installed-launch smoke must run on Windows");
 
+  const baselineVersion = "0.1.2";
   const bundleDir = path.resolve("src-tauri", "target", "release", "bundle", "nsis");
-  const installers = findFiles(bundleDir, (file) => path.basename(file) === "MasterV_0.1.1_x64-setup.exe", 1);
-  assert(installers.length === 1, `Expected exact 0.1.1 independent updater bootstrap installer, found ${installers.length}`);
+  const expectedInstaller = `${productName}_${baselineVersion}_x64-setup.exe`;
+  const installers = findFiles(bundleDir, (file) => path.basename(file) === expectedInstaller, 1);
+  assert(installers.length === 1, `Expected exact ${baselineVersion} independent updater baseline installer, found ${installers.length}`);
   const installer = installers[0];
 
   for (const entry of uninstallRegistryEntries()) {
     const uninstaller = parseExecutable(entry.QuietUninstallString || entry.UninstallString || "");
     if (uninstaller && fs.existsSync(uninstaller)) {
       const cleanup = spawnSync(uninstaller, ["/S"], { encoding: "utf8", timeout: 180_000, windowsHide: true });
-      assert(cleanup.status === 0, `Preexisting MasterV cleanup failed (${cleanup.status})`);
+      assert(cleanup.status === 0, `Preexisting ${productName} cleanup failed (${cleanup.status})`);
     }
   }
-  await delay(800);
-  assert(uninstallRegistryEntries().length === 0, "Preexisting MasterV uninstall entry remained before independent updater install");
+  for (let attempt = 0; attempt < 40 && uninstallRegistryEntries().length > 0; attempt++) await delay(500);
+  assert(uninstallRegistryEntries().length === 0, `Preexisting ${productName} uninstall entry remained before baseline install`);
 
   const install = spawnSync(installer, ["/S"], { encoding: "utf8", timeout: 180_000, windowsHide: true });
-  assert(install.status === 0, `Independent updater NSIS install failed (${install.status}): ${install.stderr || install.stdout}`);
+  assert(install.status === 0, `Independent updater baseline NSIS install failed (${install.status}): ${install.stderr || install.stdout}`);
 
   const entries = uninstallRegistryEntries();
-  assert(entries.length === 1, `Expected one MasterV uninstall entry after independent updater install, found ${entries.length}`);
+  assert(entries.length === 1, `Expected one ${productName} uninstall entry after baseline install, found ${entries.length}`);
   const entry = entries[0];
   const uninstaller = parseExecutable(entry.QuietUninstallString || entry.UninstallString || "");
-  assert(uninstaller && fs.existsSync(uninstaller), "Independent updater uninstaller is missing");
+  assert(uninstaller && fs.existsSync(uninstaller), "Independent updater baseline uninstaller is missing");
 
-  const roots = [
-    entry.InstallLocation,
-    path.dirname(uninstaller),
-    path.join(process.env.LOCALAPPDATA || "", "MasterV"),
-    path.join(process.env.ProgramFiles || "", "MasterV")
-  ].filter(Boolean);
+  const roots = [entry.InstallLocation, path.dirname(uninstaller), process.env.LOCALAPPDATA, process.env.ProgramFiles].filter(Boolean);
   let binary = "";
   for (const root of roots) {
-    const match = findFiles(path.resolve(root), (file) => path.basename(file).toLowerCase() === "masterv-desktop.exe", 4)[0];
-    if (match) {
-      binary = path.resolve(match);
-      break;
-    }
+    const match = findFiles(path.resolve(root), (file) => path.basename(file).toLowerCase() === "masterv-desktop.exe", 5)[0];
+    if (match) { binary = path.resolve(match); break; }
   }
   assert(binary && fs.existsSync(binary), `Installed independent updater binary not found under ${roots.join(", ")}`);
 
@@ -165,23 +167,21 @@ async function main() {
     if (child && child.exitCode === null) {
       child.kill();
       await delay(800);
-      if (child.exitCode === null) {
-        spawnSync("taskkill.exe", ["/PID", String(child.pid), "/T", "/F"], { encoding: "utf8", timeout: 30_000 });
-      }
+      if (child.exitCode === null) spawnSync("taskkill.exe", ["/PID", String(child.pid), "/T", "/F"], { encoding: "utf8", timeout: 30_000 });
     }
     fs.closeSync(appLog);
   }
 
   const uninstall = spawnSync(uninstaller, ["/S"], { encoding: "utf8", timeout: 180_000, windowsHide: true });
   assert(uninstall.status === 0, `Independent updater silent uninstall failed (${uninstall.status}): ${uninstall.stderr || uninstall.stdout}`);
-  for (let attempt = 0; attempt < 30 && (fs.existsSync(binary) || uninstallRegistryEntries().length > 0); attempt++) await delay(500);
+  for (let attempt = 0; attempt < 90 && (fs.existsSync(binary) || uninstallRegistryEntries().length > 0); attempt++) await delay(500);
   assert(!fs.existsSync(binary), `Independent updater installed binary remained after uninstall: ${binary}`);
   assert(uninstallRegistryEntries().length === 0, "Independent updater uninstall registry entry remained");
   fs.rmSync(runtimeRoot, { recursive: true, force: true });
 
   const evidence = {
     status: "MASTERV_DESKTOP_INDEPENDENT_UPDATER_INSTALLED_LAUNCH_PASS",
-    version: "0.1.1",
+    version: "0.1.2",
     installed_binary: binary,
     webview2_cdp_ready: true,
     browser: cdpVersion?.Browser || null,

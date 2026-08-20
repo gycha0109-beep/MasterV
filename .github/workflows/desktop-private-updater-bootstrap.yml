@@ -1,70 +1,88 @@
-name: Desktop Independent Updater Bootstrap
+name: Desktop Independent Updater Baseline & RC Dry Run
 
 on:
   workflow_dispatch:
+    inputs:
+      source_sha:
+        description: Exact 40-character MasterV commit SHA to validate
+        required: true
+        type: string
+      allow_updater_dry_run:
+        description: Build unsigned 0.1.2 baseline and 0.1.3 RC and exercise local-data upgrade survival
+        required: true
+        type: boolean
+        default: false
 
 permissions:
   contents: read
 
 env:
-  SOURCE_SHA: ${{ github.sha }}
+  SOURCE_SHA: ${{ inputs.source_sha }}
 
 jobs:
-  bootstrap:
+  updater-dry-run:
+    if: ${{ inputs.allow_updater_dry_run == true }}
     runs-on: windows-2025
-    timeout-minutes: 30
+    timeout-minutes: 75
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ inputs.source_sha }}
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
         with:
           node-version: 24.19.0
       - uses: dtolnay/rust-toolchain@4360b52568e2003a75bf9bc1d59f33a8e3fc893c
         with:
           toolchain: 1.97.1
-      - run: npm ci
-      - name: Verify locked updater dependency graph
-        run: cargo metadata --locked --manifest-path src-tauri/Cargo.toml --no-deps | Out-Null
-      - name: Verify independent updater contract
-        run: node scripts/desktop-independent-updater-contract.mjs
-      - name: Build one-time independent updater bootstrap installer
-        run: npm run tauri -- build --features independent-updater --bundles nsis --config src-tauri/tauri.windows-updater-bootstrap.conf.json
-      - name: Verify installed independent updater bootstrap launch and uninstall
-        run: node scripts/desktop-independent-updater-installed-launch-windows.mjs
-      - name: Verify bootstrap installer authority
+      - name: Verify exact-SHA authority
         shell: pwsh
         run: |
-          $installer = Get-Item "src-tauri/target/release/bundle/nsis/MasterV_0.1.1_x64-setup.exe"
-          $signature = Get-AuthenticodeSignature $installer.FullName
-          if ($signature.Status -ne "NotSigned") { throw "Bootstrap Authenticode status must remain NotSigned until Windows signing is explicitly activated" }
-          $sigFiles = @(Get-ChildItem "src-tauri/target/release/bundle/nsis" -Filter "*.sig" -ErrorAction SilentlyContinue)
-          if ($sigFiles.Count -ne 0) { throw "Bootstrap build must not create updater release artifacts" }
-          $hash = (Get-FileHash $installer.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
-          New-Item -ItemType Directory -Force -Path artifacts/desktop-independent-updater-bootstrap | Out-Null
-          Copy-Item $installer.FullName artifacts/desktop-independent-updater-bootstrap/MasterV_0.1.1_x64-setup.exe
+          $actual=(git rev-parse HEAD).Trim(); $requested='${{ inputs.source_sha }}'.Trim()
+          if ($requested -notmatch '^[0-9a-fA-F]{40}$' -or $actual -ne $requested) { throw "Exact-SHA mismatch requested=$requested actual=$actual" }
+      - run: npm ci
+      - name: Verify locked updater dependency graph
+        shell: pwsh
+        run: cargo metadata --locked --manifest-path src-tauri/Cargo.toml --no-deps | Out-Null
+      - run: npm run test:exit-3-clean-cut
+      - name: Verify scripts/desktop-independent-updater-contract.mjs
+        run: npm run test:desktop-independent-updater
+      - name: Build unsigned 0.1.2 updater baseline
+        run: npm run desktop:build:windows-updater-baseline
+      - name: Verify installed 0.1.2 updater baseline launch and uninstall
+        run: node scripts/desktop-independent-updater-installed-launch-windows.mjs
+      - name: Build unsigned 0.1.3 updater RC
+        run: npm run desktop:build:windows-updater-rc
+      - name: Verify scripts/desktop-upgrade-dry-run-windows.mjs Local SQLite survival
+        run: npm run test:desktop-upgrade-dry-run-windows
+      - name: Verify dry-run artifacts remain unsigned and unpublished
+        shell: pwsh
+        run: |
+          $baseline=Get-Item "src-tauri/target/release/bundle/nsis/MasterV Desktop_0.1.2_x64-setup.exe"
+          $candidate=Get-Item "src-tauri/target/release/bundle/nsis/MasterV Desktop_0.1.3_x64-setup.exe"
+          foreach ($installer in @($baseline,$candidate)) {
+            if ((Get-AuthenticodeSignature $installer.FullName).Status.ToString() -ne 'NotSigned') { throw "Dry-run installer unexpectedly Authenticode signed: $($installer.Name)" }
+          }
+          $sigFiles=@(Get-ChildItem "src-tauri/target/release/bundle/nsis" -Filter "*.sig" -ErrorAction SilentlyContinue)
+          if ($sigFiles.Count -ne 0) { throw "Unsigned dry-run must not create production updater signatures" }
+          New-Item -ItemType Directory -Force -Path artifacts/desktop-post-exit-1-updater | Out-Null
+          Copy-Item $baseline.FullName artifacts/desktop-post-exit-1-updater/$($baseline.Name)
+          Copy-Item $candidate.FullName artifacts/desktop-post-exit-1-updater/$($candidate.Name)
           [ordered]@{
-            status = "MASTERV_DESKTOP_INDEPENDENT_UPDATER_BOOTSTRAP_PASS"
-            version = "0.1.1"
-            source_sha = $env:SOURCE_SHA
-            checkout_sha = $env:GITHUB_SHA
-            channel = "stable"
-            transport = "tauri-static-signed"
-            cargo_feature = "independent-updater"
-            installer_sha256 = $hash
-            authenticode = "NotSigned"
-            updater_client_integrated = $true
-            updater_installed_launch_verified = $true
-            updater_installed_uninstall_verified = $true
-            subscription_independent = $true
-            session_required = $false
-            updater_artifact_created = $false
-            update_release_published = $false
-            automatic_install = $false
-            signing_private_key_in_job = $false
-            activation_allowed = $false
-          } | ConvertTo-Json | Set-Content -Encoding utf8 artifacts/desktop-independent-updater-bootstrap/bootstrap-manifest.json
+            status='MASTERV_POST_EXIT_1_UPDATER_RC_DRY_RUN_PASS'
+            source_sha=$env:SOURCE_SHA
+            baseline_version='0.1.2'
+            candidate_version='0.1.3'
+            authenticode='NotSigned'
+            tauri_signature_created=$false
+            production_signing_activation=$false
+            production_release_published=$false
+          } | ConvertTo-Json | Set-Content -Encoding utf8 artifacts/desktop-post-exit-1-updater/readiness.json
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         if: always()
         with:
-          name: masterv-windows-independent-updater-bootstrap
-          path: artifacts/desktop-independent-updater-bootstrap
+          name: masterv-post-exit-1-updater-dry-run
+          path: |
+            artifacts/desktop-independent-updater-bootstrap
+            artifacts/desktop-post-exit-1-updater
+            artifacts/desktop-post-exit-1-upgrade
           if-no-files-found: warn

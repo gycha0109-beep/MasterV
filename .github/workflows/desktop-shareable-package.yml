@@ -8,7 +8,7 @@ on:
         required: true
         type: string
       allow_private_package:
-        description: Build a private unsigned package only; no publication or activation
+        description: Build a private unsigned 0.1.3 updater-enabled package only; no publication or activation
         required: true
         type: boolean
         default: false
@@ -36,19 +36,20 @@ jobs:
         run: |
           $actual=(git rev-parse HEAD).Trim(); $requested='${{ inputs.source_sha }}'.Trim()
           if ($requested -notmatch '^[0-9a-fA-F]{40}$' -or $actual -ne $requested) { throw "Exact-SHA mismatch requested=$requested actual=$actual" }
+          if ($env:TAURI_SIGNING_PRIVATE_KEY) { throw "Private share package must remain unsigned before MV-REL-1" }
       - run: npm ci
       - run: npm run test:exit-3-clean-cut
-      - run: npm run desktop:build
-      - run: npm run tauri -- icon src-tauri/icons/icon.png
-      - run: npm run desktop:bundle:windows-smoke
-      - name: Require unsigned private package
+      - run: npm run test:post-exit-1
+      - name: Build updater-enabled unsigned 0.1.3 private RC
+        run: npm run desktop:build:windows-updater-rc
+      - name: Require unsigned private 0.1.3 package
         shell: pwsh
         run: |
-          $installers=@(Get-ChildItem src-tauri/target/release/bundle/nsis/*-setup.exe)
-          if ($installers.Count -ne 1) { throw "Expected one installer" }
-          if ((Get-AuthenticodeSignature $installers[0].FullName).Status.ToString() -ne 'NotSigned') { throw "Private package unexpectedly signed" }
+          $installer=Get-Item "src-tauri/target/release/bundle/nsis/MasterV Desktop_0.1.3_x64-setup.exe"
+          if ((Get-AuthenticodeSignature $installer.FullName).Status.ToString() -ne 'NotSigned') { throw "Private package unexpectedly signed" }
+          if (@(Get-ChildItem "src-tauri/target/release/bundle/nsis" -Filter "*.sig" -ErrorAction SilentlyContinue).Count -ne 0) { throw "Private package unexpectedly produced a Tauri updater signature" }
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
-          name: masterv-windows-private-share
-          path: src-tauri/target/release/bundle/nsis/*.exe
+          name: masterv-windows-private-share-0.1.3
+          path: src-tauri/target/release/bundle/nsis/MasterV Desktop_0.1.3_x64-setup.exe
           if-no-files-found: error

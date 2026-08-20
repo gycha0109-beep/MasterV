@@ -4,11 +4,11 @@ on:
   workflow_dispatch:
     inputs:
       source_sha:
-        description: Exact 40-character MasterV commit SHA to build as an unsigned release candidate
+        description: Exact 40-character MasterV commit SHA to build as an unsigned 0.1.3 release candidate
         required: true
         type: string
       allow_unsigned_rc:
-        description: Explicitly allow building an unsigned release-candidate artifact only
+        description: Explicitly allow building an unsigned 0.1.3 release-candidate artifact only
         required: true
         type: boolean
         default: false
@@ -20,7 +20,7 @@ jobs:
   release-readiness:
     if: ${{ inputs.allow_unsigned_rc == true }}
     runs-on: windows-2025
-    timeout-minutes: 40
+    timeout-minutes: 65
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
@@ -36,21 +36,26 @@ jobs:
         run: |
           $actual=(git rev-parse HEAD).Trim(); $requested='${{ inputs.source_sha }}'.Trim()
           if ($requested -notmatch '^[0-9a-fA-F]{40}$' -or $actual -ne $requested) { throw "Exact-SHA mismatch requested=$requested actual=$actual" }
+          if ($env:TAURI_SIGNING_PRIVATE_KEY) { throw "Unsigned RC readiness must not receive the production Tauri signing key" }
       - run: npm ci
       - run: npm run test:exit-3-clean-cut
+      - run: npm run test:post-exit-1
       - run: npm run test:desktop-shell
       - run: cargo metadata --locked --manifest-path src-tauri/Cargo.toml --no-deps
-      - run: npm run desktop:build
-      - run: npm run tauri -- icon src-tauri/icons/icon.png
-      - run: npm run desktop:bundle:windows-release-candidate
-      - name: Require unsigned candidate
+      - name: Build updater-enabled unsigned 0.1.3 RC
+        run: npm run desktop:build:windows-updater-rc
+      - name: Verify installed Local SQLite lifecycle for the 0.1.3 RC
+        run: npm run test:desktop-installed-clean-cut-windows
+      - name: Require exact unsigned 0.1.3 candidate
         shell: pwsh
         run: |
-          $installers=@(Get-ChildItem src-tauri/target/release/bundle/nsis/*-setup.exe)
-          if ($installers.Count -ne 1) { throw "Expected one installer" }
-          if ((Get-AuthenticodeSignature $installers[0].FullName).Status.ToString() -ne 'NotSigned') { throw "Unsigned readiness candidate unexpectedly signed" }
+          $installer=Get-Item "src-tauri/target/release/bundle/nsis/MasterV Desktop_0.1.3_x64-setup.exe"
+          if ((Get-AuthenticodeSignature $installer.FullName).Status.ToString() -ne 'NotSigned') { throw "Unsigned 0.1.3 readiness candidate unexpectedly signed" }
+          if (@(Get-ChildItem "src-tauri/target/release/bundle/nsis" -Filter "*.sig" -ErrorAction SilentlyContinue).Count -ne 0) { throw "Unsigned RC readiness unexpectedly produced a Tauri updater signature" }
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
-          name: masterv-windows-release-readiness
-          path: src-tauri/target/release/bundle/nsis/*.exe
+          name: masterv-windows-0.1.3-release-readiness
+          path: |
+            artifacts/desktop-installed-clean-cut
+            src-tauri/target/release/bundle/nsis/MasterV Desktop_0.1.3_x64-setup.exe
           if-no-files-found: error

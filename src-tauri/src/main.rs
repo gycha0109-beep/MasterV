@@ -1,5 +1,6 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+mod automatic_backup;
 mod device_secure_store;
 mod gateway_transport;
 mod local_persistence;
@@ -83,6 +84,11 @@ fn main() {
                 .map_err(|error| io::Error::new(io::ErrorKind::Other, error))?;
             let gateway = gateway_transport::GatewayTransport::initialize()
                 .map_err(|error| io::Error::new(io::ErrorKind::Other, error))?;
+
+            if let Err(error) = automatic_backup::start_automatic_backup_loop(app_local_data_dir.clone()) {
+                eprintln!("MasterV automatic backup worker failed to start: {error}");
+            }
+
             app.manage(persistence);
             app.manage(secure_store);
             app.manage(gateway);
