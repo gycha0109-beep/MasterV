@@ -11,7 +11,6 @@ pub const CURRENT_SCHEMA_VERSION: i64 = 2;
 pub const LOCAL_WORKSPACE_ID: &str = "local:masterv";
 const DATABASE_FILE: &str = "masterv.db";
 const BACKUP_DIRECTORY: &str = "backups";
-const LEGACY_REFERENCE_MIGRATION_ID: &str = "supabase-reference-library-v1";
 
 #[derive(Clone, Debug)]
 pub struct LocalPersistence {
@@ -26,8 +25,8 @@ pub struct LocalPersistenceStatus {
     pub backup_directory: String,
     pub workspace_id: &'static str,
     pub product_authority_active: bool,
-    pub supabase_primary_authority_active: bool,
-    pub supabase_fallback_available: bool,
+    pub local_sqlite_authority_active: bool,
+    pub remote_fallback_available: bool,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -94,15 +93,6 @@ pub struct ProductionGuidanceInput {
     pub schema_version: String,
 }
 
-#[derive(Clone, Debug, Serialize)]
-pub struct LegacyReferenceMigrationResult {
-    pub migration_id: &'static str,
-    pub already_completed: bool,
-    pub received_count: usize,
-    pub imported_count: usize,
-    pub backup_path: String,
-}
-
 impl LocalPersistence {
     pub fn initialize<P: AsRef<Path>>(app_data_dir: P) -> Result<Self, String> {
         let app_data_dir = app_data_dir.as_ref();
@@ -155,8 +145,8 @@ impl LocalPersistence {
             backup_directory: self.backup_dir.to_string_lossy().into_owned(),
             workspace_id: LOCAL_WORKSPACE_ID,
             product_authority_active: true,
-            supabase_primary_authority_active: false,
-            supabase_fallback_available: true,
+            local_sqlite_authority_active: true,
+            remote_fallback_available: false,
         })
     }
 
@@ -342,52 +332,6 @@ impl LocalPersistence {
         Ok(())
     }
 
-    pub fn migrate_legacy_reference_library(
-        &self,
-        records: &[ReferenceLibraryUpsertInput],
-    ) -> Result<LegacyReferenceMigrationResult, String> {
-        let connection = open_connection(&self.db_path)?;
-        if let Some((count, backup_path)) = migration_completion(&connection)? {
-            return Ok(LegacyReferenceMigrationResult {
-                migration_id: LEGACY_REFERENCE_MIGRATION_ID,
-                already_completed: true,
-                received_count: records.len(),
-                imported_count: count as usize,
-                backup_path,
-            });
-        }
-        for record in records {
-            validate_reference_input(record)?;
-        }
-        let backup = create_snapshot(&connection, &self.backup_dir, "pre-supabase-reference-import")?;
-        drop(connection);
-
-        let mut connection = open_connection(&self.db_path)?;
-        let transaction = connection
-            .transaction_with_behavior(TransactionBehavior::Immediate)
-            .map_err(error_string)?;
-        let mut imported_count = 0usize;
-        for record in records {
-            imported_count += upsert_reference_row(&transaction, record, true)?;
-        }
-        let backup_path = backup.to_string_lossy().into_owned();
-        transaction
-            .execute(
-                "INSERT INTO migration_runs (id, source, status, imported_count, backup_path, completed_at)\n                 VALUES (?1, 'legacy-supabase', 'completed', ?2, ?3, strftime('%Y-%m-%dT%H:%M:%fZ','now'))",
-                params![LEGACY_REFERENCE_MIGRATION_ID, imported_count as i64, backup_path],
-            )
-            .map_err(error_string)?;
-        transaction.commit().map_err(error_string)?;
-
-        Ok(LegacyReferenceMigrationResult {
-            migration_id: LEGACY_REFERENCE_MIGRATION_ID,
-            already_completed: false,
-            received_count: records.len(),
-            imported_count,
-            backup_path: backup.to_string_lossy().into_owned(),
-        })
-    }
-
     pub fn export_to<P: AsRef<Path>>(&self, destination: P) -> Result<(), String> {
         let destination = destination.as_ref();
         if destination == self.db_path {
@@ -550,17 +494,6 @@ fn upsert_reference_row(
         .map_err(error_string)
 }
 
-fn migration_completion(connection: &Connection) -> Result<Option<(i64, String)>, String> {
-    connection
-        .query_row(
-            "SELECT imported_count, backup_path FROM migration_runs WHERE id = ?1 AND status = 'completed'",
-            [LEGACY_REFERENCE_MIGRATION_ID],
-            |row| Ok((row.get(0)?, row.get(1)?)),
-        )
-        .optional()
-        .map_err(error_string)
-}
-
 #[tauri::command]
 pub fn desktop_local_persistence_status(
     state: State<'_, LocalPersistence>,
@@ -626,14 +559,6 @@ pub fn desktop_local_guidance_save(
     input: ProductionGuidanceInput,
 ) -> Result<(), String> {
     state.save_production_guidance(&input)
-}
-
-#[tauri::command]
-pub fn desktop_local_migrate_legacy_reference_library(
-    state: State<'_, LocalPersistence>,
-    records: Vec<ReferenceLibraryUpsertInput>,
-) -> Result<LegacyReferenceMigrationResult, String> {
-    state.migrate_legacy_reference_library(&records)
 }
 
 #[tauri::command]
@@ -852,8 +777,8 @@ mod tests {
         let status = persistence.status().expect("status");
         assert_eq!(status.schema_version, CURRENT_SCHEMA_VERSION);
         assert!(status.product_authority_active);
-        assert!(!status.supabase_primary_authority_active);
-        assert!(status.supabase_fallback_available);
+        assert!(status.local_sqlite_authority_active);
+        assert!(!status.remote_fallback_available);
         assert_eq!(status.workspace_id, LOCAL_WORKSPACE_ID);
 
         let connection = open_connection(persistence.db_path()).expect("open");
@@ -939,44 +864,6 @@ mod tests {
         assert_eq!(detail.analysis["summary"], json!("updated"));
         assert_eq!(persistence.delete_reference_library("abc").expect("delete"), 1);
         assert!(persistence.list_reference_library().expect("empty").is_empty());
-        cleanup(&root);
-    }
-
-    #[test]
-    fn legacy_reference_migration_is_backup_first_local_wins_and_idempotent() {
-        let root = test_directory("legacy-import");
-        let persistence = LocalPersistence::initialize(&root).expect("initialize");
-        persistence
-            .upsert_reference_library(&reference("same", "local-authority"))
-            .expect("local seed");
-        let incoming = vec![reference("same", "legacy-should-not-win"), reference("new", "legacy-new")];
-        let first = persistence
-            .migrate_legacy_reference_library(&incoming)
-            .expect("migration");
-        assert!(!first.already_completed);
-        assert_eq!(first.received_count, 2);
-        assert_eq!(first.imported_count, 1);
-        assert!(Path::new(&first.backup_path).is_file());
-        assert_eq!(
-            persistence
-                .fetch_reference_detail("same")
-                .expect("same")
-                .analysis["summary"],
-            json!("local-authority")
-        );
-        assert_eq!(
-            persistence
-                .fetch_reference_detail("new")
-                .expect("new")
-                .analysis["summary"],
-            json!("legacy-new")
-        );
-        let second = persistence
-            .migrate_legacy_reference_library(&[reference("third", "ignored")])
-            .expect("idempotent");
-        assert!(second.already_completed);
-        assert_eq!(second.imported_count, 1);
-        assert!(persistence.fetch_reference_detail("third").is_err());
         cleanup(&root);
     }
 

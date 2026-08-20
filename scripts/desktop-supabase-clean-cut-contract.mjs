@@ -34,7 +34,14 @@ const forbiddenTokens = [
   "supabase-work-data-provider",
   "MASTERV_LEGACY_RUNTIME_CONFIG",
   "migrateLegacyReferenceLibrary",
-  "desktop_migrate_legacy_reference_library"
+  "desktop_migrate_legacy_reference_library",
+  "supabase-reference-library-v1",
+  "legacy-supabase",
+  "supabase_primary_authority_active",
+  "supabase_fallback_available",
+  "LegacyReferenceMigrationResult",
+  "migrate_legacy_reference_library",
+  "desktop_local_migrate_legacy_reference_library"
 ];
 const scanRoots = ["app", "components", "desktop", "gateway", "lib", "scripts", "src-tauri", ".github/workflows"];
 const textExtensions = new Set([".js", ".mjs", ".ts", ".tsx", ".rs", ".json", ".yml", ".yaml", ".toml", ".ps1", ".cmd", ".txt"]);
@@ -76,6 +83,10 @@ assert(transition.includes('primary: "masterv-gateway"'), "Gateway remote primar
 assert(transition.includes('reference_compare: "local-canonical"'), "local Reference Compare authority missing");
 assert(transition.includes("user_work_data_transport_to_gateway: false"), "user work-data transport prohibition missing");
 
+const localPersistence = read("src-tauri/src/local_persistence.rs");
+assert(localPersistence.includes("local_sqlite_authority_active: true"), "native Local SQLite authority status missing");
+assert(localPersistence.includes("remote_fallback_available: false"), "native persistence fallback must be disabled after clean cut");
+
 const nativeGateway = read("src-tauri/src/gateway_transport.rs");
 assert(nativeGateway.includes('const GATEWAY_ENV: &str = "MASTERV_GATEWAY_BASE_URL"'), "vendor-neutral Gateway env missing");
 assert(nativeGateway.includes("product_key_bearer_allowed: false"), "Product Key bearer prohibition missing");
@@ -111,6 +122,7 @@ console.log(JSON.stringify({
   supabase_storage_access: 0,
   runtime_dependency: "ZERO",
   source_scan_violations: 0,
+  native_legacy_migration_residues: 0,
   work_data_primary: "local-sqlite",
   remote_primary: "masterv-gateway",
   entitlement_authority: "polar-via-gateway",

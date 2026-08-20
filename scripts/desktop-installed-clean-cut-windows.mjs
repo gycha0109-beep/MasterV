@@ -78,16 +78,41 @@ if (registry.QuietUninstallString) {
 }
 assert(uninstall.status === 0, `Uninstall failed (${uninstall.status}): ${uninstall.stderr || uninstall.stdout}`);
 
-const removed = !fs.existsSync(appBinary);
-assert(removed, `Installed executable remains after uninstall: ${appBinary}`);
-const registryCount = Number(ps(`$items=@(Get-ItemProperty 'HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\*','HKLM:\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\*','HKLM:\\Software\\WOW6432Node\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\*' -ErrorAction SilentlyContinue | Where-Object { $_.DisplayName -eq '${productNamePs}' }); Write-Output $items.Count`) || "0");
-assert(registryCount === 0, `Uninstall registry residue remains: ${registryCount}`);
+const appBinaryPs = psLiteral(appBinary);
+const cleanupState = JSON.parse(ps(`
+$paths = @(
+  'HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\*',
+  'HKLM:\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\*',
+  'HKLM:\\Software\\WOW6432Node\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\*'
+)
+$deadline = (Get-Date).AddSeconds(45)
+do {
+  $exeExists = Test-Path -LiteralPath '${appBinaryPs}'
+  $registryCount = @(
+    Get-ItemProperty $paths -ErrorAction SilentlyContinue |
+      Where-Object { $_.DisplayName -eq '${productNamePs}' }
+  ).Count
+  if (-not $exeExists -and $registryCount -eq 0) { break }
+  Start-Sleep -Milliseconds 500
+} while ((Get-Date) -lt $deadline)
+[ordered]@{
+  executable_exists = [bool](Test-Path -LiteralPath '${appBinaryPs}')
+  registry_count = [int](@(
+    Get-ItemProperty $paths -ErrorAction SilentlyContinue |
+      Where-Object { $_.DisplayName -eq '${productNamePs}' }
+  ).Count)
+} | ConvertTo-Json -Compress
+`, 60_000));
+
+assert(cleanupState.executable_exists === false, `Installed executable remains after bounded uninstall wait: ${appBinary}`);
+assert(cleanupState.registry_count === 0, `Uninstall registry residue remains after bounded wait: ${cleanupState.registry_count}`);
 
 const evidence = {
   status: "MASTERV_INSTALLED_EXIT_3_CLEAN_CUT_PASS",
   installer: path.basename(installerPath),
   installed_runtime: "PASS",
   uninstall: "PASS",
+  uninstall_wait_seconds_max: 45,
   executable_removed: true,
   uninstall_registry_removed: true
 };
