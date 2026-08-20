@@ -8,7 +8,7 @@ on:
         required: true
         type: string
       allow_pilot_readiness:
-        description: Build and validate pilot evidence only; no distribution or publication
+        description: Build and validate unsigned 0.1.3 pilot evidence only; no distribution or publication
         required: true
         type: boolean
         default: false
@@ -20,7 +20,7 @@ jobs:
   pilot-readiness:
     if: ${{ inputs.allow_pilot_readiness == true }}
     runs-on: windows-2025
-    timeout-minutes: 55
+    timeout-minutes: 65
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
@@ -36,23 +36,36 @@ jobs:
         run: |
           $actual=(git rev-parse HEAD).Trim(); $requested='${{ inputs.source_sha }}'.Trim()
           if ($requested -notmatch '^[0-9a-fA-F]{40}$' -or $actual -ne $requested) { throw "Exact-SHA mismatch requested=$requested actual=$actual" }
+          if ($env:TAURI_SIGNING_PRIVATE_KEY) { throw "Pilot readiness must remain unsigned before MV-REL-1" }
       - run: npm ci
       - run: npm run test:exit-3-clean-cut
-      - run: npm run desktop:build
+      - run: npm run test:post-exit-1
+      - name: Build updater-enabled unsigned 0.1.3 pilot RC
+        run: npm run desktop:build:windows-updater-rc
       - run: npm run test:desktop-windows-runtime
-      - run: npm run tauri -- icon src-tauri/icons/icon.png
-      - run: npm run desktop:bundle:windows-smoke
       - run: npm run test:desktop-installed-clean-cut-windows
       - name: Record pilot-readiness boundary
         shell: pwsh
         run: |
+          $installer=Get-Item "src-tauri/target/release/bundle/nsis/MasterV Desktop_0.1.3_x64-setup.exe"
+          if ((Get-AuthenticodeSignature $installer.FullName).Status.ToString() -ne 'NotSigned') { throw "Pilot readiness candidate unexpectedly signed" }
+          if (@(Get-ChildItem "src-tauri/target/release/bundle/nsis" -Filter "*.sig" -ErrorAction SilentlyContinue).Count -ne 0) { throw "Pilot readiness unexpectedly produced a Tauri updater signature" }
           New-Item -ItemType Directory -Force -Path artifacts/desktop-external-pilot-readiness | Out-Null
-          [ordered]@{ status='MASTERV_EXTERNAL_PILOT_READINESS_PASS'; source_sha='${{ inputs.source_sha }}'; distribution=$false; publication=$false; signing_activation=$false } | ConvertTo-Json | Set-Content -Encoding utf8 artifacts/desktop-external-pilot-readiness/readiness.json
+          [ordered]@{
+            status='MASTERV_EXTERNAL_PILOT_READINESS_PASS'
+            source_sha='${{ inputs.source_sha }}'
+            target_version='0.1.3'
+            updater_enabled=$true
+            distribution=$false
+            publication=$false
+            signing_activation=$false
+          } | ConvertTo-Json | Set-Content -Encoding utf8 artifacts/desktop-external-pilot-readiness/readiness.json
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
-          name: masterv-windows-external-pilot-readiness
+          name: masterv-windows-external-pilot-readiness-0.1.3
           path: |
             artifacts/desktop-external-pilot-readiness
             artifacts/desktop-windows-clean-cut
             artifacts/desktop-installed-clean-cut
+            src-tauri/target/release/bundle/nsis/MasterV Desktop_0.1.3_x64-setup.exe
           if-no-files-found: error
