@@ -33,6 +33,7 @@ const packageJson = json("package.json");
 const cargo = read("src-tauri/Cargo.toml");
 const releaseWorkflow = read(".github/workflows/desktop-release-readiness.yml");
 const signingWorkflow = read(".github/workflows/desktop-signing-readiness.yml");
+const shareWorkflow = read(".github/workflows/desktop-shareable-package.yml");
 const updaterWorkflow = read(".github/workflows/desktop-private-updater-bootstrap.yml");
 const ci = read(".github/workflows/ci.yml");
 const upgrade = read("scripts/desktop-upgrade-dry-run-windows.mjs");
@@ -70,12 +71,20 @@ assert(upgrade.includes("production_signature_exercised: false"), "upgrade dry-r
 
 assert(releaseWorkflow.includes("source_sha"), "release readiness must be exact-SHA based");
 assert(releaseWorkflow.includes("allow_unsigned_rc"), "release readiness must require explicit unsigned RC opt-in");
+assert(releaseWorkflow.includes("MasterV Desktop_0.1.3_x64-setup.exe"), "release readiness must target the exact 0.1.3 RC installer");
 assert(releaseWorkflow.includes("NotSigned"), "release readiness must remain unsigned before MV-REL-1");
-assert(!releaseWorkflow.includes("TAURI_SIGNING_PRIVATE_KEY"), "release readiness must not access the production Tauri private key");
+assert(releaseWorkflow.includes("$env:TAURI_SIGNING_PRIVATE_KEY"), "release readiness must fail closed if a production signing key is injected");
+assert(!releaseWorkflow.includes("secrets.TAURI_SIGNING_PRIVATE_KEY"), "release readiness must not consume the production Tauri private-key secret");
+
 assert(signingWorkflow.includes("source_sha"), "signing readiness must be exact-SHA based");
 assert(signingWorkflow.includes("credentials_used=$false"), "signing readiness must explicitly record no credential use");
 assert(signingWorkflow.includes("publication=$false"), "signing readiness must explicitly record no publication");
-assert(!signingWorkflow.includes("TAURI_SIGNING_PRIVATE_KEY"), "signing dry-run must not access the production Tauri private key");
+assert(signingWorkflow.includes("$env:TAURI_SIGNING_PRIVATE_KEY"), "signing readiness must fail closed if a production signing key is injected");
+assert(!signingWorkflow.includes("secrets.TAURI_SIGNING_PRIVATE_KEY"), "signing dry-run must not consume the production Tauri private-key secret");
+assert(!signingWorkflow.includes("secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD"), "signing dry-run must not consume the production Tauri key-password secret");
+
+assert(shareWorkflow.includes("MasterV Desktop_0.1.3_x64-setup.exe"), "private share workflow must package the updater-enabled 0.1.3 RC");
+assert(!shareWorkflow.includes("secrets.TAURI_SIGNING_PRIVATE_KEY"), "private share workflow must not consume production signing credentials");
 assert(updaterWorkflow.includes("allow_updater_dry_run"), "updater dry-run must require explicit manual opt-in");
 assert(updaterWorkflow.includes("test:desktop-upgrade-dry-run-windows"), "updater dry-run workflow must exercise upgrade survival");
 
@@ -83,8 +92,10 @@ assert(ci.includes("npm run test:post-exit-1"), "CI must freeze MV-POST-EXIT-1 a
 assert(ci.includes("npm run desktop:build:windows-updater-baseline"), "CI Windows quality must build the 0.1.2 baseline");
 assert(ci.includes("npm run desktop:build:windows-updater-rc"), "CI Windows quality must build the 0.1.3 updater RC");
 assert(ci.includes("npm run test:desktop-upgrade-dry-run-windows"), "CI Windows quality must verify Local SQLite upgrade survival");
+assert(ci.includes("$env:TAURI_SIGNING_PRIVATE_KEY"), "CI must fail closed if production signing credentials leak into pre-release validation");
+assert(!ci.includes("secrets.TAURI_SIGNING_PRIVATE_KEY"), "CI must not consume production signing credentials during MV-POST-EXIT-1");
 
-for (const text of [updaterWorkflow, releaseWorkflow, signingWorkflow, ci]) {
+for (const text of [updaterWorkflow, releaseWorkflow, signingWorkflow, shareWorkflow, ci]) {
   assert(!text.includes("MasterV_0.1.1"), "0.1.1 updater residue remains in active readiness workflow");
 }
 
