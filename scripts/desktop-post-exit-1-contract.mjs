@@ -1,3 +1,4 @@
+import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
@@ -5,17 +6,16 @@ import path from "node:path";
 const root = process.cwd();
 const read = (relative) => fs.readFileSync(path.join(root, relative), "utf8");
 const json = (relative) => JSON.parse(read(relative));
-function assert(condition, message) { if (!condition) throw new Error(message); }
 
 function runNode(relative) {
   const result = spawnSync(process.execPath, [relative], { cwd: root, encoding: "utf8" });
-  assert(result.status === 0, `${relative} failed:\n${result.stderr || result.stdout}`);
+  assert.equal(result.status, 0, `${relative} failed:\n${result.stderr || result.stdout}`);
 }
 
 function runTsx(relative) {
   const npx = process.platform === "win32" ? "npx.cmd" : "npx";
   const result = spawnSync(npx, ["tsx", relative], { cwd: root, encoding: "utf8" });
-  assert(result.status === 0, `${relative} failed:\n${result.stderr || result.stdout}`);
+  assert.equal(result.status, 0, `${relative} failed:\n${result.stderr || result.stdout}`);
 }
 
 runTsx("scripts/gateway-polar-authority-contract.ts");
@@ -29,6 +29,8 @@ const baseline = json("src-tauri/tauri.windows-updater-bootstrap.conf.json");
 const rc = json("src-tauri/tauri.windows-updater-rc.conf.json");
 const signedRelease = json("src-tauri/tauri.windows-independent-updater-release.conf.json");
 const persistence = read("src-tauri/src/local_persistence.rs");
+const automaticBackup = read("src-tauri/src/automatic_backup.rs");
+const main = read("src-tauri/src/main.rs");
 const packageJson = json("package.json");
 const cargo = read("src-tauri/Cargo.toml");
 const releaseWorkflow = read(".github/workflows/desktop-release-readiness.yml");
@@ -57,11 +59,31 @@ for (const marker of [
   assert(persistence.includes(marker), `Local SQLite completion evidence missing: ${marker}`);
 }
 
+for (const marker of [
+  'AUTO_BACKUP_PREFIX: &str = "masterv-automatic-"',
+  "AUTO_BACKUP_INTERVAL: Duration = Duration::from_secs(24 * 60 * 60)",
+  "AUTO_BACKUP_RETENTION: usize = 7",
+  ".backup(DatabaseName::Main, &destination, None)",
+  'query_row("PRAGMA integrity_check"',
+  "ensure_automatic_backup_at",
+  "no_work_data_does_not_create_automatic_backup",
+  "work_data_creates_integrity_checked_backup_and_preserves_data",
+  "recent_automatic_backup_is_not_due",
+  "automatic_backup_retention_keeps_only_latest_seven"
+]) {
+  assert(automaticBackup.includes(marker), `automatic backup completion evidence missing: ${marker}`);
+}
+assert(automaticBackup.includes("thread::Builder::new()"), "automatic backup scheduler must run on a background thread");
+assert(automaticBackup.includes("start_automatic_backup_loop"), "automatic backup scheduler entrypoint missing");
+assert(main.includes("automatic_backup::start_automatic_backup_loop"), "desktop setup must start the automatic backup scheduler");
+assert(!main.includes("automatic_backup::ensure_automatic_backup("), "desktop startup must not run the backup copy synchronously");
+
 assert(packageJson.scripts?.["desktop:build:windows-updater-baseline"], "0.1.2 updater baseline build command missing");
 assert(packageJson.scripts?.["desktop:build:windows-updater-rc"], "0.1.3 updater RC build command missing");
 assert(packageJson.scripts?.["test:desktop-upgrade-dry-run-windows"], "upgrade dry-run command missing");
 assert(packageJson.scripts?.["test:post-exit-1"], "MV-POST-EXIT-1 contract command missing");
 assert(cargo.includes('independent-updater = ["dep:tauri-plugin-updater"]'), "independent updater Cargo feature missing");
+assert(cargo.includes('rusqlite = { version = "=0.32.1", features = ["bundled", "backup"] }'), "native SQLite online-backup authority must remain pinned and enabled");
 
 assert(upgrade.includes("MASTERV_POST_EXIT_1_UPGRADE_DRY_RUN_PASS"), "upgrade dry-run evidence marker missing");
 assert(upgrade.includes('baselineVersion = "0.1.2"'), "upgrade dry-run baseline must be 0.1.2");
@@ -89,6 +111,7 @@ assert(updaterWorkflow.includes("allow_updater_dry_run"), "updater dry-run must 
 assert(updaterWorkflow.includes("test:desktop-upgrade-dry-run-windows"), "updater dry-run workflow must exercise upgrade survival");
 
 assert(ci.includes("npm run test:post-exit-1"), "CI must freeze MV-POST-EXIT-1 architecture completion");
+assert(ci.includes("cargo test --locked --manifest-path src-tauri/Cargo.toml"), "CI Linux native gate must run Local SQLite and automatic backup tests");
 assert(ci.includes("npm run desktop:build:windows-updater-baseline"), "CI Windows quality must build the 0.1.2 baseline");
 assert(ci.includes("npm run desktop:build:windows-updater-rc"), "CI Windows quality must build the 0.1.3 updater RC");
 assert(ci.includes("npm run test:desktop-upgrade-dry-run-windows"), "CI Windows quality must verify Local SQLite upgrade survival");
@@ -99,7 +122,7 @@ for (const text of [updaterWorkflow, releaseWorkflow, signingWorkflow, shareWork
   assert(!text.includes("MasterV_0.1.1"), "0.1.1 updater residue remains in active readiness workflow");
 }
 
-const completion = {
+const section20 = {
   product_key_activation: "VERIFIED",
   subscription_entitlement: "VERIFIED",
   device_activation: "VERIFIED",
@@ -121,7 +144,14 @@ const completion = {
   db_migration_backup: "VERIFIED"
 };
 
-assert(Object.keys(completion).length === 19, "MV-ARCH-001 section 20 completion matrix is incomplete");
+const section83Reliability = {
+  pre_migration_backup: "VERIFIED",
+  manual_export_import: "VERIFIED",
+  automatic_backup: "VERIFIED"
+};
+
+assert.equal(Object.keys(section20).length, 19, "MV-ARCH-001 section 20 completion matrix is incomplete");
+assert.equal(Object.keys(section83Reliability).length, 3, "MV-ARCH-001 section 8.3 reliability matrix is incomplete");
 
 console.log(JSON.stringify({
   status: "MASTERV_POST_EXIT_1_TARGET_ARCHITECTURE_PASS",
@@ -131,7 +161,8 @@ console.log(JSON.stringify({
   upgrade_baseline: "0.1.2",
   unsigned_rc: "0.1.3",
   signed_release_target: "0.1.3",
-  section_20: completion,
+  section_20: section20,
+  section_8_3_reliability: section83Reliability,
   production_tauri_signature_verification: "EXTERNAL_ACTIVATION_PENDING_MV_REL_1",
   production_release_publication: "EXTERNAL_ACTIVATION_PENDING_MV_REL_1",
   production_signing_private_key_used: false,
