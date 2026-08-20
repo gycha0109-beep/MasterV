@@ -57,6 +57,8 @@ jobs:
         run: cargo metadata --locked --manifest-path src-tauri/Cargo.toml --no-deps
       - name: Verify local SQLite authority regression
         run: npm run test:desktop-local-persistence
+      - name: Execute native local persistence tests
+        run: cargo test --locked --manifest-path src-tauri/Cargo.toml local_persistence
       - name: Verify native Desktop compile
         run: npm run desktop:build
       - name: Verify Cargo lockfile unchanged
