@@ -3,38 +3,14 @@
 
   const CONTRACT_VERSION = "mv-backend-provider-v1";
   const REQUIRED_METHODS = Object.freeze({
-    session: Object.freeze([
-      "configured",
-      "openSession",
-      "closeSession",
-      "describeSession"
-    ]),
-    workData: Object.freeze([
-      "configured",
-      "bootstrapPersonalWorkspace",
-      "listReferenceLibrary",
-      "fetchReferenceDetail",
-      "deleteReferenceLibraryEntry"
-    ]),
-    remoteOperations: Object.freeze([
-      "configured",
-      "probeCapabilities",
-      "compileReferenceWorkflow",
-      "discoverYouTube",
-      "analyzeYouTube",
-      "generateProductionGuidance",
-      "probeBackgroundBatch",
-      "listBackgroundBatchJobs",
-      "submitBackgroundBatchJob",
-      "checkBackgroundBatchJob"
-    ])
+    session: Object.freeze(["configured", "openSession", "closeSession", "describeSession"]),
+    workData: Object.freeze(["configured", "bootstrapPersonalWorkspace", "listReferenceLibrary", "fetchReferenceDetail", "deleteReferenceLibraryEntry"]),
+    remoteOperations: Object.freeze(["configured", "probeCapabilities", "compileReferenceWorkflow", "discoverYouTube", "analyzeYouTube", "generateProductionGuidance", "probeBackgroundBatch", "listBackgroundBatchJobs", "submitBackgroundBatchJob", "checkBackgroundBatchJob"])
   });
 
   function assertProvider(label, provider, requiredMethods) {
     if (!provider || typeof provider !== "object") throw new TypeError(`${label} provider is required`);
-    for (const method of requiredMethods) {
-      if (typeof provider[method] !== "function") throw new TypeError(`${label} provider is missing method ${method}`);
-    }
+    for (const method of requiredMethods) if (typeof provider[method] !== "function") throw new TypeError(`${label} provider is missing method ${method}`);
     return provider;
   }
 
@@ -48,27 +24,19 @@
     let capabilitySnapshot = null;
 
     const frozenAuthority = Object.freeze({
-      migration_stage: "MV-SUPABASE-EXIT-1B",
+      architecture_stage: "MV-EXIT-3-CLEAN-CUT",
       provider_boundary_active: true,
-      consumer_wired: false,
-      product_authority_active: false,
-      legacy_authority_unchanged: true,
+      consumer_wired: true,
+      product_authority_active: true,
       ...authority
     });
 
-    function configured() {
-      return sessionProvider.configured() && workDataProvider.configured() && remoteOperationsProvider.configured();
-    }
-
-    function notify(listeners, value) {
-      for (const listener of [...listeners]) listener(value);
-    }
+    const notify = (listeners, value) => { for (const listener of [...listeners]) listener(value); };
 
     const sessionRuntime = Object.freeze({
       configured: sessionProvider.configured.bind(sessionProvider),
       async openSession(credentials) {
-        const nextSession = await sessionProvider.openSession(credentials);
-        activeSession = nextSession;
+        activeSession = await sessionProvider.openSession(credentials);
         capabilitySnapshot = null;
         notify(capabilityListeners, null);
         notify(sessionListeners, activeSession);
@@ -83,9 +51,7 @@
         return await sessionProvider.closeSession(closingSession);
       },
       describeSession: sessionProvider.describeSession.bind(sessionProvider),
-      current() {
-        return activeSession;
-      },
+      current: () => activeSession,
       subscribe(listener) {
         if (typeof listener !== "function") throw new TypeError("session listener must be a function");
         sessionListeners.add(listener);
@@ -97,10 +63,9 @@
     const remoteRuntime = Object.freeze({
       configured: remoteOperationsProvider.configured.bind(remoteOperationsProvider),
       async probeCapabilities(session = activeSession) {
-        const body = await remoteOperationsProvider.probeCapabilities(session);
-        capabilitySnapshot = body;
+        capabilitySnapshot = await remoteOperationsProvider.probeCapabilities(session);
         notify(capabilityListeners, capabilitySnapshot);
-        return body;
+        return capabilitySnapshot;
       },
       compileReferenceWorkflow: remoteOperationsProvider.compileReferenceWorkflow.bind(remoteOperationsProvider),
       discoverYouTube: remoteOperationsProvider.discoverYouTube.bind(remoteOperationsProvider),
@@ -110,9 +75,7 @@
       listBackgroundBatchJobs: remoteOperationsProvider.listBackgroundBatchJobs.bind(remoteOperationsProvider),
       submitBackgroundBatchJob: remoteOperationsProvider.submitBackgroundBatchJob.bind(remoteOperationsProvider),
       checkBackgroundBatchJob: remoteOperationsProvider.checkBackgroundBatchJob.bind(remoteOperationsProvider),
-      currentCapabilities() {
-        return capabilitySnapshot;
-      },
+      currentCapabilities: () => capabilitySnapshot,
       subscribeCapabilities(listener) {
         if (typeof listener !== "function") throw new TypeError("capability listener must be a function");
         capabilityListeners.add(listener);
@@ -124,16 +87,12 @@
     return Object.freeze({
       contract_version: CONTRACT_VERSION,
       authority: frozenAuthority,
-      configured,
+      configured: () => sessionProvider.configured() && workDataProvider.configured() && remoteOperationsProvider.configured(),
       session: sessionRuntime,
       workData: Object.freeze(workDataProvider),
       remoteOperations: remoteRuntime
     });
   }
 
-  window.MASTERV_BACKEND_PROVIDER_CONTRACT = Object.freeze({
-    contract_version: CONTRACT_VERSION,
-    required_methods: REQUIRED_METHODS,
-    createBackendProvider
-  });
+  window.MASTERV_BACKEND_PROVIDER_CONTRACT = Object.freeze({ contract_version: CONTRACT_VERSION, required_methods: REQUIRED_METHODS, createBackendProvider });
 })();

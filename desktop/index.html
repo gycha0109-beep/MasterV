@@ -11,9 +11,9 @@
     <main class="shell">
       <header class="hero">
         <div>
-          <p class="eyebrow">MASTERV DESKTOP · 0.1.2 MIGRATION BRIDGE</p>
+          <p class="eyebrow">MASTERV DESKTOP · 0.1.3 CLEAN CUT</p>
           <h1>Local-first Video Intelligence</h1>
-          <p class="muted">Product Key + MasterV Gateway + Local SQLite가 primary authority입니다. Supabase는 기존 데이터 이전 용도로만 임시 유지됩니다.</p>
+          <p class="muted">Product Key + MasterV Gateway + Local SQLite가 유일한 제품 runtime authority입니다.</p>
         </div>
         <div class="status-stack">
           <div><span>License / Session</span><strong id="auth-status">LOCAL STARTUP</strong></div>
@@ -39,7 +39,7 @@
 
         <article class="card">
           <p class="eyebrow">AUTHORITY</p>
-          <h2>0.1.2 Runtime</h2>
+          <h2>0.1.3 Runtime</h2>
           <div class="facts">
             <div><span>User work data</span><strong>LOCAL SQLITE</strong></div>
             <div><span>AI / YouTube</span><strong>MASTERV GATEWAY</strong></div>
@@ -49,16 +49,6 @@
           <p class="muted small">구독이 만료되거나 Gateway에 연결할 수 없어도 로컬 데이터 조회·비교·삭제는 계속 가능합니다.</p>
         </article>
       </section>
-
-      <details class="card migration-card">
-        <summary>0.1.1 기존 Reference Library 이전</summary>
-        <p class="muted small">기존 Supabase 자격증명은 이 migration 동작에서만 사용됩니다. 먼저 기존 데이터를 읽은 뒤 로컬 DB backup → transactional import → local-wins → migration ledger → integrity 검증 순서로 처리하며 자격증명은 저장하지 않습니다.</p>
-        <form id="legacy-migration-form" class="stack">
-          <label><span>기존 이메일</span><input id="migration-email" type="email" autocomplete="username" /></label>
-          <label><span>기존 비밀번호</span><input id="migration-password" type="password" autocomplete="current-password" /></label>
-          <div class="actions"><button id="migration-button" type="submit">기존 데이터 이전</button><strong id="migration-status">NOT RUN</strong></div>
-        </form>
-      </details>
 
       <section class="grid">
         <article class="card">
@@ -87,7 +77,7 @@
       </section>
 
       <section id="reference-compare-panel" class="card" hidden>
-        <div class="section-heading"><div><p class="eyebrow">LOCAL CANONICAL COMPARE</p><h2>Reference Compare</h2><p class="muted small">선택한 분석은 Gateway로 보내지 않고 Desktop canonical compiler에서 비교합니다.</p></div><div class="actions"><strong id="reference-compare-status">IDLE</strong><span>sample <strong id="reference-compare-count">0</strong></span><button id="reference-compare-clear" type="button" class="ghost">선택 초기화</button></div></div>
+        <div class="section-heading"><div><p class="eyebrow">LOCAL CANONICAL COMPARE</p><h2>Reference Compare</h2><p class="muted small">선택한 분석은 외부 work-data service로 보내지 않고 Desktop canonical compiler에서 비교합니다.</p></div><div class="actions"><strong id="reference-compare-status">IDLE</strong><span>sample <strong id="reference-compare-count">0</strong></span><button id="reference-compare-clear" type="button" class="ghost">선택 초기화</button></div></div>
         <div id="reference-compare-content"></div>
       </section>
 
@@ -117,25 +107,16 @@
       </section>
 
       <section id="background-batch-panel" class="card" hidden>
-        <div class="section-heading">
-          <div><p class="eyebrow">LOCAL ORCHESTRATION · GATEWAY EXECUTION</p><h2>Background operations</h2><p class="muted small">작업 큐는 현재 Desktop session 안에서 관리하고 실제 분석 요청과 유료 사용 판정은 Stateless Gateway가 수행합니다. 성공한 분석 결과는 Local SQLite에 저장됩니다.</p></div>
-          <div><strong id="background-batch-status">SIGNED OUT</strong></div>
-        </div>
-        <div class="facts">
-          <div><span>Execution</span><strong id="background-batch-provider-precondition">—</strong></div>
-          <div><span>Result persistence</span><strong id="background-batch-live-verified">—</strong></div>
-          <div><span>Activation</span><strong id="background-batch-activation">OFF</strong></div>
-          <div><span>Session jobs</span><strong id="background-batch-count">0</strong></div>
-        </div>
-        <p class="muted small">0.1.2에서는 job queue 자체의 재시작 내구성을 주장하지 않습니다. 앱 재시작 후에도 보존되는 사용자 분석 결과의 authority는 Local SQLite입니다.</p>
+        <div class="section-heading"><div><p class="eyebrow">LOCAL ORCHESTRATION · GATEWAY EXECUTION</p><h2>Background operations</h2><p class="muted small">작업 큐는 Desktop session 안에서 관리하고 실제 분석 요청과 유료 사용 판정은 Stateless Gateway가 수행합니다. 성공한 분석 결과는 Local SQLite에 저장됩니다.</p></div><div><strong id="background-batch-status">SIGNED OUT</strong></div></div>
+        <div class="facts"><div><span>Execution</span><strong id="background-batch-provider-precondition">—</strong></div><div><span>Result persistence</span><strong id="background-batch-live-verified">—</strong></div><div><span>Activation</span><strong id="background-batch-activation">OFF</strong></div><div><span>Session jobs</span><strong id="background-batch-count">0</strong></div></div>
         <form id="background-batch-form" class="stack"><label><span>YouTube URL</span><input id="background-batch-url" type="url" /></label><div class="actions"><button id="background-batch-submit" type="submit" disabled>Queue analysis</button><button id="background-batch-refresh" type="button" class="secondary" disabled>Refresh</button></div></form>
         <div id="background-batch-list" class="library-list"></div>
       </section>
 
       <section class="roadmap card">
-        <p class="eyebrow">MIGRATION BOUNDARY</p>
-        <h2>0.1.2 bridge, not 0.1.3 clean cut</h2>
-        <p class="muted small">이 빌드에는 existing-data migration을 위한 legacy Supabase adapter/config가 남아 있습니다. SUPABASE_RUNTIME_DEPENDENCY = ZERO는 아직 선언하지 않습니다.</p>
+        <p class="eyebrow">CLEAN CUT</p>
+        <h2>0.1.3 vendor-independent runtime</h2>
+        <p class="muted small">User work data는 Local SQLite, 원격 계산과 entitlement는 MasterV Gateway + Polar, 업데이트는 독립 Tauri signed channel이 담당합니다.</p>
       </section>
     </main>
 
