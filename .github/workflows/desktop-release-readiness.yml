@@ -20,7 +20,7 @@ jobs:
   release-readiness:
     if: ${{ inputs.allow_unsigned_rc == true }}
     runs-on: windows-2025
-    timeout-minutes: 55
+    timeout-minutes: 65
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
@@ -44,6 +44,8 @@ jobs:
       - run: cargo metadata --locked --manifest-path src-tauri/Cargo.toml --no-deps
       - name: Build updater-enabled unsigned 0.1.3 RC
         run: npm run desktop:build:windows-updater-rc
+      - name: Verify installed Local SQLite lifecycle for the 0.1.3 RC
+        run: npm run test:desktop-installed-clean-cut-windows
       - name: Require exact unsigned 0.1.3 candidate
         shell: pwsh
         run: |
@@ -53,5 +55,7 @@ jobs:
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: masterv-windows-0.1.3-release-readiness
-          path: src-tauri/target/release/bundle/nsis/MasterV Desktop_0.1.3_x64-setup.exe
+          path: |
+            artifacts/desktop-installed-clean-cut
+            src-tauri/target/release/bundle/nsis/MasterV Desktop_0.1.3_x64-setup.exe
           if-no-files-found: error
