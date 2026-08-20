@@ -37,6 +37,8 @@ jobs:
         run: node scripts/desktop-tauri-runtime-bridge-contract.mjs
       - name: Verify EXIT-2C Background Gateway cutover
         run: node scripts/desktop-background-gateway-cutover-contract.mjs
+      - name: Freeze 0.1.2 Migration Bridge closeout
+        run: node scripts/desktop-migration-bridge-closeout-contract.mjs
       - name: Verify changed JavaScript syntax
         run: |
           node --check desktop/app.js
@@ -50,6 +52,7 @@ jobs:
           node --check scripts/desktop-legacy-migration-pagination-contract.mjs
           node --check scripts/desktop-tauri-runtime-bridge-contract.mjs
           node --check scripts/desktop-background-gateway-cutover-contract.mjs
+          node --check scripts/desktop-migration-bridge-closeout-contract.mjs
 
   native-cutover:
     strategy:
