@@ -6,16 +6,17 @@ import path from "node:path";
 const root = process.cwd();
 const read = (relative) => fs.readFileSync(path.join(root, relative), "utf8");
 const json = (relative) => JSON.parse(read(relative));
+const tsxCli = path.join(root, "node_modules", "tsx", "dist", "cli.mjs");
 
 function runNode(relative) {
   const result = spawnSync(process.execPath, [relative], { cwd: root, encoding: "utf8" });
-  assert.equal(result.status, 0, `${relative} failed:\n${result.stderr || result.stdout}`);
+  assert.equal(result.status, 0, `${relative} failed:\n${result.stderr || result.stdout || result.error}`);
 }
 
 function runTsx(relative) {
-  const npx = process.platform === "win32" ? "npx.cmd" : "npx";
-  const result = spawnSync(npx, ["tsx", relative], { cwd: root, encoding: "utf8" });
-  assert.equal(result.status, 0, `${relative} failed:\n${result.stderr || result.stdout}`);
+  assert(fs.existsSync(tsxCli), `tsx CLI is missing: ${tsxCli}`);
+  const result = spawnSync(process.execPath, [tsxCli, relative], { cwd: root, encoding: "utf8" });
+  assert.equal(result.status, 0, `${relative} failed:\n${result.stderr || result.stdout || result.error}`);
 }
 
 runTsx("scripts/gateway-polar-authority-contract.ts");
