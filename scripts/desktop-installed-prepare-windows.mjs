@@ -35,8 +35,14 @@ function parseExecutable(command) {
   const bare = value.match(/^([^\s]+\.exe)/i);
   return bare?.[1] || "";
 }
+function psLiteral(value) { return String(value).replace(/'/g, "''"); }
 
 if (process.platform !== "win32") throw new Error("3L installer preparation must run on Windows");
+
+const tauriConfig = JSON.parse(fs.readFileSync(path.resolve("src-tauri", "tauri.conf.json"), "utf8"));
+const productName = String(tauriConfig.productName || "").trim();
+assert(productName.length > 0, "Tauri productName is required for installed-package authority");
+const productNamePs = psLiteral(productName);
 
 const bundleDir = path.resolve("src-tauri", "target", "release", "bundle", "nsis");
 const installers = findFiles(bundleDir, (file) => /-setup\.exe$/i.test(file), 1);
@@ -64,28 +70,33 @@ $paths = @(
   'HKLM:\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\*',
   'HKLM:\\Software\\WOW6432Node\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\*'
 )
-$entry = Get-ItemProperty $paths -ErrorAction SilentlyContinue |
-  Where-Object { $_.DisplayName -eq 'MasterV' } |
-  Select-Object -First 1 DisplayName,InstallLocation,UninstallString,QuietUninstallString,PSPath,PSChildName
-if ($null -eq $entry) { throw 'MasterV uninstall registry entry not found after install' }
-$entry | ConvertTo-Json -Compress
+$entries = @(Get-ItemProperty $paths -ErrorAction SilentlyContinue |
+  Where-Object { $_.DisplayName -eq '${productNamePs}' } |
+  Select-Object DisplayName,InstallLocation,UninstallString,QuietUninstallString,PSPath,PSChildName)
+if ($entries.Count -eq 0) { throw '${productNamePs} uninstall registry entry not found after install' }
+if ($entries.Count -ne 1) { throw '${productNamePs} uninstall registry entry is ambiguous: ' + $entries.Count }
+$entries[0] | ConvertTo-Json -Compress
 `);
 const registry = JSON.parse(registryJson);
+assert(registry.DisplayName === productName, `Installed registry DisplayName mismatch: ${registry.DisplayName}`);
 const uninstallCommand = registry.QuietUninstallString || registry.UninstallString || "";
 const uninstallerPath = parseExecutable(uninstallCommand);
 const uninstallKeyName = String(registry.PSChildName || "").trim();
-assert(uninstallerPath && fs.existsSync(uninstallerPath), `MasterV uninstaller not found: ${uninstallerPath || uninstallCommand}`);
-assert(uninstallKeyName.length > 0 && !/[\r\n]/.test(uninstallKeyName), `MasterV uninstall registry key is invalid: ${JSON.stringify(uninstallKeyName)}`);
+assert(uninstallerPath && fs.existsSync(uninstallerPath), `${productName} uninstaller not found: ${uninstallerPath || uninstallCommand}`);
+assert(uninstallKeyName.length > 0 && !/[\r\n]/.test(uninstallKeyName), `${productName} uninstall registry key is invalid: ${JSON.stringify(uninstallKeyName)}`);
 
-const installRoots = [registry.InstallLocation, path.dirname(uninstallerPath), path.join(process.env.LOCALAPPDATA || "", "MasterV"), path.join(process.env.ProgramFiles || "", "MasterV")]
-  .filter(Boolean)
-  .map((p) => path.resolve(p));
+const installRoots = [
+  registry.InstallLocation,
+  path.dirname(uninstallerPath),
+  path.join(process.env.LOCALAPPDATA || "", productName),
+  path.join(process.env.ProgramFiles || "", productName)
+].filter(Boolean).map((p) => path.resolve(p));
 let installedBinary = "";
 for (const root of [...new Set(installRoots)]) {
   const matches = findFiles(root, (file) => path.basename(file).toLowerCase() === "masterv-desktop.exe", 4);
   if (matches.length) { installedBinary = path.resolve(matches[0]); break; }
 }
-assert(installedBinary && fs.existsSync(installedBinary), `Installed MasterV executable not found under: ${installRoots.join(", ")}`);
+assert(installedBinary && fs.existsSync(installedBinary), `Installed ${productName} executable not found under: ${installRoots.join(", ")}`);
 const installDir = path.dirname(installedBinary);
 
 const installedHits = scan(installedBinary, [...forbiddenIdentifiers, ...secretValues]);
@@ -113,6 +124,7 @@ const evidenceDir = path.resolve("artifacts", "desktop-installed-quality");
 fs.mkdirSync(evidenceDir, { recursive: true });
 const evidence = {
   status: "MASTERV_WINDOWS_INSTALLED_PREPARE_PASS",
+  product_name: productName,
   installer_path: installerPath,
   installer_sha256: sha256(installerPath),
   installed_exe: installedBinary,
