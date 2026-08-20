@@ -97,10 +97,10 @@ do {
 } while ((Get-Date) -lt $deadline)
 [ordered]@{
   executable_exists = [bool](Test-Path -LiteralPath '${appBinaryPs}')
-  registry_count = [int]@(
+  registry_count = [int](@(
     Get-ItemProperty $paths -ErrorAction SilentlyContinue |
       Where-Object { $_.DisplayName -eq '${productNamePs}' }
-  ).Count
+  ).Count)
 } | ConvertTo-Json -Compress
 `, 60_000));
 
