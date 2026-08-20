@@ -29,6 +29,7 @@ assert.equal(pkg.scripts?.["test:desktop-installed-session-uninstall-windows"], 
 assert.equal(defaultTauri.app?.withGlobalTauri, true, "vanilla Desktop runtime requires the Tauri global invoke bridge");
 assert.equal(defaultTauri.bundle?.active, false, "Default Tauri bundle must remain inactive");
 assert.equal(smokeTauri.bundle?.active, true, "Windows smoke override must remain installer-only authority");
+assert.equal(defaultTauri.productName, "MasterV Desktop", "installed package authority must remain bound to the canonical Tauri product name");
 
 assert(helper.includes("MASTERV_DESKTOP_APP_BINARY") && helper.includes("fs.existsSync(installed)"), "Windows launcher must support installed-binary authority");
 assert(helper.includes("reuseDataDir") && helper.includes("options.dataDir"), "restart verification requires a reusable WebView profile");
@@ -48,9 +49,12 @@ for (const token of [
 assert(!runtime.includes("SUPABASE_TEST_EMAIL") && !runtime.includes("SUPABASE_TEST_PASSWORD"), "active Windows runtime smoke must not require legacy login credentials");
 assert(!runtime.includes("/auth/v1/token") && !runtime.includes("/rest/v1/reference_library_entries"), "active Windows runtime smoke must not directly seed Supabase");
 
-for (const token of ["/S", "MasterV uninstall registry entry", "installer_sha256", "installed_exe_sha256", "GEMINI_API_KEY", "YOUTUBE_DATA_API_KEY", "SUPABASE_SERVICE_ROLE_KEY", "SUPABASE_TEST_PASSWORD", "TAURI_SIGNING_PRIVATE_KEY", "autorun_entries", "scheduled_tasks"]) {
+for (const token of ["/S", "Tauri productName", "uninstall registry entry not found after install", "uninstall registry entry is ambiguous", "installer_sha256", "installed_exe_sha256", "GEMINI_API_KEY", "YOUTUBE_DATA_API_KEY", "SUPABASE_SERVICE_ROLE_KEY", "SUPABASE_TEST_PASSWORD", "TAURI_SIGNING_PRIVATE_KEY", "autorun_entries", "scheduled_tasks"]) {
   assert(prepare.includes(token), `installer preparation invariant missing: ${token}`);
 }
+assert(prepare.includes('tauriConfig.productName'), "installer registry authority must be derived from Tauri productName rather than a duplicated display-name literal");
+assert(prepare.includes('registry.DisplayName === productName'), "installed registry DisplayName must be verified against Tauri productName");
+assert(!prepare.includes("Where-Object { $_.DisplayName -eq 'MasterV' }"), "installer registry lookup must not use the obsolete MasterV display name");
 assert(prepare.includes("GITHUB_ENV") && prepare.includes("MASTERV_DESKTOP_UNINSTALLER"), "installed authority must be exported only through CI process environment");
 
 for (const token of [
@@ -102,6 +106,7 @@ console.log(JSON.stringify({
   status: "MASTERV_DESKTOP_INSTALLED_QUALITY_CONTRACT_PASS",
   migration_stage: "MV-SUPABASE-EXIT-2C",
   install_candidate: "unsigned-nsis",
+  product_name_authority: "tauri.conf.json:productName",
   visible_auth: "product-key+device-resume",
   local_data_authority: "local-sqlite",
   restart_local_data_persistence_required: true,
