@@ -85,9 +85,6 @@ fn main() {
             let gateway = gateway_transport::GatewayTransport::initialize()
                 .map_err(|error| io::Error::new(io::ErrorKind::Other, error))?;
 
-            if let Err(error) = automatic_backup::ensure_automatic_backup(&app_local_data_dir) {
-                eprintln!("MasterV startup automatic backup check failed: {error}");
-            }
             if let Err(error) = automatic_backup::start_automatic_backup_loop(app_local_data_dir.clone()) {
                 eprintln!("MasterV automatic backup worker failed to start: {error}");
             }
