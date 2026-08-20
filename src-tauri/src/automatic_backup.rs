@@ -55,9 +55,10 @@ fn ensure_automatic_backup_at(
 
     let timestamp = unix_timestamp_nanos(now)?;
     let destination = backup_dir.join(format!("{AUTO_BACKUP_PREFIX}{timestamp}.db"));
-    connection
-        .backup(DatabaseName::Main, &destination, None)
-        .map_err(error_string)?;
+    if let Err(error) = connection.backup(DatabaseName::Main, &destination, None) {
+        let _ = fs::remove_file(&destination);
+        return Err(error_string(error));
+    }
 
     let validation = Connection::open(&destination)
         .map_err(error_string)
@@ -231,6 +232,7 @@ mod tests {
             )
             .unwrap();
         assert_eq!(count, 1);
+        drop(backup);
 
         fs::remove_dir_all(dir).unwrap();
     }
