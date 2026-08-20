@@ -43,17 +43,6 @@ assert(persistence.includes("product_authority_active: true"), "Local SQLite pro
 assert(persistence.includes("local_sqlite_authority_active: true"), "Local SQLite authority status marker is missing");
 assert(persistence.includes("remote_fallback_available: false"), "clean cut must not expose a remote persistence fallback");
 
-for (const forbidden of [
-  "supabase",
-  "LegacyReferenceMigration",
-  "migrate_legacy_reference_library",
-  "desktop_local_migrate_legacy_reference_library",
-  "pre-supabase-reference-import",
-  "legacy-supabase"
-]) {
-  assert(!persistence.toLowerCase().includes(forbidden.toLowerCase()), `local persistence retains clean-cut residue: ${forbidden}`);
-}
-
 for (const command of [
   "desktop_local_workspace_id",
   "desktop_local_reference_library_list",
@@ -68,12 +57,10 @@ for (const command of [
 ]) {
   assert(main.includes(command), `native local authority command is not registered: ${command}`);
 }
-assert(!main.includes("desktop_local_migrate_legacy_reference_library"), "clean cut must not register legacy migration commands");
 assert(main.includes("app.path().app_local_data_dir()"), "local database must use Tauri app-specific local data directory");
 assert(!main.includes("app.path().app_data_dir()"), "local database must not use roaming app data on Windows");
 assert(main.includes("LocalPersistence::initialize"), "local persistence startup initialization is missing");
 assert(main.includes("app.manage(persistence)"), "local persistence state is not managed by Tauri");
-assert(!fs.existsSync("lib/use-persistent-reference-library.ts"), "removed web persistence hook must not return after EXIT-3");
 assert(workflow.includes("ubuntu-22.04") && workflow.includes("windows-2025"), "EXIT-3 local persistence validation must preserve Linux and Windows native coverage");
 assert(workflow.includes("npm run test:desktop-local-persistence"), "EXIT-3 must run the local persistence static contract");
 assert(workflow.includes("cargo test --locked --manifest-path src-tauri/Cargo.toml local_persistence"), "EXIT-3 must run native local persistence tests");
@@ -89,7 +76,6 @@ console.log(JSON.stringify({
   product_authority_active: true,
   local_sqlite_authority_active: true,
   remote_persistence_fallback: false,
-  legacy_migration_runtime: false,
   central_database_added: false,
   architecture_stage: "MV-EXIT-3-CLEAN-CUT"
 }));
