@@ -38,20 +38,11 @@ jobs:
       - run: npm run test:search-ux
       - run: npm run test:background-batch
       - run: npm run test:reference-library
-      - run: npm run test:reference-library-supabase
-      - run: npm run test:supabase-auth
       - run: npm run test:runtime-api
       - run: npm run test:desktop-shell
       - run: npm run test:desktop-reference-library
       - run: npm run test:desktop-reference-detail-compare
-      - run: npm run test:hosted-reference-compiler
-      - run: npm run test:hosted-youtube-discovery
-      - run: npm run test:hosted-deep-analysis
-      - run: npm run test:hosted-production-guidance
-      - run: npm run test:hosted-background-batch
-      - run: npm run test:desktop-build-determinism
-      - run: npm run test:desktop-installed-quality-contract
-      - run: npm run test:reference-library-browser-script
+      - run: npm run test:exit-3-clean-cut
       - run: npm run test:search-ux-browser-script
       - run: npm run build
       - name: Production dependency audit
@@ -60,11 +51,6 @@ jobs:
   desktop-shell:
     if: ${{ github.event_name == 'pull_request' }}
     runs-on: ubuntu-22.04
-    env:
-      NEXT_PUBLIC_SUPABASE_URL: https://euqkjrmrhhvnyzasppnd.supabase.co
-      NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: sb_publishable_WUdzeBz9jsYwQXP_YeyD4w_OdkRcLp2
-      NEXT_PUBLIC_MASTERV_API_BASE_URL: https://euqkjrmrhhvnyzasppnd.supabase.co/functions/v1
-      MASTERV_DESKTOP_REQUIRE_CONFIG: "1"
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
       - name: Install Tauri Linux dependencies
@@ -78,16 +64,8 @@ jobs:
         with:
           toolchain: 1.97.1
       - run: npm ci
+      - run: npm run test:exit-3-clean-cut
       - run: npm run test:desktop-shell
-      - run: npm run test:desktop-reference-library
-      - run: npm run test:desktop-reference-detail-compare
-      - run: npm run test:hosted-reference-compiler
-      - run: npm run test:hosted-youtube-discovery
-      - run: npm run test:hosted-deep-analysis
-      - run: npm run test:hosted-production-guidance
-      - run: npm run test:hosted-background-batch
-      - run: npm run test:desktop-build-determinism
-      - run: npm run test:desktop-installed-quality-contract
       - name: Verify locked Cargo graph
         run: cargo metadata --locked --manifest-path src-tauri/Cargo.toml --no-deps > /dev/null
       - run: npm run desktop:build
@@ -99,11 +77,6 @@ jobs:
     if: ${{ github.event_name == 'pull_request' }}
     runs-on: windows-2025
     timeout-minutes: 55
-    env:
-      NEXT_PUBLIC_SUPABASE_URL: https://euqkjrmrhhvnyzasppnd.supabase.co
-      NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: sb_publishable_WUdzeBz9jsYwQXP_YeyD4w_OdkRcLp2
-      NEXT_PUBLIC_MASTERV_API_BASE_URL: https://euqkjrmrhhvnyzasppnd.supabase.co/functions/v1
-      MASTERV_DESKTOP_REQUIRE_CONFIG: "1"
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
@@ -113,13 +86,13 @@ jobs:
         with:
           toolchain: 1.97.1
       - run: npm ci
-      - name: Verify local-first Windows runtime preconditions
+      - name: Verify clean-cut Windows runtime preconditions
         shell: pwsh
         run: |
           if ($env:GEMINI_API_KEY) { throw "Gemini credential must not be present in desktop runtime smoke" }
           if ($env:YOUTUBE_DATA_API_KEY) { throw "YouTube credential must not be present in desktop runtime smoke" }
           if ($env:POLAR_ACCESS_TOKEN) { throw "Polar server credential must not be present in desktop runtime smoke" }
-          if ($env:SUPABASE_SERVICE_ROLE_KEY) { throw "Supabase admin credential must not be present in desktop runtime smoke" }
+      - run: npm run test:exit-3-clean-cut
       - name: Verify locked Cargo graph
         shell: pwsh
         run: cargo metadata --locked --manifest-path src-tauri/Cargo.toml --no-deps | Out-Null
@@ -127,7 +100,7 @@ jobs:
         run: npm run desktop:build
       - name: Verify native build did not mutate lockfiles
         run: git diff --exit-code -- package-lock.json src-tauri/Cargo.lock
-      - name: Run native local-first Windows runtime smoke
+      - name: Run native clean-cut Windows runtime smoke
         run: npm run test:desktop-windows-runtime
       - name: Generate platform icons for installer smoke
         run: npm run tauri -- icon src-tauri/icons/icon.png
@@ -135,17 +108,15 @@ jobs:
         run: npm run desktop:bundle:windows-smoke
       - name: Verify installer build did not mutate lockfiles
         run: git diff --exit-code -- package-lock.json src-tauri/Cargo.lock
-      - name: Install and audit unsigned NSIS quality candidate
-        run: npm run test:desktop-installed-prepare-windows
-      - name: Run installed local-first restart and uninstall quality smoke
-        run: npm run test:desktop-installed-session-uninstall-windows
-      - name: Upload Windows local-first runtime evidence
+      - name: Install, run, restart, and uninstall clean-cut candidate
+        run: npm run test:desktop-installed-clean-cut-windows
+      - name: Upload Windows clean-cut runtime evidence
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
-          name: masterv-windows-desktop-smoke
+          name: masterv-windows-exit-3-clean-cut
           path: |
-            artifacts/desktop-windows-runtime
-            artifacts/desktop-installed-quality
+            artifacts/desktop-windows-clean-cut
+            artifacts/desktop-installed-clean-cut
             src-tauri/target/release/bundle/nsis/*.exe
           if-no-files-found: warn
