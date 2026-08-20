@@ -69,6 +69,8 @@ jobs:
       - run: npm run test:desktop-shell
       - name: Verify locked Cargo graph
         run: cargo metadata --locked --manifest-path src-tauri/Cargo.toml --no-deps > /dev/null
+      - name: Run native Local SQLite and automatic backup tests
+        run: cargo test --locked --manifest-path src-tauri/Cargo.toml
       - run: npm run desktop:build
       - name: Verify desktop build did not mutate lockfiles
         run: git diff --exit-code -- package-lock.json src-tauri/Cargo.lock
