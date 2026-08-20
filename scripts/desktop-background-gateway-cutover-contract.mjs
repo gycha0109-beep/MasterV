@@ -94,6 +94,8 @@ const env = {
 };
 const build = spawnSync(process.execPath, ["scripts/build-desktop-static.mjs"], { cwd: root, env, encoding: "utf8" });
 assert.equal(build.status, 0, `desktop static builder failed: ${build.stderr || build.stdout}`);
+const copyBackground = spawnSync(process.execPath, ["scripts/copy-desktop-background-batch.mjs"], { cwd: root, env, encoding: "utf8" });
+assert.equal(copyBackground.status, 0, `desktop background asset copy failed: ${copyBackground.stderr || copyBackground.stdout}`);
 const builtBackground = read("desktop-dist/background-batch.js");
 assert.match(builtBackground, /background-batch-local-gateway-v1/);
 

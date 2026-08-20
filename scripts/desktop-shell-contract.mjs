@@ -73,7 +73,9 @@ assert(runtimeIndex.indexOf("./backend/backend.js") < runtimeIndex.indexOf("./ap
 const tauriConfig = JSON.parse(fs.readFileSync(path.join(root, "src-tauri/tauri.conf.json"), "utf8"));
 assert(tauriConfig.build?.frontendDist === "../desktop-dist", "Tauri frontendDist must point to static desktop output");
 assert(tauriConfig.bundle?.active === false, "3B must not claim installer bundling yet");
-assert(String(tauriConfig.app?.security?.csp || "").includes("https://euqkjrmrhhvnyzasppnd.supabase.co"), "Tauri CSP must explicitly allow the current MasterV Supabase origin");
+const csp = String(tauriConfig.app?.security?.csp || "");
+assert(csp.includes("https://*.supabase.co") && csp.includes("wss://*.supabase.co"), "0.1.2 migration bridge CSP must retain bounded legacy Supabase transport allowance");
+assert(!csp.includes("euqkjrmrhhvnyzasppnd.supabase.co"), "Tauri CSP must not encode the current Supabase project origin; legacy migration transport must remain project-neutral");
 
 console.log(JSON.stringify({
   status: "MASTERV_DESKTOP_SHELL_CONTRACT_PASS",
@@ -82,6 +84,8 @@ console.log(JSON.stringify({
   backend_provider_boundary: true,
   desktop_config_vendor_neutral: true,
   legacy_runtime_config_isolated: true,
+  legacy_csp_scope: "0.1.2-migration-bridge-only",
+  legacy_csp_project_neutral: true,
   app_direct_hosted_endpoint_knowledge: false,
   tauri_icon_png: true,
   tauri_icon_size: "128x128",
