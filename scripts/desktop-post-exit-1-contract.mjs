@@ -122,7 +122,8 @@ assert(updaterWorkflow.includes("allow_updater_dry_run"), "updater dry-run must 
 assert(updaterWorkflow.includes("test:desktop-upgrade-dry-run-windows"), "updater dry-run workflow must exercise upgrade survival");
 
 assert(ci.includes("npm run test:post-exit-1"), "CI must freeze MV-POST-EXIT-1 architecture completion");
-assert(ci.includes("cargo test --locked --manifest-path src-tauri/Cargo.toml"), "CI Linux native gate must run Local SQLite and automatic backup tests");
+assert(ci.includes("cargo test --locked --manifest-path src-tauri/Cargo.toml local_persistence::tests"), "CI Linux native gate must run Local SQLite tests explicitly");
+assert(ci.includes("cargo test --locked --manifest-path src-tauri/Cargo.toml automatic_backup::tests"), "CI Linux native gate must run automatic backup tests explicitly");
 assert(ci.includes("npm run desktop:build:windows-updater-baseline"), "CI Windows quality must build the 0.1.2 baseline");
 assert(ci.includes("npm run desktop:build:windows-updater-rc"), "CI Windows quality must build the 0.1.3 updater RC");
 assert(ci.includes("npm run test:desktop-upgrade-dry-run-windows"), "CI Windows quality must verify Local SQLite upgrade survival");
@@ -130,7 +131,7 @@ assert(ci.includes("$env:TAURI_SIGNING_PRIVATE_KEY"), "CI must fail closed if pr
 assert(!ci.includes("secrets.TAURI_SIGNING_PRIVATE_KEY"), "CI must not consume production signing credentials during MV-POST-EXIT-1");
 
 for (const text of [updaterWorkflow, releaseWorkflow, signingWorkflow, shareWorkflow, pilotWorkflow, ci]) {
-  assert(!text.includes("MasterV_0.1.1"), "0.1.1 updater residue remains in active readiness workflow");
+  assert(!text.includes("0.1.1"), "0.1.1 updater/readiness residue remains in an active MV-POST-EXIT-1 workflow");
 }
 
 const section20 = {
