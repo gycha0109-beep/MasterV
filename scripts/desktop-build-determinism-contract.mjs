@@ -68,12 +68,26 @@ assert((ci.match(/git diff --exit-code -- package-lock\.json src-tauri\/Cargo\.l
 assert(ci.includes("npm run test:desktop-build-determinism"), "CI must run the 3K determinism contract");
 assert(ci.includes(`dtolnay/rust-toolchain@${rustToolchainSha}`) && /toolchain:\s*1\.97\.1/.test(ci), "CI Rust setup must be exact");
 
-const batchIndex = ci.indexOf("Run native WebView2 Guarded Background Batch runtime smoke");
-const installerIndex = ci.indexOf("Build unsigned NSIS installer smoke");
-const legacyDeepIndex = ci.indexOf("Run native WebView2 Hosted Deep Analysis runtime smoke");
-const providerDeepIndex = ci.indexOf("Observe Hosted Deep Analysis provider health");
-const deepIndex = legacyDeepIndex >= 0 ? legacyDeepIndex : providerDeepIndex;
-assert(batchIndex >= 0 && installerIndex > batchIndex && deepIndex > installerIndex, "unsigned installer determinism must be verified before live Gemini regression/provider-health smoke");
+const nativeBuild = ci.indexOf("Build native Windows Tauri executable");
+const nativeSmoke = ci.indexOf("Run native local-first Windows runtime smoke");
+const iconGeneration = ci.indexOf("Generate platform icons for installer smoke");
+const installer = ci.indexOf("Build unsigned NSIS installer smoke");
+const install = ci.indexOf("Install and audit unsigned NSIS quality candidate");
+const installedLifecycle = ci.indexOf("Run installed local-first restart and uninstall quality smoke");
+assert(nativeBuild >= 0 && nativeSmoke > nativeBuild, "native local-first runtime smoke must follow the deterministic executable build");
+assert(iconGeneration > nativeSmoke && installer > iconGeneration, "platform icon generation and unsigned installer build must follow native runtime verification");
+assert(install > installer && installedLifecycle > install, "installed lifecycle evidence must use the exact unsigned installer candidate");
+for (const forbiddenStep of [
+  "Hosted YouTube Discovery runtime smoke",
+  "Guarded Background Batch runtime smoke",
+  "Run native WebView2 Hosted Deep Analysis runtime smoke",
+  "Observe Hosted Deep Analysis provider health",
+  "Observe Product Truth Production Guidance provider health"
+]) assert(!ci.includes(forbiddenStep), `active EXIT-2C CI must not run legacy/live provider smoke: ${forbiddenStep}`);
+for (const forbiddenCredential of ["GEMINI_API_KEY:", "YOUTUBE_DATA_API_KEY:", "POLAR_ACCESS_TOKEN:", "SUPABASE_SERVICE_ROLE_KEY:"]) {
+  assert(!ci.includes(forbiddenCredential), `active EXIT-2C CI must not configure provider/admin credential: ${forbiddenCredential}`);
+}
+assert(ci.includes("artifacts/desktop-windows-runtime") && ci.includes("artifacts/desktop-installed-quality"), "deterministic local-first runtime and installed-quality evidence must be uploaded");
 assert(!ci.includes("TAURI_SIGNING_PRIVATE_KEY:"), "3K must not configure signing credentials");
 assert(!/\bupdater\b/i.test(ci), "3K must not activate an updater");
 
@@ -87,5 +101,8 @@ console.log(JSON.stringify({
   locked_tauri_cli: packageLock.packages["node_modules/@tauri-apps/cli"].version,
   locked_tauri: cargoVersion("tauri"),
   locked_wry: cargoVersion("wry"),
+  windows_quality_order: "native-build->local-first-smoke->icon-generation->unsigned-nsis->installed-lifecycle",
+  live_provider_smoke_in_active_ci: false,
+  provider_credentials_in_active_ci: false,
   activation: false
 }));
