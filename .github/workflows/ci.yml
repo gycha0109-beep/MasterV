@@ -46,6 +46,8 @@ jobs:
       - run: npm run test:post-exit-1
       - run: npm run test:rel-1
       - run: npm run test:rel-1b
+      - name: Verify REL-1C verification-only harness contract
+        run: node scripts/desktop-rel-1c-contract.mjs
       - run: npm run test:search-ux-browser-script
       - run: npm run build
       - name: Production dependency audit
@@ -110,6 +112,8 @@ jobs:
       - run: npm run test:exit-3-clean-cut
       - run: npm run test:post-exit-1
       - run: npm run test:rel-1b
+      - name: Verify REL-1C verification-only harness contract
+        run: node scripts/desktop-rel-1c-contract.mjs
       - name: Verify locked Cargo graph
         shell: pwsh
         run: cargo metadata --locked --manifest-path src-tauri/Cargo.toml --no-deps | Out-Null
@@ -170,4 +174,13 @@ jobs:
           path: |
             artifacts/desktop-rel-1b-hotfix
             src-tauri/target/release/bundle/nsis/MasterV Desktop_0.1.4_x64-setup.exe
+          if-no-files-found: warn
+      - name: Verify real published 0.1.3 to signed 0.1.4 updater acceptance
+        run: node scripts/desktop-rel-1c-published-updater-windows.mjs
+      - name: Upload MV-REL-1C published updater evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: masterv-0.1.4-rel-1c-published-updater-verification
+          path: artifacts/desktop-rel-1c-published-updater
           if-no-files-found: warn

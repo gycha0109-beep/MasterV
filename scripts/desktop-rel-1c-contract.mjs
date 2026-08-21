@@ -11,6 +11,7 @@ function read(file) {
 
 const verifier = read("scripts/desktop-rel-1c-published-updater-windows.mjs");
 const workflow = read(".github/workflows/desktop-rel-1c-published-updater-verification.yml");
+const ci = read(".github/workflows/ci.yml");
 
 for (const marker of [
   'attachMasterV',
@@ -31,7 +32,6 @@ assert(!verifier.includes('Published 0.1.3 hero contract changed unexpectedly'),
 
 for (const marker of [
   'name: MV REL-1C Published Updater Verification',
-  'pull_request:',
   'workflow_dispatch:',
   'contents: read',
   'windows-2025',
@@ -41,6 +41,7 @@ for (const marker of [
 ]) {
   assert(workflow.includes(marker), `MV-REL-1C workflow contract marker missing: ${marker}`);
 }
+assert(!workflow.includes('pull_request:'), "MV-REL-1C verification-only workflow must not become a third automatic PR workflow");
 
 for (const forbidden of [
   'TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.',
@@ -53,11 +54,22 @@ for (const forbidden of [
   assert(!workflow.includes(forbidden), `MV-REL-1C verification-only workflow must not contain mutation/signing authority: ${forbidden}`);
 }
 
+for (const marker of [
+  'Verify REL-1C verification-only harness contract',
+  'node scripts/desktop-rel-1c-contract.mjs',
+  'Verify real published 0.1.3 to signed 0.1.4 updater acceptance',
+  'node scripts/desktop-rel-1c-published-updater-windows.mjs'
+]) {
+  assert(ci.includes(marker), `MV-REL-1C existing CI integration marker missing: ${marker}`);
+}
+
 console.log(JSON.stringify({
   status: "MASTERV_REL_1C_VERIFICATION_HARNESS_CONTRACT_PASS",
   published_versions: ["0.1.3", "0.1.4"],
   app_target_wait_required: true,
   dom_ready_wait_required: true,
+  automatic_pr_workflow_added: false,
+  existing_ci_integration_required: true,
   production_signing_allowed: false,
   release_publication_allowed: false,
   release_mutation_allowed: false
