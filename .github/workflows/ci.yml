@@ -45,6 +45,7 @@ jobs:
       - run: npm run test:exit-3-clean-cut
       - run: npm run test:post-exit-1
       - run: npm run test:rel-1
+      - run: npm run test:rel-1b
       - run: npm run test:search-ux-browser-script
       - run: npm run build
       - name: Production dependency audit
@@ -89,7 +90,7 @@ jobs:
     name: desktop-windows-quality
     if: ${{ github.event_name == 'pull_request' }}
     runs-on: windows-2025
-    timeout-minutes: 80
+    timeout-minutes: 90
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
@@ -108,6 +109,7 @@ jobs:
           if ($env:TAURI_SIGNING_PRIVATE_KEY) { throw "Production Tauri signing key must not be present in MV-POST-EXIT-1 dry-run" }
       - run: npm run test:exit-3-clean-cut
       - run: npm run test:post-exit-1
+      - run: npm run test:rel-1b
       - name: Verify locked Cargo graph
         shell: pwsh
         run: cargo metadata --locked --manifest-path src-tauri/Cargo.toml --no-deps | Out-Null
@@ -153,4 +155,19 @@ jobs:
             artifacts/desktop-post-exit-1-upgrade
             src-tauri/target/release/bundle/nsis/MasterV Desktop_0.1.2_x64-setup.exe
             src-tauri/target/release/bundle/nsis/MasterV Desktop_0.1.3_x64-setup.exe
+          if-no-files-found: warn
+      - name: Build unsigned 0.1.4 updater bootstrap hotfix RC
+        run: npm run desktop:build:windows-updater-hotfix-rc
+      - name: Verify hotfix RC build did not mutate lockfiles
+        run: git diff --exit-code -- package-lock.json src-tauri/Cargo.lock
+      - name: Verify 0.1.4 updater UI bootstrap wiring on Windows
+        run: npm run test:desktop-rel-1b-hotfix-windows
+      - name: Upload MV-REL-1B hotfix RC evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: masterv-0.1.4-rel-1b-hotfix-rc
+          path: |
+            artifacts/desktop-rel-1b-hotfix
+            src-tauri/target/release/bundle/nsis/MasterV Desktop_0.1.4_x64-setup.exe
           if-no-files-found: warn

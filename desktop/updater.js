@@ -7,7 +7,7 @@
   if (typeof invoke !== "function" || updaterConfig.enabled !== true) return;
 
   const shell = document.querySelector("main.shell");
-  const hero = document.querySelector("section.hero");
+  const hero = document.querySelector("header.hero");
   if (!shell || !hero) return;
 
   const panel = document.createElement("section");
