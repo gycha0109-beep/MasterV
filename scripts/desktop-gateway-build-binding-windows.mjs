@@ -31,6 +31,22 @@ const runtimeDataDir = path.join(
 );
 fs.rmSync(runtimeDataDir, { recursive: true, force: true });
 
+async function cleanupRuntimeDataDir() {
+  await delay(750);
+  try {
+    fs.rmSync(runtimeDataDir, {
+      recursive: true,
+      force: true,
+      maxRetries: 8,
+      retryDelay: 250
+    });
+  } catch (error) {
+    const code = error && typeof error === "object" && "code" in error ? String(error.code) : "";
+    if (!["EPERM", "EBUSY", "ENOTEMPTY"].includes(code)) throw error;
+    console.warn(`Gateway build-binding runtime cleanup deferred: ${code}`);
+  }
+}
+
 async function invokeJson(runtime, command, args = {}) {
   const key = `gatewaybinding${Math.random().toString(36).slice(2)}`;
   const started = await execute(runtime.driverPort, runtime.sessionId, `
@@ -105,5 +121,5 @@ try {
   console.log(JSON.stringify(evidence));
 } finally {
   if (runtime) await runtime.close().catch(() => undefined);
-  fs.rmSync(runtimeDataDir, { recursive: true, force: true });
+  await cleanupRuntimeDataDir();
 }
