@@ -14,10 +14,11 @@ async function main() {
     /Invalid MASTERV_DEPLOYMENT_SURFACE/
   );
 
-  const previousNodeEnv = process.env.NODE_ENV;
-  const previousSurface = process.env.MASTERV_DEPLOYMENT_SURFACE;
-  process.env.NODE_ENV = "production";
-  delete process.env.MASTERV_DEPLOYMENT_SURFACE;
+  const mutableEnv = process.env as Record<string, string | undefined>;
+  const previousNodeEnv = mutableEnv.NODE_ENV;
+  const previousSurface = mutableEnv.MASTERV_DEPLOYMENT_SURFACE;
+  mutableEnv.NODE_ENV = "production";
+  delete mutableEnv.MASTERV_DEPLOYMENT_SURFACE;
 
   try {
     const [{ proxy }, analyze, discover, interpret] = await Promise.all([
@@ -47,10 +48,10 @@ async function main() {
       assert.equal(body.code, "LEGACY_WEB_API_DISABLED", `${name} legacy API returned unexpected fail-closed code`);
     }
   } finally {
-    if (previousNodeEnv === undefined) delete process.env.NODE_ENV;
-    else process.env.NODE_ENV = previousNodeEnv;
-    if (previousSurface === undefined) delete process.env.MASTERV_DEPLOYMENT_SURFACE;
-    else process.env.MASTERV_DEPLOYMENT_SURFACE = previousSurface;
+    if (previousNodeEnv === undefined) delete mutableEnv.NODE_ENV;
+    else mutableEnv.NODE_ENV = previousNodeEnv;
+    if (previousSurface === undefined) delete mutableEnv.MASTERV_DEPLOYMENT_SURFACE;
+    else mutableEnv.MASTERV_DEPLOYMENT_SURFACE = previousSurface;
   }
 
   console.log(JSON.stringify({
