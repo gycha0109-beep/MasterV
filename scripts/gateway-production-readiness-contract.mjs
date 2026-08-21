@@ -13,10 +13,10 @@ const surfaceContractPath = "scripts/gateway-serverless-surface-contract.ts";
 const deploymentSurfaceContractPath = "scripts/gateway-deployment-surface-contract.ts";
 const deploymentSurfacePath = "lib/deployment-surface.ts";
 const proxyPath = "proxy.ts";
-const legacyApiPaths = [
-  "app/api/analyze/route.ts",
-  "app/api/discover/youtube/route.ts",
-  "app/api/interpret-product-truth/route.ts"
+const legacyApiContracts = [
+  ["app/api/analyze/route.ts", "const managed = await analyzeYouTubeDeepManaged"],
+  ["app/api/discover/youtube/route.ts", "const result = await discoverYouTubeProgressive"],
+  ["app/api/interpret-product-truth/route.ts", "const interpretation = await interpretProductTruthAgainstReference"]
 ];
 const bindingVerifierPath = "scripts/desktop-gateway-build-binding-windows.mjs";
 const publishedPreflightPath = "scripts/desktop-pilot-1-gateway-preflight-windows.mjs";
@@ -29,7 +29,7 @@ for (const relative of [
   deploymentSurfaceContractPath,
   deploymentSurfacePath,
   proxyPath,
-  ...legacyApiPaths,
+  ...legacyApiContracts.map(([relative]) => relative),
   bindingVerifierPath,
   publishedPreflightPath,
   buildScriptPath
@@ -43,7 +43,6 @@ const surfaceContract = read(surfaceContractPath);
 const deploymentSurfaceContract = read(deploymentSurfaceContractPath);
 const deploymentSurface = read(deploymentSurfacePath);
 const proxy = read(proxyPath);
-const legacyApis = legacyApiPaths.map((relative) => read(relative));
 const bindingVerifier = read(bindingVerifierPath);
 const publishedPreflight = read(publishedPreflightPath);
 const buildScript = read(buildScriptPath);
@@ -76,7 +75,6 @@ for (const marker of [
 ]) {
   assert(route.includes(marker), `Serverless Gateway route marker missing: ${marker}`);
 }
-
 for (const forbidden of ["postgres", "supabase", "redis", "d1", "prisma", "drizzle"]) {
   assert(!route.toLowerCase().includes(forbidden), `Serverless Gateway adapter introduced persistence dependency marker: ${forbidden}`);
 }
@@ -97,7 +95,6 @@ for (const marker of [
 ]) {
   assert(deploymentSurface.includes(marker), `Deployment surface authority marker missing: ${marker}`);
 }
-
 for (const marker of [
   'resolveMasterVDeploymentSurface() !== "gateway"',
   'pathname === "/v1" || pathname.startsWith("/v1/")',
@@ -108,18 +105,14 @@ for (const marker of [
   assert(proxy.includes(marker), `Gateway-only proxy marker missing: ${marker}`);
 }
 
-for (const [index, legacyApi] of legacyApis.entries()) {
-  assert(legacyApi.includes('legacyWebApiEnabled()'), `Legacy API ${legacyApiPaths[index]} is missing deployment-surface guard`);
-  assert(legacyApi.includes('code: "LEGACY_WEB_API_DISABLED"'), `Legacy API ${legacyApiPaths[index]} is missing fail-closed code`);
-  const guardIndex = legacyApi.indexOf('legacyWebApiEnabled()');
-  const providerWorkIndex = Math.min(
-    ...[
-      legacyApi.indexOf("analyzeYouTubeDeepManaged"),
-      legacyApi.indexOf("discoverYouTubeProgressive"),
-      legacyApi.indexOf("interpretProductTruthAgainstReference")
-    ].filter((value) => value >= 0)
-  );
-  assert(guardIndex >= 0 && providerWorkIndex >= 0 && guardIndex < providerWorkIndex, `Legacy API ${legacyApiPaths[index]} must guard before provider execution`);
+for (const [relative, providerInvocation] of legacyApiContracts) {
+  const source = read(relative);
+  const guardIndex = source.indexOf("legacyWebApiEnabled()");
+  const providerInvocationIndex = source.indexOf(providerInvocation);
+  assert(guardIndex >= 0, `Legacy API ${relative} is missing deployment-surface guard`);
+  assert(source.includes('code: "LEGACY_WEB_API_DISABLED"'), `Legacy API ${relative} is missing fail-closed code`);
+  assert(providerInvocationIndex >= 0, `Legacy API ${relative} provider invocation marker is missing`);
+  assert(guardIndex < providerInvocationIndex, `Legacy API ${relative} must guard before provider execution`);
 }
 
 for (const marker of [
@@ -135,13 +128,12 @@ for (const marker of [
 
 const tsxExecutable = path.join(root, "node_modules", ".bin", process.platform === "win32" ? "tsx.cmd" : "tsx");
 assert(exists(path.relative(root, tsxExecutable)), "tsx executable is required for Gateway readiness contracts");
-const surfaceExecution = spawnSync(tsxExecutable, [surfaceContractPath], { cwd: root, encoding: "utf8" });
-assert.equal(surfaceExecution.status, 0, `Gateway serverless surface contract failed:\n${surfaceExecution.stderr || surfaceExecution.stdout || surfaceExecution.error}`);
-const deploymentSurfaceExecution = spawnSync(tsxExecutable, [deploymentSurfaceContractPath], { cwd: root, encoding: "utf8" });
-assert.equal(deploymentSurfaceExecution.status, 0, `Gateway deployment surface contract failed:\n${deploymentSurfaceExecution.stderr || deploymentSurfaceExecution.stdout || deploymentSurfaceExecution.error}`);
+for (const contractPath of [surfaceContractPath, deploymentSurfaceContractPath]) {
+  const execution = spawnSync(tsxExecutable, [contractPath], { cwd: root, encoding: "utf8" });
+  assert.equal(execution.status, 0, `${contractPath} failed:\n${execution.stderr || execution.stdout || execution.error}`);
+}
 
 assert(buildScript.includes('println!("cargo:rerun-if-env-changed=MASTERV_GATEWAY_BASE_URL")'), "Cargo must rebuild when compile-time Gateway URL changes");
-
 for (const marker of [
   'desktop_gateway_status',
   'gateway?.configured === true',
@@ -157,7 +149,6 @@ for (const marker of [
 ]) {
   assert(bindingVerifier.includes(marker), `Desktop Gateway build-binding verifier marker missing: ${marker}`);
 }
-
 for (const forbidden of [
   "desktop_gateway_activate",
   "/v1/license/activate",
@@ -170,7 +161,6 @@ for (const forbidden of [
 ]) {
   assert(!bindingVerifier.includes(forbidden), `Desktop Gateway build-binding verifier regained mutation authority: ${forbidden}`);
 }
-
 const bindingSyntax = spawnSync(process.execPath, ["--check", bindingVerifierPath], { cwd: root, encoding: "utf8" });
 assert.equal(bindingSyntax.status, 0, `Gateway build-binding verifier syntax failed: ${bindingSyntax.stderr || bindingSyntax.stdout}`);
 
@@ -185,7 +175,6 @@ for (const marker of [
 ]) {
   assert(publishedPreflight.includes(marker), `Published Gateway preflight is not linked to build-binding readiness: ${marker}`);
 }
-
 const preflightSyntax = spawnSync(process.execPath, ["--check", publishedPreflightPath], { cwd: root, encoding: "utf8" });
 assert.equal(preflightSyntax.status, 0, `Published Gateway preflight syntax failed: ${preflightSyntax.stderr || preflightSyntax.stdout}`);
 
@@ -197,9 +186,7 @@ for (const marker of [
 ]) {
   assert(ci.includes(marker), `Existing Gateway preflight CI authority marker missing: ${marker}`);
 }
-
 assert(!ci.includes("MASTERV_GATEWAY_BASE_URL:"), "PR workflow must not inject Gateway URL globally; binding probe owns an isolated subprocess value");
-
 for (const forbidden of [
   "POLAR_ACCESS_TOKEN: ${{ secrets.",
   "POLAR_ORGANIZATION_ID: ${{ secrets.",
