@@ -1,0 +1,29 @@
+{
+  "version": "0.1.4",
+  "build": {
+    "beforeBuildCommand": "npm run desktop:prepare && node scripts/prepare-desktop-updater-bootstrap.mjs && node scripts/prepare-desktop-rel-1b-hotfix.mjs"
+  },
+  "app": {
+    "withGlobalTauri": true
+  },
+  "bundle": {
+    "active": true,
+    "createUpdaterArtifacts": false,
+    "windows": {
+      "webviewInstallMode": {
+        "type": "downloadBootstrapper"
+      }
+    }
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEQ3MkMzNDk0ODg2NDUxM0UKUldRK1VXU0lsRFFzMTZHQUFZc3Z3eUxpcnN5bnE2QzRkalVtZDJDTFE4cGFCRFo1ejVCdFQ4QzAK",
+      "endpoints": [
+        "https://github.com/gycha0109-beep/MasterV/releases/latest/download/latest.json"
+      ],
+      "windows": {
+        "installMode": "passive"
+      }
+    }
+  }
+}
