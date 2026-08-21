@@ -48,6 +48,7 @@ const canonicalAsset = `MasterV_${releaseVersion}_x64-setup.exe`;
 const latestEndpoint = "https://github.com/gycha0109-beep/MasterV/releases/latest/download/latest.json";
 const installerUrl = `https://github.com/gycha0109-beep/MasterV/releases/download/${releaseTag}/${canonicalAsset}`;
 const productNamePs = psLiteral(productName);
+const compileTimeProbeGatewayUrl = "https://api.masterv.example";
 
 function uninstallRegistryEntries() {
   const json = powershell(`
@@ -149,6 +150,37 @@ async function waitForTauriBridge(runtime, timeoutMs = 60_000) {
   throw new Error("Timed out waiting for installed v0.1.4 Tauri bridge");
 }
 
+function runCompileTimeBindingProbe(evidenceDir) {
+  assert(fs.existsSync(path.resolve("desktop-dist", "index.html")), "Prepared Desktop static surface is required for Gateway build-binding probe");
+  const build = spawnSync(
+    "cargo",
+    ["build", "--locked", "--release", "--manifest-path", "src-tauri/Cargo.toml"],
+    {
+      cwd: process.cwd(),
+      env: { ...process.env, MASTERV_GATEWAY_BASE_URL: compileTimeProbeGatewayUrl },
+      encoding: "utf8",
+      timeout: 600_000,
+      windowsHide: true
+    }
+  );
+  assert(build.status === 0, `Gateway-bound Desktop probe build failed (${build.status}): ${build.stderr || build.stdout || build.error}`);
+
+  const runtimeEnv = { ...process.env };
+  delete runtimeEnv.MASTERV_GATEWAY_BASE_URL;
+  const verify = spawnSync(process.execPath, ["scripts/desktop-gateway-build-binding-windows.mjs"], {
+    cwd: process.cwd(),
+    env: runtimeEnv,
+    encoding: "utf8",
+    timeout: 180_000,
+    windowsHide: true
+  });
+  assert(verify.status === 0, `Compile-time Gateway binding verification failed (${verify.status}): ${verify.stderr || verify.stdout || verify.error}`);
+
+  const bindingSource = path.resolve("artifacts", "desktop-gateway-build-binding");
+  assert(fs.existsSync(path.join(bindingSource, "gateway-build-binding-evidence.json")), "Gateway build-binding evidence was not created");
+  fs.cpSync(bindingSource, path.join(evidenceDir, "build-binding"), { recursive: true });
+}
+
 async function main() {
   if (process.platform !== "win32") throw new Error("Published Gateway preflight must run on Windows");
 
@@ -243,6 +275,8 @@ async function main() {
     if (runtime) await runtime.close().catch(() => undefined);
     await cleanupInstalledProduct().catch(() => undefined);
   }
+
+  runCompileTimeBindingProbe(evidenceDir);
 }
 
 void main().catch((error) => {
