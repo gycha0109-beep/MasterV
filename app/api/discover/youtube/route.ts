@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { legacyWebApiEnabled } from "@/lib/deployment-surface";
 import type { SearchOptions } from "@/lib/discovery";
 import { discoverYouTubeProgressive, YouTubeDiscoveryError } from "@/lib/youtube-discovery";
 
@@ -6,6 +7,10 @@ const QUOTA_REASONS = new Set(["quotaExceeded", "dailyLimitExceeded", "rateLimit
 const CONFIG_REASONS = new Set(["keyInvalid", "accessNotConfigured", "ipRefererBlocked"]);
 
 export async function POST(request: Request) {
+  if (!legacyWebApiEnabled()) {
+    return NextResponse.json({ error: "Not found", code: "LEGACY_WEB_API_DISABLED" }, { status: 404 });
+  }
+
   try {
     const body = await request.json() as { query?: string; options?: SearchOptions };
     const query = body.query?.trim();
