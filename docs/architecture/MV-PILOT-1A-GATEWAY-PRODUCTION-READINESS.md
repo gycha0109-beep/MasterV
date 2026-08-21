@@ -26,10 +26,11 @@ external_human_pilot_executed = false
 
 ## Purpose
 
-MV-PILOT-1A prepares the two missing production boundaries without crossing either production mutation boundary:
+MV-PILOT-1A prepares the missing production boundaries without crossing production mutation authority:
 
-1. make the existing stateless Gateway deployable through the repository's serverless HTTP surface at `/v1/*`, and
-2. prove that a Desktop build compiled with a canonical HTTPS `MASTERV_GATEWAY_BASE_URL` observes `desktop_gateway_status.configured = true` without runtime URL injection.
+1. make the existing stateless Gateway deployable through `/v1/*`;
+2. make a production deployment fail closed to Gateway-only HTTP surface so legacy web provider routes cannot bypass Gateway entitlement;
+3. prove that a Desktop build compiled with a canonical HTTPS `MASTERV_GATEWAY_BASE_URL` observes `desktop_gateway_status.configured = true` without runtime URL injection.
 
 This stage does **not** deploy the Gateway and does **not** publish a replacement Desktop release.
 
@@ -44,6 +45,7 @@ recommended public authority = https://api.masterv.<domain>
 provider secrets = Gateway/server-side only
 Product Key = activation bootstrap only, never normal bearer
 user work data = Local SQLite
+AI/provider request execution = MasterV Gateway
 ```
 
 Gateway product routes remain:
@@ -90,6 +92,52 @@ provider network mutations      -> 0
 ```
 
 The health response may reveal only deployment-safe capability booleans and architecture metadata. It must never reveal secret values.
+
+## Production HTTP surface isolation
+
+The repository still contains historical web-only routes:
+
+```text
+POST /api/analyze
+POST /api/discover/youtube
+POST /api/interpret-product-truth
+```
+
+Those routes invoke provider-oriented application logic directly and are **not** the governed Desktop Gateway contract. A production Gateway deployment must therefore never expose them as an alternate provider execution path.
+
+Production defaults fail closed:
+
+```text
+NODE_ENV = production
+MASTERV_DEPLOYMENT_SURFACE unset
+=> effective surface = gateway
+=> /v1/* allowed
+=> all other paths rejected by proxy.ts with 404
+=> legacy /api/* handlers independently reject with 404 before request parsing/provider execution
+```
+
+Legacy web production is an explicit override only:
+
+```text
+MASTERV_DEPLOYMENT_SURFACE=web
+```
+
+That override is not part of the Gateway production activation path. The Gateway deployment must use the default `gateway` surface or explicitly set `MASTERV_DEPLOYMENT_SURFACE=gateway`.
+
+This provides two fail-closed layers:
+
+```text
+Layer 1: proxy.ts blocks non-/v1 public traffic on production Gateway surface
+Layer 2: legacy app/api handlers reject when effective surface != web
+```
+
+Therefore:
+
+```text
+LEGACY_WEB_API != GATEWAY_API
+LEGACY_WEB_PROVIDER_ROUTE != ENTITLEMENT-AUTHORIZED PROVIDER EXECUTION
+PRODUCTION_GATEWAY_PUBLIC_SURFACE = /v1/* ONLY
+```
 
 ## Server-side production credential set
 
@@ -181,6 +229,12 @@ The deterministic gate must prove:
 [ ] no provider credential is present in deterministic serverless contract execution
 [ ] /v1/health returns stateless=true, db_less=true, user_work_data_storage=false
 [ ] protected activation fails closed when Polar authority is absent
+[ ] production default deployment surface resolves to gateway
+[ ] production Gateway proxy rejects non-/v1 paths
+[ ] legacy /api/analyze rejects before provider execution
+[ ] legacy /api/discover/youtube rejects before provider execution
+[ ] legacy /api/interpret-product-truth rejects before provider execution
+[ ] legacy web production requires explicit MASTERV_DEPLOYMENT_SURFACE=web
 [ ] Cargo rebuild tracks MASTERV_GATEWAY_BASE_URL
 [ ] unsigned Windows build probe is compiled with https://api.masterv.example
 [ ] probe runtime does not receive MASTERV_GATEWAY_BASE_URL
@@ -200,17 +254,19 @@ Only after MV-PILOT-1A is merged may a separately authorized production activati
 
 ```text
 1. choose/confirm production hosting plane
-2. attach canonical custom hostname https://api.masterv.<domain>
-3. configure server-side Polar/Gemini/YouTube/Gateway secrets
-4. deploy exact accepted main Gateway
-5. read GET /v1/health
-6. require stateless=true and db_less=true
-7. require production provider readiness for pilot-required capabilities
-8. build a new immutable signed Desktop version > 0.1.4 with
-   MASTERV_GATEWAY_BASE_URL=https://api.masterv.<domain>
-9. publish through the independent Tauri-signed update channel
-10. verify published Desktop desktop_gateway_status.configured=true
-11. only then call the external human pilot user
+2. require Gateway-only production HTTP surface
+3. attach canonical custom hostname https://api.masterv.<domain>
+4. configure server-side Polar/Gemini/YouTube/Gateway secrets
+5. deploy exact accepted main Gateway
+6. read GET /v1/health
+7. verify representative non-/v1 and legacy /api paths return 404 without provider execution
+8. require stateless=true and db_less=true
+9. require production provider readiness for pilot-required capabilities
+10. build a new immutable signed Desktop version > 0.1.4 with
+    MASTERV_GATEWAY_BASE_URL=https://api.masterv.<domain>
+11. publish through the independent Tauri-signed update channel
+12. verify published Desktop desktop_gateway_status.configured=true
+13. only then call the external human pilot user
 ```
 
 The already-published `v0.1.4` must remain immutable. Repair requires a new version; it must not overwrite or silently replace `v0.1.4` assets.
@@ -239,6 +295,7 @@ If exact-head verification is green:
 
 ```text
 GATEWAY_SERVERLESS_SURFACE = READY
+GATEWAY_PRODUCTION_SURFACE_ISOLATION = READY
 DESKTOP_GATEWAY_BUILD_BINDING = READY
 PUBLISHED_V0_1_4_GATEWAY_CONFIGURED = FALSE
 EXTERNAL_HUMAN_PILOT = BLOCKED_PRE_EXECUTION
