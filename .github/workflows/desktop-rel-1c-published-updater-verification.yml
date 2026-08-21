@@ -1,0 +1,63 @@
+name: MV REL-1C Published Updater Verification
+
+on:
+  pull_request:
+    paths:
+      - "scripts/desktop-rel-1c-published-updater-windows.mjs"
+      - "scripts/desktop-rel-1c-contract.mjs"
+      - "scripts/windows-webview2-attach.mjs"
+      - ".github/workflows/desktop-rel-1c-published-updater-verification.yml"
+      - "src-tauri/tauri.conf.json"
+  workflow_dispatch:
+    inputs:
+      source_sha:
+        description: Exact current main SHA whose verification harness should validate the already-published v0.1.3 to v0.1.4 updater path
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  verify-published-updater:
+    runs-on: windows-2025
+    timeout-minutes: 35
+    env:
+      SOURCE_SHA: ${{ github.event_name == 'workflow_dispatch' && inputs.source_sha || github.event.pull_request.head.sha }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ env.SOURCE_SHA }}
+          fetch-depth: 0
+      - name: Verify exact source authority without release mutation
+        shell: pwsh
+        run: |
+          $requested="$env:SOURCE_SHA".Trim()
+          if ($requested -notmatch '^[0-9a-fA-F]{40}$') { throw "source_sha must be an exact 40-character commit SHA" }
+          $actual=(git rev-parse HEAD).Trim()
+          if ($actual -ne $requested) { throw "Exact-SHA mismatch requested=$requested actual=$actual" }
+          if ('${{ github.event_name }}' -eq 'workflow_dispatch') {
+            git fetch origin main --no-tags
+            $main=(git rev-parse origin/main).Trim()
+            if ($main -ne $requested) { throw "REL-1C manual verification source must equal current origin/main requested=$requested main=$main" }
+          }
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: 24.19.0
+      - run: npm ci
+      - name: Reject application, signing, and publication credentials
+        shell: pwsh
+        run: |
+          foreach ($name in @('GEMINI_API_KEY','YOUTUBE_DATA_API_KEY','POLAR_ACCESS_TOKEN','TAURI_SIGNING_PRIVATE_KEY','TAURI_SIGNING_PRIVATE_KEY_PASSWORD')) {
+            if ((Get-Item "env:$name" -ErrorAction SilentlyContinue).Value) { throw "REL-1C verification-only workflow must not receive credential: $name" }
+          }
+      - name: Verify REL-1C harness contract
+        run: node scripts/desktop-rel-1c-contract.mjs
+      - name: Verify real published 0.1.3 to signed 0.1.4 updater acceptance
+        run: node scripts/desktop-rel-1c-published-updater-windows.mjs
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: masterv-0.1.4-rel-1c-published-updater-verification
+          path: artifacts/desktop-rel-1c-published-updater
+          if-no-files-found: warn
