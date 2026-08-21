@@ -50,6 +50,8 @@ jobs:
         run: node scripts/desktop-rel-1c-contract.mjs
       - name: Verify MV-ARCH-001 final closure contract
         run: node scripts/desktop-arch-001-closure-contract.mjs
+      - name: Verify MV-PILOT-1 contract
+        run: node scripts/desktop-pilot-1-contract.mjs
       - run: npm run test:search-ux-browser-script
       - run: npm run build
       - name: Production dependency audit
@@ -94,7 +96,7 @@ jobs:
     name: desktop-windows-quality
     if: ${{ github.event_name == 'pull_request' }}
     runs-on: windows-2025
-    timeout-minutes: 90
+    timeout-minutes: 105
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
@@ -185,4 +187,13 @@ jobs:
         with:
           name: masterv-0.1.4-rel-1c-published-updater-verification
           path: artifacts/desktop-rel-1c-published-updater
+          if-no-files-found: warn
+      - name: Verify published v0.1.4 production first-run acceptance
+        run: node scripts/desktop-pilot-1-first-run-windows.mjs
+      - name: Upload MV-PILOT-1 first-run evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: masterv-0.1.4-pilot-1-first-run-acceptance
+          path: artifacts/desktop-pilot-1-first-run
           if-no-files-found: warn
