@@ -10,17 +10,40 @@ const exists = (relative) => fs.existsSync(path.join(root, relative));
 const docPath = "docs/architecture/MV-PILOT-1A-GATEWAY-PRODUCTION-READINESS.md";
 const routePath = "app/v1/[...segments]/route.ts";
 const surfaceContractPath = "scripts/gateway-serverless-surface-contract.ts";
+const deploymentSurfaceContractPath = "scripts/gateway-deployment-surface-contract.ts";
+const deploymentSurfacePath = "lib/deployment-surface.ts";
+const proxyPath = "proxy.ts";
+const legacyApiPaths = [
+  "app/api/analyze/route.ts",
+  "app/api/discover/youtube/route.ts",
+  "app/api/interpret-product-truth/route.ts"
+];
 const bindingVerifierPath = "scripts/desktop-gateway-build-binding-windows.mjs";
 const publishedPreflightPath = "scripts/desktop-pilot-1-gateway-preflight-windows.mjs";
 const buildScriptPath = "src-tauri/build.rs";
 
-for (const relative of [docPath, routePath, surfaceContractPath, bindingVerifierPath, publishedPreflightPath, buildScriptPath]) {
+for (const relative of [
+  docPath,
+  routePath,
+  surfaceContractPath,
+  deploymentSurfaceContractPath,
+  deploymentSurfacePath,
+  proxyPath,
+  ...legacyApiPaths,
+  bindingVerifierPath,
+  publishedPreflightPath,
+  buildScriptPath
+]) {
   assert(exists(relative), `Gateway production readiness file is missing: ${relative}`);
 }
 
 const doc = read(docPath);
 const route = read(routePath);
 const surfaceContract = read(surfaceContractPath);
+const deploymentSurfaceContract = read(deploymentSurfaceContractPath);
+const deploymentSurface = read(deploymentSurfacePath);
+const proxy = read(proxyPath);
+const legacyApis = legacyApiPaths.map((relative) => read(relative));
 const bindingVerifier = read(bindingVerifierPath);
 const publishedPreflight = read(publishedPreflightPath);
 const buildScript = read(buildScriptPath);
@@ -34,6 +57,9 @@ for (const marker of [
   "GitHub Release publication",
   "https://api.masterv.<domain>",
   "https://api.masterv.example",
+  "PRODUCTION_GATEWAY_PUBLIC_SURFACE = /v1/* ONLY",
+  "MASTERV_DEPLOYMENT_SURFACE=web",
+  "GATEWAY_PRODUCTION_SURFACE_ISOLATION = READY",
   "cargo:rerun-if-env-changed=MASTERV_GATEWAY_BASE_URL",
   "MV_PILOT_1 = BLOCKED_PENDING_PRODUCTION_GATEWAY_ACTIVATION_AND_NEW_SIGNED_DESKTOP"
 ]) {
@@ -64,10 +90,55 @@ for (const marker of [
   assert(surfaceContract.includes(marker), `Serverless surface contract marker missing: ${marker}`);
 }
 
+for (const marker of [
+  'return env.NODE_ENV === "production" ? "gateway" : "web"',
+  'MASTERV_DEPLOYMENT_SURFACE',
+  'return resolveMasterVDeploymentSurface(env) === "web"'
+]) {
+  assert(deploymentSurface.includes(marker), `Deployment surface authority marker missing: ${marker}`);
+}
+
+for (const marker of [
+  'resolveMasterVDeploymentSurface() !== "gateway"',
+  'pathname === "/v1" || pathname.startsWith("/v1/")',
+  'code: "GATEWAY_ROUTE_NOT_FOUND"',
+  'status: 404',
+  '"Cache-Control": "no-store"'
+]) {
+  assert(proxy.includes(marker), `Gateway-only proxy marker missing: ${marker}`);
+}
+
+for (const [index, legacyApi] of legacyApis.entries()) {
+  assert(legacyApi.includes('legacyWebApiEnabled()'), `Legacy API ${legacyApiPaths[index]} is missing deployment-surface guard`);
+  assert(legacyApi.includes('code: "LEGACY_WEB_API_DISABLED"'), `Legacy API ${legacyApiPaths[index]} is missing fail-closed code`);
+  const guardIndex = legacyApi.indexOf('legacyWebApiEnabled()');
+  const providerWorkIndex = Math.min(
+    ...[
+      legacyApi.indexOf("analyzeYouTubeDeepManaged"),
+      legacyApi.indexOf("discoverYouTubeProgressive"),
+      legacyApi.indexOf("interpretProductTruthAgainstReference")
+    ].filter((value) => value >= 0)
+  );
+  assert(guardIndex >= 0 && providerWorkIndex >= 0 && guardIndex < providerWorkIndex, `Legacy API ${legacyApiPaths[index]} must guard before provider execution`);
+}
+
+for (const marker of [
+  'resolveMasterVDeploymentSurface({ NODE_ENV: "production" }), "gateway"',
+  'MASTERV_DEPLOYMENT_SURFACE: "web"',
+  'new NextRequest("https://api.masterv.example/api/analyze")',
+  'LEGACY_WEB_API_DISABLED',
+  'provider_calls_executed: false',
+  'production_deployment_mutation: false'
+]) {
+  assert(deploymentSurfaceContract.includes(marker), `Deployment surface contract marker missing: ${marker}`);
+}
+
 const tsxExecutable = path.join(root, "node_modules", ".bin", process.platform === "win32" ? "tsx.cmd" : "tsx");
-assert(exists(path.relative(root, tsxExecutable)), "tsx executable is required for Gateway serverless surface contract");
+assert(exists(path.relative(root, tsxExecutable)), "tsx executable is required for Gateway readiness contracts");
 const surfaceExecution = spawnSync(tsxExecutable, [surfaceContractPath], { cwd: root, encoding: "utf8" });
 assert.equal(surfaceExecution.status, 0, `Gateway serverless surface contract failed:\n${surfaceExecution.stderr || surfaceExecution.stdout || surfaceExecution.error}`);
+const deploymentSurfaceExecution = spawnSync(tsxExecutable, [deploymentSurfaceContractPath], { cwd: root, encoding: "utf8" });
+assert.equal(deploymentSurfaceExecution.status, 0, `Gateway deployment surface contract failed:\n${deploymentSurfaceExecution.stderr || deploymentSurfaceExecution.stdout || deploymentSurfaceExecution.error}`);
 
 assert(buildScript.includes('println!("cargo:rerun-if-env-changed=MASTERV_GATEWAY_BASE_URL")'), "Cargo must rebuild when compile-time Gateway URL changes");
 
@@ -155,6 +226,8 @@ assert.deepEqual(automaticPrWorkflows, ["ci.yml", "mv-exit-3-clean-cut.yml"], "G
 console.log(JSON.stringify({
   status: "MASTERV_PILOT_1A_GATEWAY_PRODUCTION_READINESS_CONTRACT_PASS",
   serverless_gateway_surface_ready: true,
+  production_gateway_surface_isolation_ready: true,
+  legacy_web_api_enabled_by_default_in_production: false,
   desktop_compile_time_gateway_binding_probe_ready: true,
   published_v0_1_4_gateway_configured: false,
   production_gateway_deployment_authorized: false,
