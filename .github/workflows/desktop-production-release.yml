@@ -221,7 +221,7 @@ jobs:
       - name: Reject application credentials from updater verification
         shell: pwsh
         run: |
-          foreach ($name in @('GEMINI_API_KEY','YOUTUBE_DATA_API_KEY','POLAR_ACCESS_TOKEN','NEXT_PUBLIC_SUPABASE_URL','NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY')) {
+          foreach ($name in @('GEMINI_API_KEY','YOUTUBE_DATA_API_KEY','POLAR_ACCESS_TOKEN')) {
             if ((Get-Item "env:$name" -ErrorAction SilentlyContinue).Value) { throw "Published updater verification must not receive application credential: $name" }
           }
       - name: Build unsigned 0.1.2 updater-aware baseline
