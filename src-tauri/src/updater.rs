@@ -3,7 +3,7 @@ use std::time::Duration;
 use tauri::AppHandle;
 use tauri_plugin_updater::UpdaterExt;
 
-pub(crate) const UPDATE_PUBLIC_KEY: &str = "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEEzQjFEMEM0NUE1QzEzMUYKUldRZkUxeGF4TkN4bzUrUDhCc3JQTWFGMmpmdlQ3L3o3MUFXSDEwckpzR0JxOUtvcUcvMGkxK1MK";
+pub(crate) const UPDATE_PUBLIC_KEY: &str = "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEQ3MkMzNDk0ODg2NDUxM0UKUldRK1VXU0lsRFFzMTZHQUFZc3Z3eUxpcnN5bnE2QzRkalVtZDJDTFE4cGFCRFo1ejVCdFQ4QzAK";
 pub(crate) const UPDATE_TARGET: &str = "windows-x86_64";
 
 async fn check(app: &AppHandle) -> Result<Option<tauri_plugin_updater::Update>, String> {
