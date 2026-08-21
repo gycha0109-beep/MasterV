@@ -122,6 +122,7 @@ for (const forbiddenCredential of [
 }
 
 runNode("scripts/desktop-pilot-1-human-contract.mjs");
+runNode("scripts/desktop-pilot-1-gateway-preflight-contract.mjs");
 
 console.log(JSON.stringify({
   status: "MASTERV_PILOT_1_CONTRACT_PASS",
@@ -135,6 +136,7 @@ console.log(JSON.stringify({
   release_mutation_allowed: false,
   human_pilot_fabrication_allowed: false,
   human_pilot_execution_contract_ready: true,
+  published_gateway_preflight_contract_ready: true,
   target_after_exact_head_green: "READY_FOR_EXTERNAL_PILOT",
   automatic_pr_workflows: automaticPrWorkflows
 }));
