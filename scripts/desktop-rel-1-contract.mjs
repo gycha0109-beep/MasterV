@@ -21,7 +21,7 @@ const releaseConfig = json("src-tauri/tauri.windows-independent-updater-release.
 const updater = read("src-tauri/src/updater.rs");
 const manifestBuilder = read("scripts/desktop-independent-update-manifest.mjs");
 const publishedSmoke = read("scripts/desktop-published-updater-windows.mjs");
-const workflow = read(".github/workflows/desktop-production-release.yml");
+const workflow = read(".github/workflows/desktop-production-release.yml").replace(/\r\n?/g, "\n");
 
 assert.equal(releaseConfig.version, releaseVersion, "MV-REL-1 release config must target 0.1.3");
 assert.equal(releaseConfig.bundle?.active, true, "MV-REL-1 release bundle must remain active");
