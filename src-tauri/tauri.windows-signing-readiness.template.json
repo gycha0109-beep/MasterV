@@ -1,0 +1,17 @@
+{
+  "bundle": {
+    "active": true,
+    "windows": {
+      "webviewInstallMode": {
+        "type": "downloadBootstrapper"
+      },
+      "signCommand": {
+        "cmd": "__MASTERV_NODE_EXECUTABLE__",
+        "args": [
+          "__MASTERV_SIGNING_BRIDGE__",
+          "%1"
+        ]
+      }
+    }
+  }
+}

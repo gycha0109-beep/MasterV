@@ -1,0 +1,12 @@
+node_modules
+.next
+out
+desktop-dist
+src-tauri/target
+src-tauri/icons/icon.png
+src-tauri/icons/icon.ico
+.env
+.env.local
+.env.*.local
+*.log
+.DS_Store

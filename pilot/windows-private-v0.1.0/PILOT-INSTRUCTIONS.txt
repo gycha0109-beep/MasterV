@@ -1,0 +1,12 @@
+MasterV v0.1.0 - External Windows Private Pilot
+
+1. Keep every file in this folder together.
+2. Double-click START-EXTERNAL-PILOT.cmd.
+3. The runner first verifies the exact installer SHA256 and unsigned Authenticode state.
+4. Follow the on-screen prompts for install, first launch, login, Reference Library, YouTube Discovery, Deep Analysis, Production Guidance, restart/sign-out, logout, and uninstall.
+5. Do not enter your password into the pilot runner. Login only inside MasterV.
+6. When finished, send back only MasterV-external-pilot-evidence.json (and the optional log if troubleshooting is needed).
+
+This is an unsigned private test build. Windows may show an unknown-publisher / SmartScreen warning. Record what happened in the runner prompt; do not disable Windows Security.
+
+The runner does not upload evidence, alter activation gates, create a GitHub Release, install an updater, or collect username/computer-name/IP information.

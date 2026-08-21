@@ -1,0 +1,128 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="color-scheme" content="dark" />
+    <title>MasterV</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <main class="shell">
+      <header class="hero">
+        <div>
+          <p class="eyebrow">MASTERV DESKTOP · 0.1.3 CLEAN CUT</p>
+          <h1>Local-first Video Intelligence</h1>
+          <p class="muted">Product Key + MasterV Gateway + Local SQLite가 유일한 제품 runtime authority입니다.</p>
+        </div>
+        <div class="status-stack">
+          <div><span>License / Session</span><strong id="auth-status">LOCAL STARTUP</strong></div>
+          <div><span>Gateway</span><strong id="api-status">LOCAL ONLY</strong></div>
+        </div>
+      </header>
+
+      <section class="grid auth-grid">
+        <article class="card">
+          <p class="eyebrow">PRODUCT ACTIVATION</p>
+          <h2>제품키 활성화</h2>
+          <p class="muted small">제품키는 최초 activation의 bootstrap credential이며 저장되지 않습니다. 이후 Windows DPAPI로 보호된 device credential을 사용합니다.</p>
+          <form id="activation-form" class="stack">
+            <label><span>Product Key</span><input id="product-key" name="product-key" type="password" autocomplete="off" spellcheck="false" placeholder="MV-XXXX-XXXX-XXXX" /></label>
+            <div class="actions">
+              <button id="activate-button" type="submit">제품키 활성화</button>
+              <button id="resume-button" type="button" class="secondary">기기 세션 다시 연결</button>
+              <button id="logout-button" type="button" class="ghost" hidden>Gateway 연결 해제</button>
+            </div>
+          </form>
+          <p id="message" class="message" aria-live="polite"></p>
+        </article>
+
+        <article class="card">
+          <p class="eyebrow">AUTHORITY</p>
+          <h2>0.1.3 Runtime</h2>
+          <div class="facts">
+            <div><span>User work data</span><strong>LOCAL SQLITE</strong></div>
+            <div><span>AI / YouTube</span><strong>MASTERV GATEWAY</strong></div>
+            <div><span>License / Entitlement</span><strong>POLAR VIA GATEWAY</strong></div>
+            <div><span>Updater</span><strong>INDEPENDENT SIGNED</strong></div>
+          </div>
+          <p class="muted small">구독이 만료되거나 Gateway에 연결할 수 없어도 로컬 데이터 조회·비교·삭제는 계속 가능합니다.</p>
+        </article>
+      </section>
+
+      <section class="grid">
+        <article class="card">
+          <p class="eyebrow">CAPABILITIES</p>
+          <h2>Runtime readiness</h2>
+          <div class="facts">
+            <div><span>Gateway boundary</span><strong id="cap-boundary">—</strong></div>
+            <div><span>Local Reference compiler</span><strong id="cap-reference-compiler">—</strong></div>
+            <div><span>Gateway Analyze</span><strong id="cap-analyze">—</strong></div>
+            <div><span>YouTube Discovery</span><strong id="cap-youtube">—</strong></div>
+            <div><span>Deep Analysis</span><strong id="cap-deep-analysis">—</strong></div>
+            <div><span>Production Guidance</span><strong id="cap-product-truth">—</strong></div>
+            <div><span>Background operations</span><strong id="cap-background-batch">—</strong></div>
+          </div>
+        </article>
+      </section>
+
+      <section id="reference-library-panel" class="card" hidden>
+        <div class="section-heading"><div><p class="eyebrow">REFERENCE LIBRARY / 보관함</p><h2>Local SQLite Reference Library</h2><p class="muted small">workspace <strong id="library-workspace">—</strong> · items <strong id="library-count">0</strong> · selected <strong id="library-selected-count">0</strong></p></div><div class="actions"><strong id="library-status">LOCAL STARTUP</strong><button id="library-refresh" type="button" class="secondary">새로고침</button><button id="library-compare" type="button" disabled>선택 비교</button></div></div>
+        <div id="reference-library-list" class="library-list"></div>
+      </section>
+
+      <section id="reference-detail-panel" class="card" hidden>
+        <div class="section-heading"><div><p class="eyebrow">LOCAL REFERENCE DETAIL</p><h2>분석 상세</h2></div><div class="actions"><strong id="reference-detail-status">IDLE</strong><button id="reference-detail-close" type="button" class="ghost">닫기</button></div></div>
+        <div id="reference-detail-content"></div>
+      </section>
+
+      <section id="reference-compare-panel" class="card" hidden>
+        <div class="section-heading"><div><p class="eyebrow">LOCAL CANONICAL COMPARE</p><h2>Reference Compare</h2><p class="muted small">선택한 분석은 외부 work-data service로 보내지 않고 Desktop canonical compiler에서 비교합니다.</p></div><div class="actions"><strong id="reference-compare-status">IDLE</strong><span>sample <strong id="reference-compare-count">0</strong></span><button id="reference-compare-clear" type="button" class="ghost">선택 초기화</button></div></div>
+        <div id="reference-compare-content"></div>
+      </section>
+
+      <section id="discovery-panel" class="card" hidden>
+        <div class="section-heading"><div><p class="eyebrow">GATEWAY DISCOVERY</p><h2>YouTube Discovery</h2><p class="muted small">YouTube provider secret은 Desktop에 포함되지 않습니다.</p></div><div><strong id="discovery-status">LOCAL ONLY</strong></div></div>
+        <form id="discovery-form" class="stack">
+          <label><span>검색어</span><input id="discovery-query" type="text" placeholder="예: skincare short form" /></label>
+          <div class="grid compact-grid"><label><span>Region</span><input id="discovery-region" type="text" value="KR" maxlength="2" /></label><label><span>Language</span><input id="discovery-language" type="text" value="ko" maxlength="8" /></label><label><span>Max duration</span><input id="discovery-duration" type="number" min="1" max="3600" value="180" /></label></div>
+          <button id="discovery-search" type="submit" disabled>Gateway 검색</button>
+        </form>
+        <p class="muted small">provider <strong id="discovery-provider">GATEWAY</strong> · candidates <strong id="discovery-count">0</strong></p>
+        <div id="discovery-results" class="discovery-results"></div>
+      </section>
+
+      <section id="deep-analysis-panel" class="card" hidden>
+        <div class="section-heading"><div><p class="eyebrow">GATEWAY AI</p><h2>Deep Analysis</h2><p class="muted small">Gateway에서 실행하고 결과는 Local SQLite에 저장합니다.</p></div><div><strong id="deep-analysis-status">SIGNED OUT</strong></div></div>
+        <form id="deep-analysis-form" class="stack"><label><span>YouTube URL</span><input id="deep-analysis-url" type="url" placeholder="https://www.youtube.com/watch?v=..." /></label><button id="deep-analysis-submit" type="submit" disabled>Deep Analysis</button></form>
+        <div class="facts"><div><span>Model</span><strong id="deep-analysis-model">—</strong></div><div><span>Source</span><strong id="deep-analysis-source">—</strong></div></div>
+        <div id="deep-analysis-content"></div>
+      </section>
+
+      <section id="production-guidance-panel" class="card" hidden>
+        <div class="section-heading"><div><p class="eyebrow">GATEWAY GUIDANCE</p><h2>Production Guidance</h2><p class="muted small">유료 사용 판정은 Gateway가 수행하고 결과는 Local SQLite에 저장합니다.</p></div><div><strong id="production-guidance-status">SIGNED OUT</strong></div></div>
+        <form id="product-truth-form" class="stack"><label><span>Product name</span><input id="product-truth-name" type="text" /></label><label><span>Target customer</span><input id="product-truth-target" type="text" /></label><label><span>Price / offer</span><input id="product-truth-price" type="text" /></label><label><span>Verified facts</span><textarea id="product-truth-facts" rows="4"></textarea></label><button id="production-guidance-submit" type="submit" disabled>Production Guidance 생성</button></form>
+        <div class="facts"><div><span>Model</span><strong id="production-guidance-model">—</strong></div></div>
+        <div id="production-guidance-content"></div>
+      </section>
+
+      <section id="background-batch-panel" class="card" hidden>
+        <div class="section-heading"><div><p class="eyebrow">LOCAL ORCHESTRATION · GATEWAY EXECUTION</p><h2>Background operations</h2><p class="muted small">작업 큐는 Desktop session 안에서 관리하고 실제 분석 요청과 유료 사용 판정은 Stateless Gateway가 수행합니다. 성공한 분석 결과는 Local SQLite에 저장됩니다.</p></div><div><strong id="background-batch-status">SIGNED OUT</strong></div></div>
+        <div class="facts"><div><span>Execution</span><strong id="background-batch-provider-precondition">—</strong></div><div><span>Result persistence</span><strong id="background-batch-live-verified">—</strong></div><div><span>Activation</span><strong id="background-batch-activation">OFF</strong></div><div><span>Session jobs</span><strong id="background-batch-count">0</strong></div></div>
+        <form id="background-batch-form" class="stack"><label><span>YouTube URL</span><input id="background-batch-url" type="url" /></label><div class="actions"><button id="background-batch-submit" type="submit" disabled>Queue analysis</button><button id="background-batch-refresh" type="button" class="secondary" disabled>Refresh</button></div></form>
+        <div id="background-batch-list" class="library-list"></div>
+      </section>
+
+      <section class="roadmap card">
+        <p class="eyebrow">CLEAN CUT</p>
+        <h2>0.1.3 vendor-independent runtime</h2>
+        <p class="muted small">User work data는 Local SQLite, 원격 계산과 entitlement는 MasterV Gateway + Polar, 업데이트는 독립 Tauri signed channel이 담당합니다.</p>
+      </section>
+    </main>
+
+    <script src="./config.js"></script>
+    <script src="./deep-analysis.js"></script>
+    <script src="./background-batch.js"></script>
+    <script src="./app.js"></script>
+  </body>
+</html>

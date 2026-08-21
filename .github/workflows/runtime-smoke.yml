@@ -4,91 +4,71 @@ on:
   workflow_dispatch:
     inputs:
       execution_ref:
-        description: "Repository ref containing the code to smoke-test"
+        description: Repository ref containing the code to smoke-test
         required: true
-        default: "feat/mvp-foundation"
+        default: feat/mvp-foundation
       target:
-        description: "Runtime smoke target"
+        description: Runtime smoke target
         required: true
         type: choice
         default: search-ux-browser
         options:
           - search-ux-browser
-          - reference-library
           - youtube-discovery
           - gemini
       gemini_live_confirm:
-        description: "Type RUN_GEMINI only when intentionally executing live Gemini"
+        description: Type RUN_GEMINI only when intentionally executing live Gemini
         required: false
         default: ""
       query:
-        description: "YouTube query for discovery or browser smoke"
+        description: YouTube query for discovery or browser smoke
         required: false
-        default: "sunscreen review shorts"
-      batch_job_name:
-        description: "Existing batches/... name; hidden until paid-tier Batch is explicitly reopened"
-        required: false
-        default: ""
-      batch_source_url:
-        description: "Single public YouTube URL for guarded Batch smoke; currently blocked"
-        required: false
-        default: "https://www.youtube.com/watch?v=dr7rrnD_4jI"
-      batch_model:
-        description: "Gemini Batch model; Batch submit is hidden until paid-tier precondition is verified"
-        required: false
-        default: "gemini-3.5-flash-lite"
+        default: sunscreen review shorts
 
 jobs:
   gemini-confirmation-guard:
     if: ${{ inputs.target == 'gemini' && inputs.gemini_live_confirm != 'RUN_GEMINI' }}
-    runs-on: ubuntu-latest
-    timeout-minutes: 2
+    runs-on: ubuntu-22.04
     steps:
-      - name: Block unconfirmed live Gemini smoke
-        run: |
+      - run: |
           echo "Live Gemini smoke blocked: set gemini_live_confirm=RUN_GEMINI intentionally."
           exit 1
 
   gemini-smoke:
     if: ${{ inputs.target == 'gemini' && inputs.gemini_live_confirm == 'RUN_GEMINI' }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     timeout-minutes: 10
     env:
       GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
           ref: ${{ inputs.execution_ref }}
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
         with:
-          node-version: 24
-      - run: npm install
-      - name: Verify Gemini secret exists
-        run: test -n "$GEMINI_API_KEY"
-      - name: Run live Gemini YouTube analysis
-        run: npm run smoke:gemini
+          node-version: 24.19.0
+      - run: npm ci
+      - run: test -n "$GEMINI_API_KEY"
+      - run: npm run smoke:gemini
 
   youtube-discovery-smoke:
     if: ${{ inputs.target == 'youtube-discovery' }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     timeout-minutes: 10
     env:
       YOUTUBE_DATA_API_KEY: ${{ secrets.YOUTUBE_DATA_API_KEY }}
       YOUTUBE_DISCOVERY_SMOKE_QUERY: ${{ inputs.query }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
           ref: ${{ inputs.execution_ref }}
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
         with:
-          node-version: 24
-      - run: npm install
-      - name: Verify YouTube secret exists
-        run: test -n "$YOUTUBE_DATA_API_KEY"
-      - name: Run one-shot YouTube discovery smoke
-        run: npm run smoke:youtube-discovery
-      - name: Upload YouTube discovery smoke artifact
-        uses: actions/upload-artifact@v4
+          node-version: 24.19.0
+      - run: npm ci
+      - run: test -n "$YOUTUBE_DATA_API_KEY"
+      - run: npm run smoke:youtube-discovery
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: youtube-discovery-smoke
           path: artifacts/youtube-discovery-smoke.json
@@ -96,51 +76,35 @@ jobs:
 
   search-ux-browser-smoke:
     if: ${{ inputs.target == 'search-ux-browser' }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     timeout-minutes: 15
     env:
       YOUTUBE_DATA_API_KEY: ${{ secrets.YOUTUBE_DATA_API_KEY }}
       SEARCH_UX_BROWSER_QUERY: ${{ inputs.query }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
           ref: ${{ inputs.execution_ref }}
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
         with:
-          node-version: 24
-      - run: npm install
-      - name: Verify browser smoke preconditions
-        run: |
-          test -n "$YOUTUBE_DATA_API_KEY"
-          test -z "${GEMINI_API_KEY:-}"
-          command -v google-chrome || command -v google-chrome-stable || command -v chromium || command -v chromium-browser
-      - name: Ensure Korean screenshot font
-        run: |
-          if ! fc-list :lang=ko | grep -q .; then
-            sudo apt-get update -qq
-            sudo apt-get install -y --no-install-recommends fonts-noto-cjk
-          fi
-          fc-list :lang=ko | head -n 3
-      - name: Build production app
-        run: npm run build
+          node-version: 24.19.0
+      - run: npm ci
+      - run: npm run test:exit-3-clean-cut
+      - run: npm run build
       - name: Start production app without Gemini credentials
         run: |
           mkdir -p artifacts/search-ux-browser
           npm run start -- -H 127.0.0.1 -p 3000 > artifacts/search-ux-browser/server.log 2>&1 &
           echo $! > /tmp/masterv-next.pid
           for attempt in $(seq 1 60); do
-            if curl -fsS http://127.0.0.1:3000 >/dev/null; then
-              exit 0
-            fi
+            if curl -fsS http://127.0.0.1:3000 >/dev/null; then exit 0; fi
             sleep 1
           done
           cat artifacts/search-ux-browser/server.log
           exit 1
-      - name: Run live Search UX browser smoke
-        run: npm run smoke:search-ux-browser
-      - name: Upload Search UX browser evidence
+      - run: npm run smoke:search-ux-browser
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         if: always()
-        uses: actions/upload-artifact@v4
         with:
           name: search-ux-browser-smoke
           path: artifacts/search-ux-browser
@@ -148,139 +112,4 @@ jobs:
       - name: Stop production app
         if: always()
         run: |
-          if test -f /tmp/masterv-next.pid; then
-            kill "$(cat /tmp/masterv-next.pid)" || true
-          fi
-
-  reference-library-smoke:
-    if: ${{ inputs.target == 'reference-library' }}
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    env:
-      NEXT_PUBLIC_SUPABASE_URL: https://euqkjrmrhhvnyzasppnd.supabase.co
-      NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: sb_publishable_WUdzeBz9jsYwQXP_YeyD4w_OdkRcLp2
-      SUPABASE_TEST_EMAIL: ${{ secrets.SUPABASE_TEST_EMAIL }}
-      SUPABASE_TEST_PASSWORD: ${{ secrets.SUPABASE_TEST_PASSWORD }}
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          ref: ${{ inputs.execution_ref }}
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 24
-      - run: npm install
-      - name: Verify persistence smoke preconditions
-        run: |
-          test -n "$NEXT_PUBLIC_SUPABASE_URL"
-          test -n "$NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY"
-          test -n "$SUPABASE_TEST_EMAIL"
-          test -n "$SUPABASE_TEST_PASSWORD"
-          test -z "${GEMINI_API_KEY:-}"
-          test -z "${YOUTUBE_DATA_API_KEY:-}"
-          command -v google-chrome || command -v google-chrome-stable || command -v chromium || command -v chromium-browser
-      - name: Seed and verify live RLS CRUD without Gemini
-        env:
-          REFERENCE_LIBRARY_SMOKE_MODE: seed
-        run: npm run smoke:reference-library-live
-      - name: Ensure Korean screenshot font
-        run: |
-          if ! fc-list :lang=ko | grep -q .; then
-            sudo apt-get update -qq
-            sudo apt-get install -y --no-install-recommends fonts-noto-cjk
-          fi
-      - name: Build production app with public Supabase config
-        run: npm run build
-      - name: Start production app without Gemini or YouTube credentials
-        run: |
-          mkdir -p artifacts/reference-library-browser
-          npm run start -- -H 127.0.0.1 -p 3000 > artifacts/reference-library-browser/server.log 2>&1 &
-          echo $! > /tmp/masterv-reference-next.pid
-          for attempt in $(seq 1 60); do
-            if curl -fsS http://127.0.0.1:3000 >/dev/null; then
-              exit 0
-            fi
-            sleep 1
-          done
-          cat artifacts/reference-library-browser/server.log
-          exit 1
-      - name: Run login and refresh persistence browser smoke
-        run: npm run smoke:reference-library-browser
-      - name: Cleanup persistence smoke reference
-        if: always()
-        env:
-          REFERENCE_LIBRARY_SMOKE_MODE: cleanup
-        run: npm run smoke:reference-library-live || true
-      - name: Upload Reference Library runtime evidence
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: reference-library-runtime-smoke
-          path: |
-            artifacts/reference-library-live-smoke.json
-            artifacts/reference-library-browser
-          if-no-files-found: warn
-      - name: Stop production app
-        if: always()
-        run: |
-          if test -f /tmp/masterv-reference-next.pid; then
-            kill "$(cat /tmp/masterv-reference-next.pid)" || true
-          fi
-
-  gemini-batch-submit:
-    if: ${{ inputs.target == 'gemini-batch-submit' }}
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    env:
-      GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-      BACKGROUND_BATCH_MODE: submit
-      BACKGROUND_BATCH_SOURCE_URL: ${{ inputs.batch_source_url }}
-      BACKGROUND_BATCH_MODEL: ${{ inputs.batch_model }}
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          ref: ${{ inputs.execution_ref }}
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 24
-      - run: npm install
-      - name: Verify Gemini secret exists
-        run: test -n "$GEMINI_API_KEY"
-      - name: Submit exactly one guarded Gemini Batch job
-        run: npm run smoke:background-batch
-      - name: Upload Gemini Batch smoke artifact
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: background-batch-smoke-submit
-          path: artifacts/background-batch-smoke.json
-          if-no-files-found: warn
-
-  gemini-batch-check:
-    if: ${{ inputs.target == 'gemini-batch-check' }}
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    env:
-      GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-      BACKGROUND_BATCH_MODE: check
-      BACKGROUND_BATCH_JOB_NAME: ${{ inputs.batch_job_name }}
-      BACKGROUND_BATCH_SOURCE_URL: ${{ inputs.batch_source_url }}
-      BACKGROUND_BATCH_MODEL: ${{ inputs.batch_model }}
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          ref: ${{ inputs.execution_ref }}
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 24
-      - run: npm install
-      - name: Verify required check inputs
-        run: test -n "$GEMINI_API_KEY" && test -n "$BACKGROUND_BATCH_JOB_NAME"
-      - name: Check existing Gemini Batch job without creating another
-        run: npm run smoke:background-batch
-      - name: Upload Gemini Batch check artifact
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: background-batch-smoke-check
-          path: artifacts/background-batch-smoke.json
-          if-no-files-found: warn
+          if test -f /tmp/masterv-next.pid; then kill "$(cat /tmp/masterv-next.pid)" || true; fi

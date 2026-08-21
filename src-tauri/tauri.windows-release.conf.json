@@ -1,0 +1,10 @@
+{
+  "bundle": {
+    "active": true,
+    "windows": {
+      "webviewInstallMode": {
+        "type": "downloadBootstrapper"
+      }
+    }
+  }
+}

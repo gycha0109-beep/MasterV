@@ -1,0 +1,30 @@
+name: Real Product Shorts Pilot
+
+on:
+  workflow_dispatch:
+
+jobs:
+  pilot:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 15
+    env:
+      GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: 24.19.0
+      - run: npm ci
+      - name: Verify secret exists
+        run: test -n "$GEMINI_API_KEY"
+      - name: Analyze real product Shorts corpus
+        run: npm run pilot:real-products
+      - name: Upload pilot artifacts
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: real-product-pilot-report
+          path: |
+            artifacts/real-product-pilot.json
+            artifacts/analysis-replay-deep.json
+          if-no-files-found: error
