@@ -113,6 +113,7 @@ jobs:
           if ($env:YOUTUBE_DATA_API_KEY) { throw "YouTube credential must not be present in desktop runtime smoke" }
           if ($env:POLAR_ACCESS_TOKEN) { throw "Polar server credential must not be present in desktop runtime smoke" }
           if ($env:TAURI_SIGNING_PRIVATE_KEY) { throw "Production Tauri signing key must not be present in MV-POST-EXIT-1 dry-run" }
+          if ($env:MASTERV_GATEWAY_BASE_URL) { throw "Published Gateway preflight must not receive a runtime Gateway URL override" }
       - run: npm run test:exit-3-clean-cut
       - run: npm run test:post-exit-1
       - run: npm run test:rel-1b
@@ -197,3 +198,12 @@ jobs:
           name: masterv-0.1.4-pilot-1-first-run-acceptance
           path: artifacts/desktop-pilot-1-first-run
           if-no-files-found: warn
+      - name: Verify published v0.1.4 Gateway configuration preflight
+        run: node scripts/desktop-pilot-1-gateway-preflight-windows.mjs
+      - name: Upload MV-PILOT-1 Gateway preflight evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: masterv-0.1.4-pilot-1-gateway-preflight
+          path: artifacts/desktop-pilot-1-gateway-preflight
+          if-no-files-found: error
