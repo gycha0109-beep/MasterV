@@ -11,9 +11,10 @@ const docPath = "docs/architecture/MV-PILOT-1A-GATEWAY-PRODUCTION-READINESS.md";
 const routePath = "app/v1/[...segments]/route.ts";
 const surfaceContractPath = "scripts/gateway-serverless-surface-contract.ts";
 const bindingVerifierPath = "scripts/desktop-gateway-build-binding-windows.mjs";
+const publishedPreflightPath = "scripts/desktop-pilot-1-gateway-preflight-windows.mjs";
 const buildScriptPath = "src-tauri/build.rs";
 
-for (const relative of [docPath, routePath, surfaceContractPath, bindingVerifierPath, buildScriptPath]) {
+for (const relative of [docPath, routePath, surfaceContractPath, bindingVerifierPath, publishedPreflightPath, buildScriptPath]) {
   assert(exists(relative), `Gateway production readiness file is missing: ${relative}`);
 }
 
@@ -21,6 +22,7 @@ const doc = read(docPath);
 const route = read(routePath);
 const surfaceContract = read(surfaceContractPath);
 const bindingVerifier = read(bindingVerifierPath);
+const publishedPreflight = read(publishedPreflightPath);
 const buildScript = read(buildScriptPath);
 const ci = read(".github/workflows/ci.yml");
 
@@ -49,7 +51,7 @@ for (const marker of [
   assert(route.includes(marker), `Serverless Gateway route marker missing: ${marker}`);
 }
 
-for (const forbidden of ["postgres", "supabase", "redis", "d1", "prisma", "drizzle"] ) {
+for (const forbidden of ["postgres", "supabase", "redis", "d1", "prisma", "drizzle"]) {
   assert(!route.toLowerCase().includes(forbidden), `Serverless Gateway adapter introduced persistence dependency marker: ${forbidden}`);
 }
 
@@ -61,6 +63,11 @@ for (const marker of [
 ]) {
   assert(surfaceContract.includes(marker), `Serverless surface contract marker missing: ${marker}`);
 }
+
+const tsxExecutable = path.join(root, "node_modules", ".bin", process.platform === "win32" ? "tsx.cmd" : "tsx");
+assert(exists(path.relative(root, tsxExecutable)), "tsx executable is required for Gateway serverless surface contract");
+const surfaceExecution = spawnSync(tsxExecutable, [surfaceContractPath], { cwd: root, encoding: "utf8" });
+assert.equal(surfaceExecution.status, 0, `Gateway serverless surface contract failed:\n${surfaceExecution.stderr || surfaceExecution.stdout || surfaceExecution.error}`);
 
 assert(buildScript.includes('println!("cargo:rerun-if-env-changed=MASTERV_GATEWAY_BASE_URL")'), "Cargo must rebuild when compile-time Gateway URL changes");
 
@@ -93,20 +100,34 @@ for (const forbidden of [
   assert(!bindingVerifier.includes(forbidden), `Desktop Gateway build-binding verifier regained mutation authority: ${forbidden}`);
 }
 
-const syntax = spawnSync(process.execPath, ["--check", bindingVerifierPath], { cwd: root, encoding: "utf8" });
-assert.equal(syntax.status, 0, `Gateway build-binding verifier syntax failed: ${syntax.stderr || syntax.stdout}`);
+const bindingSyntax = spawnSync(process.execPath, ["--check", bindingVerifierPath], { cwd: root, encoding: "utf8" });
+assert.equal(bindingSyntax.status, 0, `Gateway build-binding verifier syntax failed: ${bindingSyntax.stderr || bindingSyntax.stdout}`);
 
 for (const marker of [
-  "Verify Gateway serverless surface contract",
-  "npx tsx scripts/gateway-serverless-surface-contract.ts",
-  "Build unsigned Gateway-bound Desktop probe",
-  "MASTERV_GATEWAY_BASE_URL: https://api.masterv.example",
-  "Verify compile-time Gateway binding",
-  "node scripts/desktop-gateway-build-binding-windows.mjs",
-  "masterv-gateway-build-binding-readiness"
+  'const compileTimeProbeGatewayUrl = "https://api.masterv.example"',
+  "runCompileTimeBindingProbe",
+  '"cargo"',
+  'MASTERV_GATEWAY_BASE_URL: compileTimeProbeGatewayUrl',
+  'delete runtimeEnv.MASTERV_GATEWAY_BASE_URL',
+  'scripts/desktop-gateway-build-binding-windows.mjs',
+  'gateway-build-binding-evidence.json'
 ]) {
-  assert(ci.includes(marker), `Gateway production readiness CI marker missing: ${marker}`);
+  assert(publishedPreflight.includes(marker), `Published Gateway preflight is not linked to build-binding readiness: ${marker}`);
 }
+
+const preflightSyntax = spawnSync(process.execPath, ["--check", publishedPreflightPath], { cwd: root, encoding: "utf8" });
+assert.equal(preflightSyntax.status, 0, `Published Gateway preflight syntax failed: ${preflightSyntax.stderr || preflightSyntax.stdout}`);
+
+for (const marker of [
+  "Verify published v0.1.4 Gateway configuration preflight",
+  "node scripts/desktop-pilot-1-gateway-preflight-windows.mjs",
+  "masterv-0.1.4-pilot-1-gateway-preflight",
+  "artifacts/desktop-pilot-1-gateway-preflight"
+]) {
+  assert(ci.includes(marker), `Existing Gateway preflight CI authority marker missing: ${marker}`);
+}
+
+assert(!ci.includes("MASTERV_GATEWAY_BASE_URL:"), "PR workflow must not inject Gateway URL globally; binding probe owns an isolated subprocess value");
 
 for (const forbidden of [
   "POLAR_ACCESS_TOKEN: ${{ secrets.",
