@@ -1,6 +1,17 @@
 name: Desktop Signing Readiness
 
 on:
+  workflow_call:
+    inputs:
+      source_sha:
+        description: Exact 40-character MasterV commit SHA to exercise through the 0.1.3 signing-boundary dry-run
+        required: true
+        type: string
+      allow_signing_dry_run:
+        description: Exercise signing boundary without credentials, publication, or activation
+        required: true
+        type: boolean
+        default: false
   workflow_dispatch:
     inputs:
       source_sha:
