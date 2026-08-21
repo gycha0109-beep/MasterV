@@ -13,6 +13,7 @@ const canonicalInstaller = "MasterV_0.1.3_x64-setup.exe";
 const canonicalSignature = `${canonicalInstaller}.sig`;
 const latestEndpoint = "https://github.com/gycha0109-beep/MasterV/releases/latest/download/latest.json";
 const canonicalInstallerUrl = `https://github.com/gycha0109-beep/MasterV/releases/download/${releaseTag}/${canonicalInstaller}`;
+const productionUpdaterKeyId = "D72C34948864513E";
 
 const packageJson = json("package.json");
 const cargo = read("src-tauri/Cargo.toml");
@@ -33,6 +34,11 @@ const publicKeyMatch = updater.match(/UPDATE_PUBLIC_KEY:\s*&str\s*=\s*"([^"]+)"/
 const rustPublicKey = publicKeyMatch?.[1] || "";
 assert(rustPublicKey.length > 0, "MV-REL-1 updater public key authority is missing");
 assert.equal(releaseConfig.plugins?.updater?.pubkey, rustPublicKey, "MV-REL-1 release config public key must match native updater authority");
+const decodedPublicKeyBox = Buffer.from(rustPublicKey, "base64").toString("utf8");
+const publicKeyLines = decodedPublicKeyBox.trim().split(/\r?\n/);
+assert.equal(publicKeyLines.length, 2, "MV-REL-1A updater public key box must contain exactly comment + encoded key");
+assert.equal(publicKeyLines[0], `untrusted comment: minisign public key: ${productionUpdaterKeyId}`, "MV-REL-1A production updater key ID mismatch");
+assert.equal(publicKeyLines[1]?.length, 56, "MV-REL-1A encoded minisign public key must be 56 characters");
 
 assert.equal(
   packageJson.scripts?.["desktop:build:windows-updater-release"],
@@ -121,6 +127,8 @@ console.log(JSON.stringify({
   signature: canonicalSignature,
   stable_manifest_endpoint: latestEndpoint,
   installer_url: canonicalInstallerUrl,
+  production_updater_key_id: productionUpdaterKeyId,
+  production_updater_key_bootstrap: "MV-REL-1A",
   tauri_updater_signature_required: true,
   production_signing_opt_in_required: true,
   release_publication_opt_in_required: true,

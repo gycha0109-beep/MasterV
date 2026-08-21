@@ -17,7 +17,7 @@
   },
   "plugins": {
     "updater": {
-      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEEzQjFEMEM0NUE1QzEzMUYKUldRZkUxeGF4TkN4bzUrUDhCc3JQTWFGMmpmdlQ3L3o3MUFXSDEwckpzR0JxOUtvcUcvMGkxK1MK",
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEQ3MkMzNDk0ODg2NDUxM0UKUldRK1VXU0lsRFFzMTZHQUFZc3Z3eUxpcnN5bnE2QzRkalVtZDJDTFE4cGFCRFo1ejVCdFQ4QzAK",
       "endpoints": [
         "https://github.com/gycha0109-beep/MasterV/releases/latest/download/latest.json"
       ],
