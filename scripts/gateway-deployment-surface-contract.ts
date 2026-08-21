@@ -4,13 +4,17 @@ import { legacyWebApiEnabled, resolveMasterVDeploymentSurface } from "../lib/dep
 
 async function main() {
   assert.equal(resolveMasterVDeploymentSurface({ NODE_ENV: "production" }), "gateway");
-  assert.equal(resolveMasterVDeploymentSurface({ NODE_ENV: "development" }), "web");
   assert.equal(resolveMasterVDeploymentSurface({ NODE_ENV: "production", MASTERV_DEPLOYMENT_SURFACE: "gateway" }), "gateway");
-  assert.equal(resolveMasterVDeploymentSurface({ NODE_ENV: "production", MASTERV_DEPLOYMENT_SURFACE: "web" }), "web");
+  assert.equal(resolveMasterVDeploymentSurface({ NODE_ENV: "development" }), "web");
+  assert.equal(resolveMasterVDeploymentSurface({ NODE_ENV: "development", MASTERV_DEPLOYMENT_SURFACE: "web" }), "web");
+  assert.equal(resolveMasterVDeploymentSurface({ NODE_ENV: "development", MASTERV_DEPLOYMENT_SURFACE: "gateway" }), "gateway");
   assert.equal(legacyWebApiEnabled({ NODE_ENV: "production" }), false);
-  assert.equal(legacyWebApiEnabled({ NODE_ENV: "production", MASTERV_DEPLOYMENT_SURFACE: "web" }), true);
   assert.throws(
-    () => resolveMasterVDeploymentSurface({ NODE_ENV: "production", MASTERV_DEPLOYMENT_SURFACE: "invalid" }),
+    () => resolveMasterVDeploymentSurface({ NODE_ENV: "production", MASTERV_DEPLOYMENT_SURFACE: "web" }),
+    /production deployment surface must be gateway/
+  );
+  assert.throws(
+    () => resolveMasterVDeploymentSurface({ NODE_ENV: "development", MASTERV_DEPLOYMENT_SURFACE: "invalid" }),
     /Invalid MASTERV_DEPLOYMENT_SURFACE/
   );
 
@@ -56,10 +60,11 @@ async function main() {
 
   console.log(JSON.stringify({
     status: "MASTERV_GATEWAY_DEPLOYMENT_SURFACE_CONTRACT_PASS",
-    production_default_surface: "gateway",
+    production_surface: "gateway-only",
     allowed_production_prefix: "/v1/*",
-    legacy_web_api_default_enabled_in_production: false,
-    legacy_web_api_explicit_override: "MASTERV_DEPLOYMENT_SURFACE=web",
+    legacy_web_api_enabled_in_production: false,
+    production_web_override_allowed: false,
+    development_web_surface_available: true,
     provider_credentials_received: false,
     provider_calls_executed: false,
     production_deployment_mutation: false
