@@ -1,11 +1,16 @@
 import { NextResponse } from "next/server";
 import { AnalysisExecutionBlockedError } from "@/lib/analysis-budget";
 import { analyzeYouTubeDeepManaged } from "@/lib/analysis-service";
+import { legacyWebApiEnabled } from "@/lib/deployment-surface";
 import { deriveVideoMetrics } from "@/lib/derived-metrics";
 import { normalizeGeminiError } from "@/lib/gemini-error";
 import { isSupportedYouTubeUrl } from "@/lib/source-identity";
 
 export async function POST(request: Request) {
+  if (!legacyWebApiEnabled()) {
+    return NextResponse.json({ error: "Not found", code: "LEGACY_WEB_API_DISABLED" }, { status: 404 });
+  }
+
   try {
     const body = (await request.json()) as { url?: string; force_refresh?: boolean };
     const url = body.url?.trim();
