@@ -1,9 +1,14 @@
 import { NextResponse } from "next/server";
+import { legacyWebApiEnabled } from "@/lib/deployment-surface";
 import { normalizeGeminiError } from "@/lib/gemini-error";
 import { interpretProductTruthAgainstReference } from "@/lib/product-truth-interpreter";
 import type { ReferenceMechanismCandidate } from "@/lib/product-truth-interpretation";
 
 export async function POST(request: Request) {
+  if (!legacyWebApiEnabled()) {
+    return NextResponse.json({ error: "Not found", code: "LEGACY_WEB_API_DISABLED" }, { status: 404 });
+  }
+
   try {
     const body = (await request.json()) as {
       verified_facts?: string;
