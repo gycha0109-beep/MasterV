@@ -7,6 +7,7 @@ const indexPath = path.join(outputDir, "index.html");
 const configPath = path.join(outputDir, "config.js");
 const hotfixVersion = "0.1.4";
 const previousVersion = "0.1.3";
+const releaseTrackField = "release_track";
 
 let html = await fs.readFile(indexPath, "utf8");
 const versionMatches = html.match(/0\.1\.3/g) || [];
@@ -17,11 +18,11 @@ html = html.replaceAll(previousVersion, hotfixVersion);
 await fs.writeFile(indexPath, html, "utf8");
 
 let config = await fs.readFile(configPath, "utf8");
-const releaseTrackMarker = `\"release_track\":\"${previousVersion}\"`;
+const releaseTrackMarker = `\"${releaseTrackField}\":\"${previousVersion}\"`;
 if (!config.includes(releaseTrackMarker)) {
-  throw new Error(`MV-REL-1B desktop config is missing release_track ${previousVersion}`);
+  throw new Error(`MV-REL-1B desktop config is missing ${releaseTrackField} ${previousVersion}`);
 }
-config = config.replace(releaseTrackMarker, `\"release_track\":\"${hotfixVersion}\"`);
+config = config.replace(releaseTrackMarker, `\"${releaseTrackField}\":\"${hotfixVersion}\"`);
 await fs.writeFile(configPath, config, "utf8");
 
 console.log(JSON.stringify({
