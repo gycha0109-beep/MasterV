@@ -44,6 +44,7 @@ jobs:
       - run: npm run test:desktop-reference-detail-compare
       - run: npm run test:exit-3-clean-cut
       - run: npm run test:post-exit-1
+      - run: npm run test:rel-1
       - run: npm run test:search-ux-browser-script
       - run: npm run build
       - name: Production dependency audit
