@@ -77,6 +77,13 @@ jobs:
       - name: Verify desktop build did not mutate lockfiles
         run: git diff --exit-code -- package-lock.json src-tauri/Cargo.lock
 
+  desktop-signing-readiness:
+    if: ${{ github.event_name == 'pull_request' }}
+    uses: ./.github/workflows/desktop-signing-readiness.yml
+    with:
+      source_sha: ${{ github.event.pull_request.head.sha }}
+      allow_signing_dry_run: true
+
   desktop-windows-runtime:
     name: desktop-windows-quality
     if: ${{ github.event_name == 'pull_request' }}
