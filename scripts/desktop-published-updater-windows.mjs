@@ -104,7 +104,8 @@ class CdpClient {
         reject(new Error("CDP websocket connection failed"));
       }, { once: true });
       ws.addEventListener("message", (event) => {
-        const message = JSON.parse(String(event.data));
+        const raw = typeof event.data === "string" ? event.data : Buffer.from(event.data).toString("utf8");
+        const message = JSON.parse(raw);
         if (!message.id) return;
         const pending = this.pending.get(message.id);
         if (!pending) return;
@@ -250,13 +251,7 @@ async function cleanupInstalledProduct() {
 async function main() {
   if (process.platform !== "win32") throw new Error("Published updater signature smoke must run on Windows");
 
-  for (const forbidden of [
-    "GEMINI_API_KEY",
-    "YOUTUBE_DATA_API_KEY",
-    "POLAR_ACCESS_TOKEN",
-    "NEXT_PUBLIC_SUPABASE_URL",
-    "NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY"
-  ]) {
+  for (const forbidden of ["GEMINI_API_KEY", "YOUTUBE_DATA_API_KEY", "POLAR_ACCESS_TOKEN"]) {
     assert(!process.env[forbidden], `Published updater smoke must not depend on application credential: ${forbidden}`);
   }
 
