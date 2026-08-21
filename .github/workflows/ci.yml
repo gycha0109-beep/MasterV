@@ -48,6 +48,8 @@ jobs:
       - run: npm run test:rel-1b
       - name: Verify REL-1C verification-only harness contract
         run: node scripts/desktop-rel-1c-contract.mjs
+      - name: Verify MV-ARCH-001 final closure contract
+        run: node scripts/desktop-arch-001-closure-contract.mjs
       - run: npm run test:search-ux-browser-script
       - run: npm run build
       - name: Production dependency audit
