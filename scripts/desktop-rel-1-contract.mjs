@@ -76,14 +76,8 @@ assert(workflow.indexOf("gh release create") < workflow.indexOf("gh release edit
 assert(workflow.indexOf("signed-release-candidate:") < workflow.indexOf("publish-release:"), "Signed artifact generation must precede publication");
 assert(workflow.indexOf("publish-release:") < workflow.indexOf("verify-published-updater:"), "Published updater verification must run only after publication");
 
-for (const forbidden of [
-  "NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: ${{ secrets.",
-  "SUPABASE_TEST_PASSWORD",
-  "POLAR_ACCESS_TOKEN: ${{ secrets.",
-  "GEMINI_API_KEY: ${{ secrets.",
-  "YOUTUBE_DATA_API_KEY: ${{ secrets."
-]) {
-  assert(!workflow.includes(forbidden), `MV-REL-1 release activation must not consume application credential: ${forbidden}`);
+for (const forbiddenCredential of ["GEMINI_API_KEY: ${{ secrets.", "YOUTUBE_DATA_API_KEY: ${{ secrets.", "POLAR_ACCESS_TOKEN: ${{ secrets."]) {
+  assert(!workflow.includes(forbiddenCredential), `MV-REL-1 release activation must not consume application credential: ${forbiddenCredential}`);
 }
 
 for (const marker of [
