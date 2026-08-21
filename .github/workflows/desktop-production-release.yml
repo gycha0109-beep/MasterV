@@ -1,0 +1,239 @@
+name: Desktop Production Release Activation
+
+on:
+  workflow_dispatch:
+    inputs:
+      source_sha:
+        description: Exact current main commit SHA to release as MasterV 0.1.3
+        required: true
+        type: string
+      allow_production_signing:
+        description: Allow use of the production Tauri updater signing key to create signed 0.1.3 artifacts
+        required: true
+        type: boolean
+        default: false
+      allow_release_publication:
+        description: Allow publication of the signed 0.1.3 GitHub Release and stable latest.json channel
+        required: true
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+
+env:
+  SOURCE_SHA: ${{ inputs.source_sha }}
+  RELEASE_VERSION: 0.1.3
+  RELEASE_TAG: v0.1.3
+  CANONICAL_INSTALLER: MasterV_0.1.3_x64-setup.exe
+  CANONICAL_SIGNATURE: MasterV_0.1.3_x64-setup.exe.sig
+  RELEASE_DIR: artifacts/mv-rel-1
+
+jobs:
+  signed-release-candidate:
+    if: ${{ inputs.allow_production_signing == true }}
+    runs-on: windows-2025
+    timeout-minutes: 80
+    environment: masterv-production-release
+    env:
+      TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+      TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ inputs.source_sha }}
+          fetch-depth: 0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: 24.19.0
+      - uses: dtolnay/rust-toolchain@4360b52568e2003a75bf9bc1d59f33a8e3fc893c
+        with:
+          toolchain: 1.97.1
+      - name: Verify exact current-main release authority
+        shell: pwsh
+        run: |
+          $requested='${{ inputs.source_sha }}'.Trim()
+          if ($requested -notmatch '^[0-9a-fA-F]{40}$') { throw "source_sha must be an exact 40-character commit SHA" }
+          git fetch origin main --no-tags
+          $actual=(git rev-parse HEAD).Trim()
+          $main=(git rev-parse origin/main).Trim()
+          if ($actual -ne $requested) { throw "Exact-SHA mismatch requested=$requested actual=$actual" }
+          if ($main -ne $requested) { throw "Production release source must equal current origin/main requested=$requested main=$main" }
+          if (-not $env:TAURI_SIGNING_PRIVATE_KEY) { throw "TAURI_SIGNING_PRIVATE_KEY is required for production updater signing" }
+          if (git ls-remote --exit-code --tags origin "refs/tags/$env:RELEASE_TAG" *> $null) { throw "Release tag already exists: $env:RELEASE_TAG" }
+      - run: npm ci
+      - run: npm run test:exit-3-clean-cut
+      - run: npm run test:post-exit-1
+      - run: npm run test:rel-1
+      - name: Verify locked Cargo graph
+        shell: pwsh
+        run: cargo metadata --locked --manifest-path src-tauri/Cargo.toml --no-deps | Out-Null
+      - name: Build production Tauri-signed 0.1.3 updater artifact
+        run: npm run desktop:build:windows-updater-release
+      - name: Canonicalize signed release assets and generate latest.json
+        shell: pwsh
+        run: |
+          $builtInstaller=Get-Item "src-tauri/target/release/bundle/nsis/MasterV Desktop_0.1.3_x64-setup.exe"
+          $builtSignature=Get-Item "src-tauri/target/release/bundle/nsis/MasterV Desktop_0.1.3_x64-setup.exe.sig"
+          if ($builtInstaller.Length -le 0) { throw "Production installer is empty" }
+          if ($builtSignature.Length -le 0) { throw "Production updater signature is empty" }
+          New-Item -ItemType Directory -Force -Path $env:RELEASE_DIR | Out-Null
+          Copy-Item $builtInstaller.FullName "$env:RELEASE_DIR/$env:CANONICAL_INSTALLER"
+          Copy-Item $builtSignature.FullName "$env:RELEASE_DIR/$env:CANONICAL_SIGNATURE"
+          $installerUrl="https://github.com/gycha0109-beep/MasterV/releases/download/$env:RELEASE_TAG/$env:CANONICAL_INSTALLER"
+          $env:MASTERV_UPDATE_VERSION=$env:RELEASE_VERSION
+          $env:MASTERV_UPDATE_INSTALLER_URL=$installerUrl
+          $env:MASTERV_UPDATE_SIGNATURE_PATH="$env:RELEASE_DIR/$env:CANONICAL_SIGNATURE"
+          $env:MASTERV_UPDATE_MANIFEST_PATH="$env:RELEASE_DIR/latest.json"
+          $env:MASTERV_UPDATE_NOTES="MasterV 0.1.3 — Clean Cut"
+          $env:MASTERV_UPDATE_PUB_DATE=(Get-Date).ToUniversalTime().ToString('o')
+          node scripts/desktop-independent-update-manifest.mjs
+          $manifest=Get-Content "$env:RELEASE_DIR/latest.json" -Raw | ConvertFrom-Json
+          if ($manifest.version -ne $env:RELEASE_VERSION) { throw "latest.json version mismatch" }
+          if ($manifest.platforms.'windows-x86_64'.url -ne $installerUrl) { throw "latest.json installer URL mismatch" }
+          if (-not $manifest.platforms.'windows-x86_64'.signature) { throw "latest.json signature is empty" }
+          $sigContent=(Get-Content "$env:RELEASE_DIR/$env:CANONICAL_SIGNATURE" -Raw).Trim()
+          if ($manifest.platforms.'windows-x86_64'.signature -ne $sigContent) { throw "latest.json signature does not match generated Tauri .sig" }
+          @"
+          # MasterV 0.1.3 — Clean Cut
+
+          - Local SQLite is the product-data authority.
+          - Supabase runtime dependency is zero.
+          - Update access is independent from subscription state.
+          - 0.1.2 → 0.1.3 Local SQLite upgrade survival is covered by the RC gate.
+          - Stable updater artifacts are protected by the configured Tauri updater signature.
+          "@ | Set-Content -Encoding utf8 "$env:RELEASE_DIR/release-notes.md"
+          $installerHash=(Get-FileHash "$env:RELEASE_DIR/$env:CANONICAL_INSTALLER" -Algorithm SHA256).Hash.ToLowerInvariant()
+          $manifestHash=(Get-FileHash "$env:RELEASE_DIR/latest.json" -Algorithm SHA256).Hash.ToLowerInvariant()
+          [ordered]@{
+            status='MASTERV_REL_1_SIGNED_RELEASE_CANDIDATE_PASS'
+            source_sha=$env:SOURCE_SHA
+            version=$env:RELEASE_VERSION
+            tag=$env:RELEASE_TAG
+            installer=$env:CANONICAL_INSTALLER
+            signature=$env:CANONICAL_SIGNATURE
+            installer_sha256=$installerHash
+            manifest_sha256=$manifestHash
+            tauri_signature_created=$true
+            production_signing_key_used=$true
+            publication=$false
+          } | ConvertTo-Json | Set-Content -Encoding utf8 "$env:RELEASE_DIR/signed-candidate-evidence.json"
+      - name: Verify release build did not mutate lockfiles
+        run: git diff --exit-code -- package-lock.json src-tauri/Cargo.lock
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: masterv-0.1.3-signed-release-candidate
+          path: artifacts/mv-rel-1
+          if-no-files-found: error
+
+  publish-release:
+    needs: signed-release-candidate
+    if: ${{ inputs.allow_production_signing == true && inputs.allow_release_publication == true }}
+    runs-on: ubuntu-22.04
+    timeout-minutes: 20
+    environment: masterv-production-release
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ inputs.source_sha }}
+          fetch-depth: 0
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: masterv-0.1.3-signed-release-candidate
+          path: artifacts/mv-rel-1
+      - name: Reverify exact current-main publication authority
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch origin main --no-tags
+          test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
+          test "$(git rev-parse origin/main)" = "$SOURCE_SHA"
+          if git ls-remote --exit-code --tags origin "refs/tags/$RELEASE_TAG" >/dev/null 2>&1; then
+            echo "Release tag already exists: $RELEASE_TAG" >&2
+            exit 1
+          fi
+          if gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "GitHub Release already exists: $RELEASE_TAG" >&2
+            exit 1
+          fi
+          test -s "$RELEASE_DIR/$CANONICAL_INSTALLER"
+          test -s "$RELEASE_DIR/$CANONICAL_SIGNATURE"
+          test -s "$RELEASE_DIR/latest.json"
+      - name: Create draft release and upload canonical stable-channel assets
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh release create "$RELEASE_TAG" \
+            --repo "$GITHUB_REPOSITORY" \
+            --target "$SOURCE_SHA" \
+            --title "MasterV $RELEASE_VERSION" \
+            --notes-file "$RELEASE_DIR/release-notes.md" \
+            --draft
+          gh release upload "$RELEASE_TAG" \
+            "$RELEASE_DIR/$CANONICAL_INSTALLER" \
+            "$RELEASE_DIR/$CANONICAL_SIGNATURE" \
+            "$RELEASE_DIR/latest.json" \
+            --repo "$GITHUB_REPOSITORY"
+          assets="$(gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --json assets --jq '.assets[].name')"
+          grep -Fx "$CANONICAL_INSTALLER" <<<"$assets"
+          grep -Fx "$CANONICAL_SIGNATURE" <<<"$assets"
+          grep -Fx 'latest.json' <<<"$assets"
+      - name: Publish 0.1.3 as latest stable release
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh release edit "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --draft=false --latest
+          gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --json isDraft,isPrerelease,tagName,targetCommitish --jq '.'
+      - name: Wait for public stable updater assets
+        shell: bash
+        run: |
+          set -euo pipefail
+          manifest_url="https://github.com/$GITHUB_REPOSITORY/releases/latest/download/latest.json"
+          installer_url="https://github.com/$GITHUB_REPOSITORY/releases/download/$RELEASE_TAG/$CANONICAL_INSTALLER"
+          for attempt in $(seq 1 30); do
+            if curl -fsSL --retry 2 "$manifest_url" -o /tmp/latest.json && curl -fsSIL --retry 2 "$installer_url" >/dev/null; then
+              node -e "const m=require('/tmp/latest.json'); if(m.version !== '$RELEASE_VERSION' || m.platforms?.['windows-x86_64']?.url !== '$installer_url' || !m.platforms?.['windows-x86_64']?.signature) process.exit(1)"
+              exit 0
+            fi
+            sleep 5
+          done
+          echo "Published stable updater assets did not become publicly readable" >&2
+          exit 1
+
+  verify-published-updater:
+    needs: publish-release
+    if: ${{ inputs.allow_production_signing == true && inputs.allow_release_publication == true }}
+    runs-on: windows-2025
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ inputs.source_sha }}
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: 24.19.0
+      - uses: dtolnay/rust-toolchain@4360b52568e2003a75bf9bc1d59f33a8e3fc893c
+        with:
+          toolchain: 1.97.1
+      - run: npm ci
+      - name: Reject application credentials from updater verification
+        shell: pwsh
+        run: |
+          foreach ($name in @('GEMINI_API_KEY','YOUTUBE_DATA_API_KEY','POLAR_ACCESS_TOKEN','NEXT_PUBLIC_SUPABASE_URL','NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY')) {
+            if ((Get-Item "env:$name" -ErrorAction SilentlyContinue).Value) { throw "Published updater verification must not receive application credential: $name" }
+          }
+      - name: Build unsigned 0.1.2 updater-aware baseline
+        run: npm run desktop:build:windows-updater-baseline
+      - name: Verify real published 0.1.2 to 0.1.3 Tauri signature acceptance
+        env:
+          MASTERV_REL_1_VERSION: 0.1.3
+          MASTERV_REL_1_TAG: v0.1.3
+        run: npm run test:desktop-published-updater-windows
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: masterv-0.1.3-published-updater-verification
+          path: artifacts/desktop-rel-1-published-updater
+          if-no-files-found: warn
