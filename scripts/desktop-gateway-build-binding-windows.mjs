@@ -1,4 +1,5 @@
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { assert, attachMasterV, delay, execute } from "./windows-webview2-attach.mjs";
 
@@ -23,6 +24,12 @@ assert(fs.existsSync(appBinary), `Gateway-bound Desktop probe binary is missing:
 const evidenceDir = path.resolve("artifacts", "desktop-gateway-build-binding");
 fs.rmSync(evidenceDir, { recursive: true, force: true });
 fs.mkdirSync(evidenceDir, { recursive: true });
+
+const runtimeDataDir = path.join(
+  process.env.RUNNER_TEMP?.trim() || os.tmpdir(),
+  `masterv-gateway-build-binding-webview-${process.pid}`
+);
+fs.rmSync(runtimeDataDir, { recursive: true, force: true });
 
 async function invokeJson(runtime, command, args = {}) {
   const key = `gatewaybinding${Math.random().toString(36).slice(2)}`;
@@ -61,7 +68,7 @@ async function invokeJson(runtime, command, args = {}) {
 let runtime = null;
 try {
   runtime = await attachMasterV(appBinary, evidenceDir, "masterv-gateway-build-binding", {
-    dataDir: path.join(evidenceDir, "webview"),
+    dataDir: runtimeDataDir,
     reuseDataDir: false
   });
 
@@ -98,4 +105,5 @@ try {
   console.log(JSON.stringify(evidence));
 } finally {
   if (runtime) await runtime.close().catch(() => undefined);
+  fs.rmSync(runtimeDataDir, { recursive: true, force: true });
 }
