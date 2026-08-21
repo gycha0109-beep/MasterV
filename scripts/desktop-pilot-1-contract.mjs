@@ -121,6 +121,8 @@ for (const forbiddenCredential of [
   assert.equal(process.env[forbiddenCredential], undefined, `MV-PILOT-1 deterministic contract must not receive credential: ${forbiddenCredential}`);
 }
 
+runNode("scripts/desktop-pilot-1-human-contract.mjs");
+
 console.log(JSON.stringify({
   status: "MASTERV_PILOT_1_CONTRACT_PASS",
   starting_main_sha: "fa8c43269cfb7687ea242d65dafd1621d11e0e7e",
@@ -132,6 +134,7 @@ console.log(JSON.stringify({
   polar_production_mutation_allowed: false,
   release_mutation_allowed: false,
   human_pilot_fabrication_allowed: false,
+  human_pilot_execution_contract_ready: true,
   target_after_exact_head_green: "READY_FOR_EXTERNAL_PILOT",
   automatic_pr_workflows: automaticPrWorkflows
 }));
