@@ -57,13 +57,16 @@ for (const marker of [
   "https://api.masterv.<domain>",
   "https://api.masterv.example",
   "PRODUCTION_GATEWAY_PUBLIC_SURFACE = /v1/* ONLY",
-  "MASTERV_DEPLOYMENT_SURFACE=web",
+  "PRODUCTION_DEPLOYMENT_SURFACE = GATEWAY_ONLY",
+  "PRODUCTION_WEB_OVERRIDE_ALLOWED = FALSE",
+  "LEGACY_WEB_SURFACE = DEVELOPMENT_ONLY",
   "GATEWAY_PRODUCTION_SURFACE_ISOLATION = READY",
   "cargo:rerun-if-env-changed=MASTERV_GATEWAY_BASE_URL",
   "MV_PILOT_1 = BLOCKED_PENDING_PRODUCTION_GATEWAY_ACTIVATION_AND_NEW_SIGNED_DESKTOP"
 ]) {
   assert(doc.includes(marker), `Gateway readiness authority marker missing: ${marker}`);
 }
+assert(!doc.includes("Legacy web production is an explicit override only"), "Gateway readiness doc must not retain production web override authority");
 
 for (const marker of [
   'createGateway(createGatewayProviderRuntime(process.env))',
@@ -89,8 +92,10 @@ for (const marker of [
 }
 
 for (const marker of [
-  'return env.NODE_ENV === "production" ? "gateway" : "web"',
-  'MASTERV_DEPLOYMENT_SURFACE',
+  'if (env.NODE_ENV === "production")',
+  'configured && configured !== "gateway"',
+  'throw new Error("MasterV production deployment surface must be gateway")',
+  'return "gateway"',
   'return resolveMasterVDeploymentSurface(env) === "web"'
 ]) {
   assert(deploymentSurface.includes(marker), `Deployment surface authority marker missing: ${marker}`);
@@ -118,6 +123,9 @@ for (const [relative, providerInvocation] of legacyApiContracts) {
 for (const marker of [
   'resolveMasterVDeploymentSurface({ NODE_ENV: "production" }), "gateway"',
   'MASTERV_DEPLOYMENT_SURFACE: "web"',
+  '/production deployment surface must be gateway/',
+  'production_web_override_allowed: false',
+  'development_web_surface_available: true',
   'new NextRequest("https://api.masterv.example/api/analyze")',
   'LEGACY_WEB_API_DISABLED',
   'provider_calls_executed: false',
@@ -214,7 +222,10 @@ console.log(JSON.stringify({
   status: "MASTERV_PILOT_1A_GATEWAY_PRODUCTION_READINESS_CONTRACT_PASS",
   serverless_gateway_surface_ready: true,
   production_gateway_surface_isolation_ready: true,
-  legacy_web_api_enabled_by_default_in_production: false,
+  production_surface: "gateway-only",
+  production_web_override_allowed: false,
+  legacy_web_api_enabled_in_production: false,
+  development_web_surface_available: true,
   desktop_compile_time_gateway_binding_probe_ready: true,
   published_v0_1_4_gateway_configured: false,
   production_gateway_deployment_authorized: false,
