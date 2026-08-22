@@ -124,6 +124,7 @@ for (const forbiddenCredential of [
 runNode("scripts/desktop-pilot-1-human-contract.mjs");
 runNode("scripts/desktop-pilot-1-gateway-preflight-contract.mjs");
 runNode("scripts/gateway-production-readiness-contract.mjs");
+runNode("scripts/gateway-production-activation-contract.mjs");
 
 console.log(JSON.stringify({
   status: "MASTERV_PILOT_1_CONTRACT_PASS",
@@ -140,6 +141,8 @@ console.log(JSON.stringify({
   published_gateway_preflight_contract_ready: true,
   published_v0_1_4_gateway_configured: false,
   gateway_production_readiness_contract_ready: true,
-  target_after_exact_head_green: "BLOCKED_PENDING_PRODUCTION_GATEWAY_ACTIVATION_AND_NEW_SIGNED_DESKTOP",
+  gateway_production_activation_contract_ready: true,
+  production_gateway_activation_authorized: false,
+  target_after_exact_head_green: "BLOCKED_PENDING_EXPLICIT_PRODUCTION_GATEWAY_ACTIVATION",
   automatic_pr_workflows: automaticPrWorkflows
 }));
