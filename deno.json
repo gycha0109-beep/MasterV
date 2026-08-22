@@ -1,0 +1,10 @@
+{
+  "nodeModulesDir": "auto",
+  "unstable": ["sloppy-imports"],
+  "deploy": {
+    "runtime": {
+      "type": "dynamic",
+      "entrypoint": "./gateway/deno-server.ts"
+    }
+  }
+}
