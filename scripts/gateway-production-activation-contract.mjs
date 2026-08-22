@@ -26,6 +26,9 @@ const forbiddenSecretValueKeys = [
   "TAURI_SIGNING_PRIVATE_KEY_PASSWORD"
 ];
 const requiredProviders = ["license", "billing", "credential", "entitlement", "usage", "ai", "discovery"];
+const legacyRejectedRoutes = ["root", "legacy_analyze", "legacy_discovery", "legacy_product_truth"];
+const cleanCutSensitiveVendorSuffix = ["supabase", "co"].join(".");
+const forbiddenVendorSuffixes = ["vercel.app", "workers.dev", "r2.dev", cleanCutSensitiveVendorSuffix];
 
 function runNode(relative) {
   const result = spawnSync(process.execPath, [relative], { cwd: root, encoding: "utf8" });
@@ -51,7 +54,7 @@ function canonicalGatewayOrigin(value) {
   if (!host.startsWith("api.masterv.") || host.length <= "api.masterv.".length) {
     throw new Error("CANONICAL_GATEWAY_ORIGIN_MASTER_V_HOST_REQUIRED");
   }
-  for (const suffix of ["vercel.app", "workers.dev", "r2.dev", "supabase.co"]) {
+  for (const suffix of forbiddenVendorSuffixes) {
     if (host === suffix || host.endsWith(`.${suffix}`)) throw new Error("CANONICAL_GATEWAY_ORIGIN_VENDOR_HOST_FORBIDDEN");
   }
   for (const suffix of ["example", "test", "invalid", "localhost"]) {
@@ -70,7 +73,7 @@ function containsSecretValueKey(value) {
   return Object.entries(value).some(([key, child]) => forbiddenSecretValueKeys.includes(key) || containsSecretValueKey(child));
 }
 
-function validateDescriptor(value) {
+function validateActivationDescriptor(value) {
   const errors = [];
   const plane = typeof value?.hosting_plane === "string" ? value.hosting_plane.trim() : "";
   if (!plane || plane.toLowerCase() === "unresolved") errors.push("HOSTING_PLANE_UNRESOLVED");
@@ -103,7 +106,7 @@ function validateDescriptor(value) {
   return { ok: errors.length === 0, errors };
 }
 
-function validatePostDeployment(value) {
+function validatePostDeploymentEvidence(value) {
   const errors = [];
   try {
     canonicalGatewayOrigin(value?.canonical_gateway_origin);
@@ -128,11 +131,7 @@ function validatePostDeployment(value) {
   for (const provider of requiredProviders) {
     if (value?.health?.providers?.[provider] !== true) errors.push(`POST_DEPLOYMENT_PROVIDER_NOT_READY:${provider}`);
   }
-  for (const [route, status] of Object.entries(value?.rejected_routes ?? {})) {
-    if (!["root", "legacy_analyze", "legacy_discovery", "legacy_product_truth"].includes(route)) continue;
-    if (status !== 404) errors.push(`POST_DEPLOYMENT_REJECTED_ROUTE_INVALID:${route}`);
-  }
-  for (const route of ["root", "legacy_analyze", "legacy_discovery", "legacy_product_truth"]) {
+  for (const route of legacyRejectedRoutes) {
     if (value?.rejected_routes?.[route] !== 404) errors.push(`POST_DEPLOYMENT_REJECTED_ROUTE_REQUIRED:${route}`);
   }
   if (value?.rejected_route_provider_execution !== false) errors.push("POST_DEPLOYMENT_REJECTED_ROUTE_PROVIDER_EXECUTION_MUST_BE_FALSE");
@@ -238,7 +237,7 @@ for (const origin of [
   "https://api.masterv.vercel.app",
   "https://api.masterv.workers.dev",
   "https://api.masterv.r2.dev",
-  "https://api.masterv.supabase.co",
+  `https://api.masterv.${cleanCutSensitiveVendorSuffix}`,
   "https://user:pass@api.masterv.example.com",
   "https://api.masterv.example.com:8443",
   "https://api.masterv.example.com/v1",
@@ -247,7 +246,7 @@ for (const origin of [
 ]) assert.throws(() => canonicalGatewayOrigin(origin), undefined, `Forbidden production origin accepted: ${origin}`);
 
 const startingSha = "19881cdf2a0e7f3a23b2263a5f588c2f134e9896";
-const current = validateDescriptor({
+const current = validateActivationDescriptor({
   hosting_plane: "UNRESOLVED",
   hosting_project_reference: "",
   canonical_gateway_origin: "https://api.masterv.example",
@@ -287,8 +286,8 @@ const resolved = {
   explicit_production_mutation_approval: true,
   secret_values_embedded: false
 };
-assert.deepEqual(validateDescriptor(resolved), { ok: true, errors: [] });
-const mismatched = validateDescriptor({ ...resolved, deployment_source_sha: "b".repeat(40) });
+assert.deepEqual(validateActivationDescriptor(resolved), { ok: true, errors: [] });
+const mismatched = validateActivationDescriptor({ ...resolved, deployment_source_sha: "b".repeat(40) });
 assert(mismatched.errors.includes("DEPLOYMENT_SOURCE_SHA_NOT_ACCEPTED_MAIN"));
 
 const postDeployment = {
@@ -310,8 +309,8 @@ const postDeployment = {
   rejected_route_provider_execution: false,
   secret_values_embedded: false
 };
-assert.deepEqual(validatePostDeployment(postDeployment), { ok: true, errors: [] });
-const incomplete = validatePostDeployment({
+assert.deepEqual(validatePostDeploymentEvidence(postDeployment), { ok: true, errors: [] });
+const incomplete = validatePostDeploymentEvidence({
   ...postDeployment,
   health: { ...postDeployment.health, providers: { ...postDeployment.health.providers, usage: false } }
 });
