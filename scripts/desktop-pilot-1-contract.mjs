@@ -125,6 +125,7 @@ runNode("scripts/desktop-pilot-1-human-contract.mjs");
 runNode("scripts/desktop-pilot-1-gateway-preflight-contract.mjs");
 runNode("scripts/gateway-production-readiness-contract.mjs");
 runNode("scripts/gateway-production-activation-contract.mjs");
+runNode("scripts/gateway-zero-cost-deno-launch-contract.mjs");
 
 console.log(JSON.stringify({
   status: "MASTERV_PILOT_1_CONTRACT_PASS",
@@ -142,7 +143,11 @@ console.log(JSON.stringify({
   published_v0_1_4_gateway_configured: false,
   gateway_production_readiness_contract_ready: true,
   gateway_production_activation_contract_ready: true,
+  gateway_zero_cost_deno_launch_readiness_contract_ready: true,
+  zero_cost_pilot_hosting_plane: "deno-deploy-free",
+  custom_domain_purchase_required: false,
+  deno_deployment_authorized: false,
   production_gateway_activation_authorized: false,
-  target_after_exact_head_green: "BLOCKED_PENDING_EXPLICIT_PRODUCTION_GATEWAY_ACTIVATION",
+  target_after_exact_head_green: "BLOCKED_PENDING_EXPLICIT_ZERO_COST_DENO_GATEWAY_DEPLOYMENT",
   automatic_pr_workflows: automaticPrWorkflows
 }));
