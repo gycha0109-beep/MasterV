@@ -39,6 +39,10 @@ function git(...args) {
   return String(result.stdout || "").trim();
 }
 
+function trackedWorkingTreeState() {
+  return git("status", "--porcelain", "--untracked-files=no");
+}
+
 function runNpm(args, env, timeout = 900_000) {
   const result = spawnSync("npm.cmd", args, {
     cwd: process.cwd(),
@@ -267,6 +271,8 @@ async function main() {
   }
 
   const gatewayUrl = validateSandboxGateway(required("MASTERV_GATEWAY_BASE_URL"));
+  const requestedSourceSha = required("MASTERV_SANDBOX_E2E_SOURCE_SHA").toLowerCase();
+  assert(/^[0-9a-f]{40}$/.test(requestedSourceSha), "MASTERV_SANDBOX_E2E_SOURCE_SHA must be an exact 40-character commit SHA");
   const productKey = required("MASTERV_SANDBOX_PRODUCT_KEY");
   const guidanceChargeAllowed = boolEnv("MASTERV_SANDBOX_E2E_ALLOW_GUIDANCE_CHARGE");
   delete process.env.MASTERV_SANDBOX_PRODUCT_KEY;
@@ -275,9 +281,11 @@ async function main() {
   let second = null;
   let localDataDir = null;
   try {
+    const sourceSha = git("rev-parse", "HEAD").toLowerCase();
+    assert(sourceSha === requestedSourceSha, `Exact-head mismatch: requested ${requestedSourceSha}, actual ${sourceSha}`);
+    assert(trackedWorkingTreeState() === "", "Sandbox E2E requires a clean tracked working tree before build");
+
     const health = await readHealth(gatewayUrl, guidanceChargeAllowed);
-    const sourceSha = git("rev-parse", "HEAD");
-    assert(/^[0-9a-f]{40}$/.test(sourceSha), `Invalid source SHA: ${sourceSha}`);
 
     fs.rmSync(EVIDENCE_DIR, { recursive: true, force: true });
     fs.mkdirSync(EVIDENCE_DIR, { recursive: true });
@@ -285,6 +293,7 @@ async function main() {
     const buildEnv = { ...process.env, MASTERV_GATEWAY_BASE_URL: gatewayUrl };
     runNpm(["run", "desktop:build"], buildEnv);
     delete process.env.MASTERV_GATEWAY_BASE_URL;
+    assert(trackedWorkingTreeState() === "", "Desktop Sandbox build mutated tracked repository state");
     assert(fs.existsSync(APP_BINARY), `Desktop candidate binary missing after build: ${APP_BINARY}`);
 
     const config = appConfig();
