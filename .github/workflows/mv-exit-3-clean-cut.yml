@@ -8,6 +8,26 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  change-scope:
+    runs-on: ubuntu-22.04
+    outputs:
+      server_only: ${{ steps.classify.outputs.server_only }}
+      desktop_heavy_required: ${{ steps.classify.outputs.desktop_heavy_required }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          fetch-depth: 0
+      - name: Classify PR change scope
+        id: classify
+        shell: bash
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          mapfile -t changed_files < <(git diff --name-only "$BASE_SHA" "$HEAD_SHA")
+          node scripts/ci-change-scope.mjs "${changed_files[@]}"
+
   source-contract:
     runs-on: ubuntu-22.04
     steps:
@@ -22,6 +42,8 @@ jobs:
         run: npm run test:desktop-shell
       - name: Verify Gateway stateless authority
         run: npx tsx scripts/gateway-stateless-contract.ts
+      - name: Verify Gateway /v1-only root surface
+        run: npx tsx scripts/gateway-root-surface-contract.ts
       - name: Verify Polar entitlement authority
         run: npx tsx scripts/gateway-polar-authority-contract.ts
       - name: Verify JavaScript syntax
@@ -33,6 +55,8 @@ jobs:
           node --check desktop/backend/local/local-work-data-provider.js
 
   native-clean-cut:
+    needs: change-scope
+    if: ${{ needs.change-scope.outputs.desktop_heavy_required == 'true' }}
     strategy:
       fail-fast: false
       matrix:
