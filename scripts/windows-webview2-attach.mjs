@@ -135,14 +135,21 @@ export async function attachMasterV(appBinaryPath, evidenceDir, runtimeLabel, op
   const debugPort = await freePort();
   const driverPort = await freePort();
   const appLog = fs.openSync(path.join(evidenceDir, `${runtimeLabel}-masterv-process.log`), "w");
-  const driverLog = fs.openSync(path.join(evidenceDir, `${runtimeLabel}-msedgedriver.log`), "w");
+  const recordDriverLog = options.recordDriverLog !== false;
+  const driverLog = recordDriverLog ? fs.openSync(path.join(evidenceDir, `${runtimeLabel}-msedgedriver.log`), "w") : null;
   const appProcess = spawn(resolvedBinary, [], {
     cwd: path.dirname(resolvedBinary),
     env: { ...process.env, MASTERV_DESKTOP_TEST_REMOTE_DEBUGGING_PORT: String(debugPort), MASTERV_DESKTOP_TEST_WEBVIEW_DATA_DIR: dataDir },
     stdio: ["ignore", appLog, appLog], windowsHide: false
   });
   const cdp = await (await waitHttp(`http://127.0.0.1:${debugPort}/json/version`, "WebView2 CDP", 60_000, appProcess)).json();
-  const driverProcess = spawn(driverPath, [`--port=${driverPort}`, "--verbose"], { cwd: path.dirname(driverPath), stdio: ["ignore", driverLog, driverLog], windowsHide: true });
+  const driverArgs = [`--port=${driverPort}`];
+  if (options.driverVerbose !== false) driverArgs.push("--verbose");
+  const driverProcess = spawn(driverPath, driverArgs, {
+    cwd: path.dirname(driverPath),
+    stdio: recordDriverLog ? ["ignore", driverLog, driverLog] : ["ignore", "ignore", "ignore"],
+    windowsHide: true
+  });
   await waitHttp(`http://127.0.0.1:${driverPort}/status`, "msedgedriver", 30_000, driverProcess);
   const created = await webdriverRequest(driverPort, "POST", "/session", { capabilities: { alwaysMatch: { browserName: "webview2", "ms:edgeChromium": true, "ms:edgeOptions": { debuggerAddress: `127.0.0.1:${debugPort}` } } } });
   const sessionId = created.value?.sessionId || created.sessionId;
@@ -156,7 +163,8 @@ export async function attachMasterV(appBinaryPath, evidenceDir, runtimeLabel, op
       await webdriverRequest(driverPort, "DELETE", `/session/${sessionId}`).catch(() => undefined);
       if (driverProcess.exitCode === null) driverProcess.kill();
       if (appProcess.exitCode === null) appProcess.kill();
-      fs.closeSync(appLog); fs.closeSync(driverLog);
+      fs.closeSync(appLog);
+      if (driverLog !== null) fs.closeSync(driverLog);
     }
   };
 }
