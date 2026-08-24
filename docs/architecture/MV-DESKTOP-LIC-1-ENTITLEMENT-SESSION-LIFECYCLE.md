@@ -218,9 +218,12 @@ Required execution boundaries:
 Windows disposable profile only
 MASTERV_SANDBOX_E2E_EPHEMERAL_WINDOWS=true
 MASTERV_SANDBOX_E2E_ALLOW_NEW_ACTIVATION=true
+MASTERV_SANDBOX_E2E_SOURCE_SHA=<exact 40-character checked-out commit SHA>
 MASTERV_GATEWAY_BASE_URL=https://<sandbox>.deno.net
 MASTERV_SANDBOX_PRODUCT_KEY=<runtime secret only>
 ```
+
+Before any external activation, the harness requires the checked-out `HEAD` to equal `MASTERV_SANDBOX_E2E_SOURCE_SHA` and requires the tracked working tree to be clean. After the Desktop build it verifies that the build did not mutate tracked repository state.
 
 The harness rejects production/custom Gateway hosts and accepts only HTTPS `*.deno.net` roots. It also rejects Polar/Gemini/YouTube/signing server credentials.
 
