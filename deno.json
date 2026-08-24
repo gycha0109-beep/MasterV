@@ -1,6 +1,9 @@
 {
   "nodeModulesDir": "auto",
   "unstable": ["sloppy-imports"],
+  "imports": {
+    "@/": "./"
+  },
   "deploy": {
     "runtime": {
       "type": "dynamic",

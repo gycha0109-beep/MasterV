@@ -111,6 +111,7 @@ for (const marker of [
 
 assert.equal(denoConfig.nodeModulesDir, "auto", "Deno npm compatibility must use automatic node_modules materialization");
 assert.deepEqual(denoConfig.unstable, ["sloppy-imports"], "Deno pilot compatibility must explicitly scope extension inference to sloppy-imports");
+assert.equal(denoConfig.imports?.["@/"], "./", "Deno must mirror the application @/* path alias through an import map");
 assert.equal(denoConfig.deploy?.runtime?.type, "dynamic", "Deno pilot must use dynamic API runtime");
 assert.equal(denoConfig.deploy?.runtime?.entrypoint, "./gateway/deno-server.ts", "Deno pilot must deploy only the Gateway entrypoint");
 assert.equal(denoConfig.deploy?.framework, undefined, "Deno pilot must not deploy the repository Next.js surface");
@@ -237,7 +238,7 @@ console.log(JSON.stringify({
   target_architecture_inv_9_final_closure: "deferred",
   deno_gateway_runtime_adapter_ready: true,
   deno_deploy_config_as_code_ready: true,
-  deno_import_compatibility: "sloppy-imports",
+  deno_import_compatibility: "sloppy-imports+root-import-map",
   deno_deployment_authorized: false,
   deno_deployment_executed: false,
   deno_secret_registration_executed: false,
