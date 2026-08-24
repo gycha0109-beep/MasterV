@@ -50,6 +50,29 @@
         </article>
       </section>
 
+      <section id="entitlement-panel" class="card" hidden>
+        <div class="section-heading">
+          <div>
+            <p class="eyebrow">LICENSE / ENTITLEMENT</p>
+            <h2>Gateway entitlement</h2>
+            <p class="muted small">이 값은 Gateway가 Polar authority에서 읽어온 projection입니다. Desktop 표시는 최종 유료 사용 판정 authority가 아니며, Local SQLite 데이터 접근과 분리됩니다.</p>
+          </div>
+          <div class="actions">
+            <strong id="entitlement-status">LOCAL ONLY</strong>
+            <button id="entitlement-refresh" type="button" class="secondary" disabled>Entitlement 새로고침</button>
+          </div>
+        </div>
+        <div class="facts">
+          <div><span>Plan</span><strong id="entitlement-plan">—</strong></div>
+          <div><span>License</span><strong id="entitlement-license">—</strong></div>
+          <div><span>Subscription</span><strong id="entitlement-subscription">—</strong></div>
+          <div><span>AI credits remaining</span><strong id="entitlement-credits">—</strong></div>
+          <div><span>Device limit</span><strong id="entitlement-device-limit">—</strong></div>
+          <div><span>Current period end</span><strong id="entitlement-period-end">—</strong></div>
+          <div><span>Session expires</span><strong id="entitlement-session-expiry">—</strong></div>
+        </div>
+      </section>
+
       <section class="grid">
         <article class="card">
           <p class="eyebrow">CAPABILITIES</p>
@@ -124,5 +147,6 @@
     <script src="./deep-analysis.js"></script>
     <script src="./background-batch.js"></script>
     <script src="./app.js"></script>
+    <script src="./entitlement.js"></script>
   </body>
 </html>
