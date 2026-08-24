@@ -88,14 +88,19 @@
     async function refreshActiveSession() {
       if (!activeSession) throw new Error("GATEWAY_SESSION_REQUIRED: A MasterV Gateway session is not active.");
       if (refreshInFlight) return await refreshInFlight;
-      refreshInFlight = (async () => {
+      const startingSession = activeSession;
+      const refresh = (async () => {
         const refreshed = await sessionProvider.openSession({ kind: "resume" });
+        if (activeSession !== startingSession) {
+          throw new Error("GATEWAY_SESSION_SUPERSEDED: The active Desktop session changed while refresh was in progress.");
+        }
         return replaceActiveSession(refreshed);
       })();
+      refreshInFlight = refresh;
       try {
-        return await refreshInFlight;
+        return await refresh;
       } finally {
-        refreshInFlight = null;
+        if (refreshInFlight === refresh) refreshInFlight = null;
       }
     }
 
