@@ -11,6 +11,27 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
+  change-scope:
+    if: ${{ github.event_name == 'pull_request' }}
+    runs-on: ubuntu-22.04
+    outputs:
+      server_only: ${{ steps.classify.outputs.server_only }}
+      desktop_heavy_required: ${{ steps.classify.outputs.desktop_heavy_required }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          fetch-depth: 0
+      - name: Classify PR change scope
+        id: classify
+        shell: bash
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          mapfile -t changed_files < <(git diff --name-only "$BASE_SHA" "$HEAD_SHA")
+          node scripts/ci-change-scope.mjs "${changed_files[@]}"
+
   validate:
     runs-on: ubuntu-22.04
     steps:
@@ -19,6 +40,8 @@ jobs:
         with:
           node-version: 24.19.0
       - run: npm ci
+      - name: Verify CI change-scope classifier
+        run: node scripts/ci-change-scope.mjs --self-test
       - run: npm run typecheck
       - run: npm run test:observation-contract
       - run: npm run test:subject-attribution
@@ -46,6 +69,8 @@ jobs:
       - run: npm run test:post-exit-1
       - run: npm run test:rel-1
       - run: npm run test:rel-1b
+      - name: Verify Gateway /v1-only root surface
+        run: npx tsx scripts/gateway-root-surface-contract.ts
       - name: Verify REL-1C verification-only harness contract
         run: node scripts/desktop-rel-1c-contract.mjs
       - name: Verify MV-ARCH-001 final closure contract
@@ -58,7 +83,8 @@ jobs:
         run: npm audit --omit=dev --audit-level=high
 
   desktop-shell:
-    if: ${{ github.event_name == 'pull_request' }}
+    needs: change-scope
+    if: ${{ github.event_name == 'pull_request' && needs.change-scope.outputs.desktop_heavy_required == 'true' }}
     runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
@@ -86,7 +112,8 @@ jobs:
         run: git diff --exit-code -- package-lock.json src-tauri/Cargo.lock
 
   desktop-signing-readiness:
-    if: ${{ github.event_name == 'pull_request' }}
+    needs: change-scope
+    if: ${{ github.event_name == 'pull_request' && needs.change-scope.outputs.desktop_heavy_required == 'true' }}
     uses: ./.github/workflows/desktop-signing-readiness.yml
     with:
       source_sha: ${{ github.event.pull_request.head.sha }}
@@ -94,7 +121,8 @@ jobs:
 
   desktop-windows-runtime:
     name: desktop-windows-quality
-    if: ${{ github.event_name == 'pull_request' }}
+    needs: change-scope
+    if: ${{ github.event_name == 'pull_request' && needs.change-scope.outputs.desktop_heavy_required == 'true' }}
     runs-on: windows-2025
     timeout-minutes: 105
     steps:
