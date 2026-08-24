@@ -107,7 +107,7 @@ export function createGateway(dependencies: GatewayDependencies = {}) {
       if (request.method === "OPTIONS") return new Response(null, { status: 204, headers: JSON_HEADERS });
       const url = new URL(request.url);
 
-      if (request.method === "GET" && (url.pathname === "/" || url.pathname === "/v1/health")) {
+      if (request.method === "GET" && url.pathname === "/v1/health") {
         return json({
           service: "masterv-gateway",
           contract_version: GATEWAY_CONTRACT_VERSION,
