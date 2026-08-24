@@ -37,6 +37,8 @@ for (const marker of [
   "postPaidOperationReadback",
   "ensureActiveSession",
   "refreshActiveSession",
+  "activeSession !== startingSession",
+  "GATEWAY_SESSION_SUPERSEDED",
   "GATEWAY_USAGE_DENIED",
   "GATEWAY_LICENSE_INACTIVE"
 ]) assert(boundary.includes(marker), `MV-DESKTOP-LIC-1 provider boundary marker missing: ${marker}`);
@@ -233,12 +235,72 @@ await assert.rejects(
   "Remote operations must fail closed after Desktop Gateway session close"
 );
 
+let resolveRaceResume;
+const raceSessionProvider = {
+  configured: () => true,
+  async openSession(credentials = {}) {
+    if (credentials.kind === "product_key") {
+      return Object.freeze({
+        provider: "masterv-gateway",
+        credential: "race-session-initial",
+        expires_at: new Date(Date.now() + 30_000).toISOString(),
+        entitlement: Object.freeze({ usage_remaining: 24 })
+      });
+    }
+    if (credentials.kind === "resume") {
+      return await new Promise((resolve) => {
+        resolveRaceResume = () => resolve(Object.freeze({
+          provider: "masterv-gateway",
+          credential: "race-session-refreshed",
+          expires_at: new Date(Date.now() + 15 * 60_000).toISOString(),
+          entitlement: Object.freeze({ usage_remaining: 24 })
+        }));
+      });
+    }
+    throw new Error("unexpected race credential kind");
+  },
+  async closeSession() {},
+  describeSession(session) {
+    return Object.freeze({ authenticated: Boolean(session?.credential) });
+  }
+};
+const raceRemote = {
+  configured: () => true,
+  async probeCapabilities() { return Object.freeze({}); },
+  async compileReferenceWorkflow() { return Object.freeze({ provider: "local-canonical" }); },
+  async discoverYouTube() { return Object.freeze({}); },
+  async analyzeYouTube() { return Object.freeze({}); },
+  async generateProductionGuidance() { return Object.freeze({}); },
+  async probeBackgroundBatch() { return Object.freeze({}); },
+  async listBackgroundBatchJobs() { return Object.freeze({ jobs: [] }); },
+  async submitBackgroundBatchJob() { return Object.freeze({}); },
+  async checkBackgroundBatchJob() { return Object.freeze({}); }
+};
+const raceBackend = contract.createBackendProvider({
+  session: raceSessionProvider,
+  workData: fakeWorkData,
+  remoteOperations: raceRemote,
+  authority: { test_only: true, race_test: true }
+});
+await raceBackend.session.openSession({ kind: "product_key", product_key: "redacted-race-test" });
+const refreshPending = raceBackend.session.ensureFresh();
+assert.equal(typeof resolveRaceResume, "function", "Race fixture did not enter device-session refresh");
+await raceBackend.session.closeSession();
+resolveRaceResume();
+await assert.rejects(
+  () => refreshPending,
+  /GATEWAY_SESSION_SUPERSEDED/,
+  "A late refresh must not resurrect a Desktop session after logout"
+);
+assert.equal(raceBackend.session.current(), null, "Logout/refresh race resurrected a memory session");
+
 console.log(JSON.stringify({
   status: "MASTERV_DESKTOP_LIC_1_CONTRACT_PASS",
   starting_main_sha: "2a0a5b055622d4492f511b3bc1080c447ed58293",
   session_refresh_skew_ms: contract.session_refresh_skew_ms,
   near_expiry_device_resume_verified: true,
   refreshed_session_memory_only: true,
+  logout_refresh_race_fail_closed: true,
   entitlement_projection_surface: true,
   analyze_post_usage_readback: 25,
   guidance_post_usage_readback: 24,
