@@ -15,8 +15,11 @@ const appPath = "desktop/app.js";
 const buildPath = "scripts/build-desktop-static.mjs";
 const secureStorePath = "src-tauri/src/device_secure_store.rs";
 const transportPath = "src-tauri/src/gateway_transport.rs";
+const sandboxHarnessPath = "scripts/desktop-lic-1-sandbox-e2e-windows.mjs";
+const webviewAttachPath = "scripts/windows-webview2-attach.mjs";
+const packagePath = "package.json";
 
-for (const relative of [boundaryPath, sessionProviderPath, entitlementPath, indexPath, appPath, buildPath, secureStorePath, transportPath]) {
+for (const relative of [boundaryPath, sessionProviderPath, entitlementPath, indexPath, appPath, buildPath, secureStorePath, transportPath, sandboxHarnessPath, webviewAttachPath, packagePath]) {
   assert(exists(relative), `MV-DESKTOP-LIC-1 required file missing: ${relative}`);
 }
 
@@ -28,6 +31,9 @@ const app = read(appPath);
 const build = read(buildPath);
 const secureStore = read(secureStorePath);
 const transport = read(transportPath);
+const sandboxHarness = read(sandboxHarnessPath);
+const webviewAttach = read(webviewAttachPath);
+const packageJson = read(packagePath);
 
 for (const marker of [
   "SESSION_REFRESH_SKEW_MS = 60_000",
@@ -80,6 +86,35 @@ assert(transport.includes("session_credential_persisted: false"), "Native transp
 for (const [relative, source] of [[boundaryPath, boundary], [entitlementPath, entitlementUi], [appPath, app]]) {
   assert(!source.includes("localStorage") && !source.includes("sessionStorage"), `${relative} regained browser auth persistence`);
 }
+
+for (const marker of [
+  'MASTERV_SANDBOX_E2E_EPHEMERAL_WINDOWS',
+  'MASTERV_SANDBOX_E2E_ALLOW_NEW_ACTIVATION',
+  'MASTERV_SANDBOX_E2E_ALLOW_GUIDANCE_CHARGE',
+  'delete process.env.MASTERV_SANDBOX_PRODUCT_KEY',
+  'delete process.env.MASTERV_GATEWAY_BASE_URL',
+  'endsWith(".deno.net")',
+  'driverVerbose: false',
+  'recordDriverLog: false',
+  'assertSecretAbsent(EVIDENCE_DIR, productKey)',
+  'runtime_gateway_env_injected: false',
+  'server_activation_cleanup_performed: false',
+  'raw_credentials_in_evidence: false'
+]) assert(sandboxHarness.includes(marker), `MV-DESKTOP-LIC-1 Sandbox harness safety marker missing: ${marker}`);
+
+for (const forbiddenLiteral of [
+  "masterv-tjhctx7aykvh.gycha0109-beep.deno.net",
+  'product_key: productKey',
+  'session_credential:',
+  'device_credential:'
+]) {
+  assert(!sandboxHarness.includes(forbiddenLiteral), `Sandbox harness must not encode credential/endpoint evidence literal: ${forbiddenLiteral}`);
+}
+assert(!/console\.log\([^\n]*productKey/.test(sandboxHarness), "Sandbox Product Key must not be written to console output");
+assert(webviewAttach.includes("options.recordDriverLog !== false"), "WebView harness must support suppressing driver logs for credential-bearing tests");
+assert(webviewAttach.includes("options.driverVerbose !== false"), "WebView harness must support disabling verbose driver logging");
+assert(packageJson.includes('"test:desktop-lic-1-sandbox-e2e"'), "Sandbox E2E manual script is not registered");
+assert(packageJson.includes("node --check scripts/desktop-lic-1-sandbox-e2e-windows.mjs"), "Sandbox E2E syntax is not attached to existing CI");
 
 for (const forbiddenCredential of [
   "TAURI_SIGNING_PRIVATE_KEY",
@@ -308,6 +343,11 @@ console.log(JSON.stringify({
   product_key_persisted: false,
   session_credential_persisted: false,
   gateway_final_paid_authority_preserved: true,
+  sandbox_e2e_harness_governed: true,
+  sandbox_e2e_ephemeral_opt_in_required: true,
+  sandbox_activation_opt_in_required: true,
+  sandbox_guidance_charge_opt_in_required: true,
+  sandbox_driver_credential_logging_disabled: true,
   application_credentials_used: false,
   production_polar_mutation: false,
   production_signing_mutation: false,
