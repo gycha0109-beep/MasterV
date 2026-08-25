@@ -1,8 +1,8 @@
 # MV-DESKTOP-LIC-1 — Desktop Entitlement & Session Lifecycle
 
-Status: IMPLEMENTED / REGRESSION_VERIFIED_BASELINE / LIVE_SANDBOX_E2E_PENDING  
+Status: IMPLEMENTED / EXACT_HEAD_REGRESSION_VERIFIED / LIVE_SANDBOX_E2E_PENDING  
 Starting repository authority: `2a0a5b055622d4492f511b3bc1080c447ed58293`  
-Regression-verified lifecycle head before Sandbox harness addition: `82141d27ad2ef8689bb6d2346f59ad364d330256`  
+Exact-head full regression authority before interactive launcher addition: `0eab71ec3963cf881b6bb9f2e059aef73c3c56af`  
 Architecture authority: `MASTERV_TARGET_ARCHITECTURE(1).md` / `MV-ARCH-001`  
 Runtime scope: Tauri Desktop + existing Stateless Gateway contract  
 Production mutation: NOT AUTHORIZED
@@ -147,13 +147,14 @@ The error projection explicitly preserves Local SQLite availability for licensin
 
 ## 8. Deterministic verification
 
-Source/runtime contract:
+Source/runtime contracts:
 
 ```text
 scripts/desktop-lic-1-contract.mjs
+scripts/desktop-lic-1-sandbox-launcher-contract.mjs
 ```
 
-The contract verifies without any application, Polar, provider, or signing credential:
+The contracts verify without any application, Polar, provider, or signing credential:
 
 - 60-second near-expiry refresh threshold;
 - device-resume session replacement;
@@ -168,19 +169,28 @@ The contract verifies without any application, Polar, provider, or signing crede
 - Session Credential non-persistence;
 - paid-operation failure after session close;
 - Sandbox E2E credential/logging safety markers;
+- hidden Product Key prompt rather than a PowerShell command-line parameter;
+- exact-head / clean-tracked-tree launcher boundary;
+- Sandbox-only `*.deno.net` Gateway launcher boundary;
 - no production Polar/signing/release mutation.
 
-Success marker:
+Success markers:
 
 ```text
 MASTERV_DESKTOP_LIC_1_CONTRACT_PASS
+MASTERV_DESKTOP_LIC_1_SANDBOX_LAUNCHER_CONTRACT_PASS
 ```
 
-The contract is attached to the existing `test:post-exit-1` CI path. No workflow is added.
+Both are attached to the existing `test:post-exit-1` CI path. No automatic workflow is added.
 
-## 9. Existing exact-head regression evidence
+## 9. Exact-head regression evidence
 
-The lifecycle implementation at `82141d27ad2ef8689bb6d2346f59ad364d330256` completed both existing automatic PR workflows successfully.
+The complete stage head `0eab71ec3963cf881b6bb9f2e059aef73c3c56af` completed both existing automatic PR workflows successfully:
+
+```text
+CI run #1103 / 32713495372                         SUCCESS
+MV EXIT-3 0.1.3 Clean Cut #64 / 32713495210       SUCCESS
+```
 
 Verified coverage included:
 
@@ -195,15 +205,19 @@ Windows install → run → restart → uninstall         VERIFIED
 0.1.2 → 0.1.3 Local SQLite upgrade survival         VERIFIED
 published 0.1.3 → signed 0.1.4 updater acceptance   VERIFIED
 published v0.1.4 first-run acceptance               VERIFIED
+published v0.1.4 Gateway preflight harness          VERIFIED
 EXIT-3 Windows native lane                          VERIFIED
 EXIT-3 Ubuntu native lane                           VERIFIED
+signing-readiness unsigned boundary                 VERIFIED
 ```
 
-The published-v0.1.4 Gateway preflight itself passed as an observation harness, but observed `gateway_configured=false`. Therefore the already-published v0.1.4 binary is not valid evidence for live Gateway entitlement E2E.
+The published-v0.1.4 Gateway preflight itself passed as an observation harness but observed `gateway_configured=false`. Therefore the already-published v0.1.4 binary is not valid evidence for live Gateway entitlement E2E.
+
+The interactive launcher was added after `0eab71ec`; its deterministic contract is attached to the same existing CI path and must be green on the newest head before live Sandbox execution.
 
 ## 10. Credential-safe Sandbox E2E harness
 
-A separate manual harness now exists:
+The manual harness is:
 
 ```text
 scripts/desktop-lic-1-sandbox-e2e-windows.mjs
@@ -245,7 +259,39 @@ Gateway URL
 
 For credential-bearing browser interaction, `windows-webview2-attach.mjs` supports disabling verbose EdgeDriver output and suppressing the EdgeDriver log entirely. The Sandbox harness uses both protections and scans all emitted evidence for the exact Product Key before success/failure completion.
 
-The live sequence is:
+### Interactive launcher
+
+To avoid putting the Product Key in a command line or shell history, use:
+
+```powershell
+.\scripts\run-desktop-lic-1-sandbox-e2e.ps1 -GatewayUrl https://<sandbox>.deno.net
+```
+
+The launcher:
+
+```text
+validates Windows + exact git HEAD + clean tracked tree
+→ accepts only an HTTPS *.deno.net root
+→ prompts for Product Key with Read-Host -AsSecureString
+→ converts it only in process memory for the child test
+→ injects exact source SHA and explicit Sandbox activation flags
+→ invokes npm run test:desktop-lic-1-sandbox-e2e
+→ removes all managed environment variables in finally
+```
+
+The Product Key is deliberately **not** a PowerShell parameter. This avoids placing the raw value in command history/process command lines.
+
+A real Guidance usage charge remains a separate explicit action:
+
+```powershell
+.\scripts\run-desktop-lic-1-sandbox-e2e.ps1 -GatewayUrl https://<sandbox>.deno.net -AllowGuidanceCharge
+```
+
+When enabled, the harness executes one Guidance operation, requires `charged_units=1`, and verifies the Desktop entitlement projection changes by exactly one credit after the post-operation readback.
+
+The harness does not receive a Polar access token and therefore does not deactivate the server-side Sandbox activation. It records `server_activation_cleanup_performed=false`. If the Sandbox Product Key has `device_limit=1`, activation cleanup/reuse must be handled as a separate authorized external operation rather than hidden inside this Desktop test.
+
+## 11. Live sequence
 
 ```text
 GET /v1/health
@@ -260,26 +306,23 @@ GET /v1/health
 → restart Desktop
 → automatic DPAPI Device Credential session resume
 → authoritative entitlement readback
+→ optional explicit one-unit Guidance charge/readback
 ```
 
-A real Guidance usage charge is **not implicit**. It additionally requires:
-
-```text
-MASTERV_SANDBOX_E2E_ALLOW_GUIDANCE_CHARGE=true
-```
-
-When enabled, the harness executes one Guidance operation, requires `charged_units=1`, and verifies the Desktop entitlement projection changes by exactly one credit after the post-operation readback.
-
-The harness does not receive a Polar access token and therefore does not deactivate the server-side Sandbox activation. It records `server_activation_cleanup_performed=false`. If the Sandbox Product Key has `device_limit=1`, activation cleanup/reuse must be handled as a separate authorized external operation rather than hidden inside this Desktop test.
-
-## 11. Current verification state
+## 12. Current verification state
 
 ```text
 SOURCE_IMPLEMENTATION                         IMPLEMENTED
-DETERMINISTIC_LIFECYCLE_CONTRACT              REGRESSION_VERIFIED_BASELINE
-DESKTOP_BUILD_REGRESSION                      REGRESSION_VERIFIED_BASELINE
-WINDOWS_RUNTIME_REGRESSION                    REGRESSION_VERIFIED_BASELINE
-SANDBOX_E2E_HARNESS                           IMPLEMENTED_PENDING_CURRENT_HEAD_CI
+EXACT_HEAD_0EAB71EC_FULL_REGRESSION            VERIFIED
+DETERMINISTIC_LIFECYCLE_CONTRACT              VERIFIED
+DESKTOP_BUILD_REGRESSION                      VERIFIED
+WINDOWS_RUNTIME_REGRESSION                    VERIFIED
+WINDOWS_INSTALL_RESTART_UNINSTALL             VERIFIED
+UPDATER_REGRESSION                            VERIFIED
+EXIT_3_WINDOWS_NATIVE                         VERIFIED
+EXIT_3_UBUNTU_NATIVE                          VERIFIED
+SANDBOX_E2E_HARNESS                           IMPLEMENTED
+INTERACTIVE_SANDBOX_LAUNCHER                  IMPLEMENTED / CURRENT_HEAD_CI_PENDING
 LIVE_TAURI_TO_DENO_SANDBOX_ACTIVATION_E2E     NOT_EXECUTED
 LIVE_SANDBOX_GUIDANCE_USAGE_E2E               NOT_EXECUTED
 SANDBOX_SERVER_ACTIVATION_CLEANUP              NOT_EXECUTED / NO CLIENT AUTHORITY
@@ -290,6 +333,6 @@ RELEASE_PUBLICATION                           NOT_AUTHORIZED
 
 Live Sandbox Desktop E2E must not be fabricated from deterministic fixtures. A successful live run requires a runtime-only Sandbox Product Key and the explicit activation opt-in above.
 
-## 12. Known residual outside this stage
+## 13. Known residual outside this stage
 
 The existing Device Credential itself has a longer expiry than the Session Credential. This stage refreshes only short-lived sessions through the existing `/v1/session` contract. Long-horizon Device Credential renewal/rotation remains a separate concern and is not silently redesigned here.
