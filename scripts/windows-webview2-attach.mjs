@@ -173,8 +173,10 @@ export async function attachMasterV(appBinaryPath, evidenceDir, runtimeLabel, op
   assert(fs.existsSync(resolvedBinary), `MasterV binary missing: ${resolvedBinary}`);
   const runtimeRoot = path.join(process.env.RUNNER_TEMP?.trim() || os.tmpdir(), `${runtimeLabel}-${process.pid}`);
   const dataDir = options.dataDir ? path.resolve(options.dataDir) : path.join(runtimeRoot, "webview2");
+  const appDataDir = options.appDataDir ? path.resolve(options.appDataDir) : null;
   if (!options.reuseDataDir) fs.rmSync(dataDir, { recursive: true, force: true });
   fs.mkdirSync(dataDir, { recursive: true });
+  if (appDataDir) fs.mkdirSync(appDataDir, { recursive: true });
   fs.mkdirSync(runtimeRoot, { recursive: true });
   fs.mkdirSync(evidenceDir, { recursive: true });
   const webviewVersion = detectWebView2Version();
@@ -184,9 +186,15 @@ export async function attachMasterV(appBinaryPath, evidenceDir, runtimeLabel, op
   const appLog = fs.openSync(path.join(evidenceDir, `${runtimeLabel}-masterv-process.log`), "w");
   const recordDriverLog = options.recordDriverLog !== false;
   const driverLog = recordDriverLog ? fs.openSync(path.join(evidenceDir, `${runtimeLabel}-msedgedriver.log`), "w") : null;
+  const appEnv = {
+    ...process.env,
+    MASTERV_DESKTOP_TEST_REMOTE_DEBUGGING_PORT: String(debugPort),
+    MASTERV_DESKTOP_TEST_WEBVIEW_DATA_DIR: dataDir,
+    ...(appDataDir ? { MASTERV_DESKTOP_TEST_APP_DATA_DIR: appDataDir } : {})
+  };
   const appProcess = spawn(resolvedBinary, [], {
     cwd: path.dirname(resolvedBinary),
-    env: { ...process.env, MASTERV_DESKTOP_TEST_REMOTE_DEBUGGING_PORT: String(debugPort), MASTERV_DESKTOP_TEST_WEBVIEW_DATA_DIR: dataDir },
+    env: appEnv,
     stdio: ["ignore", appLog, appLog], windowsHide: false
   });
   const cdp = await (await waitHttp(`http://127.0.0.1:${debugPort}/json/version`, "WebView2 CDP", 60_000, appProcess)).json();
@@ -221,6 +229,7 @@ export async function attachMasterV(appBinaryPath, evidenceDir, runtimeLabel, op
   return {
     appBinaryPath: resolvedBinary,
     dataDir,
+    appDataDir,
     driverPort, sessionId, webviewVersion, cdpBrowser: cdp.Browser || null,
     close: closeRuntime
   };
