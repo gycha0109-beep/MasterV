@@ -37,6 +37,53 @@ async function freePort() {
   });
 }
 
+function childExited(child) {
+  return !child || child.exitCode !== null || child.signalCode !== null;
+}
+
+async function waitForChildExit(child, timeoutMs = 2_000) {
+  if (childExited(child)) return true;
+  return await new Promise((resolve) => {
+    let settled = false;
+    let timer = null;
+    const finish = (value) => {
+      if (settled) return;
+      settled = true;
+      if (timer) clearTimeout(timer);
+      child.off("exit", onExit);
+      child.off("close", onClose);
+      resolve(value);
+    };
+    const onExit = () => finish(true);
+    const onClose = () => finish(true);
+    child.once("exit", onExit);
+    child.once("close", onClose);
+    timer = setTimeout(() => finish(childExited(child)), timeoutMs);
+  });
+}
+
+function forceTerminateWindowsProcess(child) {
+  if (childExited(child) || !child?.pid) return;
+  spawnSync("taskkill.exe", ["/PID", String(child.pid), "/T", "/F"], {
+    encoding: "utf8",
+    windowsHide: true,
+    timeout: 10_000
+  });
+}
+
+async function stopChildProcess(child, graceMs = 1_500) {
+  if (childExited(child)) return;
+  if (await waitForChildExit(child, graceMs)) return;
+  forceTerminateWindowsProcess(child);
+  await waitForChildExit(child, 3_000);
+}
+
+function closeFileDescriptorOnce(state, key, fd) {
+  if (fd === null || fd === undefined || state[key]) return;
+  state[key] = true;
+  try { fs.closeSync(fd); } catch {}
+}
+
 function detectWebView2Version() {
   const paths = [
     "HKLM\\SOFTWARE\\WOW6432Node\\Microsoft\\EdgeUpdate\\Clients\\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}",
@@ -155,16 +202,26 @@ export async function attachMasterV(appBinaryPath, evidenceDir, runtimeLabel, op
   const sessionId = created.value?.sessionId || created.sessionId;
   assert(sessionId, "WebDriver session id missing");
   await waitForMasterVDom(driverPort, sessionId, appProcess);
+
+  let closePromise = null;
+  const descriptorState = { appLogClosed: false, driverLogClosed: false };
+  const closeRuntime = async () => {
+    if (closePromise) return await closePromise;
+    closePromise = (async () => {
+      await webdriverRequest(driverPort, "DELETE", `/session/${sessionId}`).catch(() => undefined);
+      await stopChildProcess(driverProcess, 1_500);
+      await stopChildProcess(appProcess, 1_500);
+    })().finally(() => {
+      closeFileDescriptorOnce(descriptorState, "appLogClosed", appLog);
+      closeFileDescriptorOnce(descriptorState, "driverLogClosed", driverLog);
+    });
+    return await closePromise;
+  };
+
   return {
     appBinaryPath: resolvedBinary,
     dataDir,
     driverPort, sessionId, webviewVersion, cdpBrowser: cdp.Browser || null,
-    async close() {
-      await webdriverRequest(driverPort, "DELETE", `/session/${sessionId}`).catch(() => undefined);
-      if (driverProcess.exitCode === null) driverProcess.kill();
-      if (appProcess.exitCode === null) appProcess.kill();
-      fs.closeSync(appLog);
-      if (driverLog !== null) fs.closeSync(driverLog);
-    }
+    close: closeRuntime
   };
 }
