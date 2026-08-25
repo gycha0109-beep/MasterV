@@ -41,7 +41,9 @@ for (const forbidden of [
   assert(!launcher.includes(forbidden), `Sandbox launcher must not contain server/signing credential or pinned endpoint: ${forbidden}`);
 }
 
-assert(!/param\([\s\S]*ProductKey/i.test(launcher), "Product Key must not be accepted as a PowerShell command-line parameter");
+const parameterBlock = launcher.match(/param\(([\s\S]*?)\)\n\n\$ErrorActionPreference/)?.[1] || "";
+assert(parameterBlock, "PowerShell launcher parameter block could not be isolated");
+assert(!/ProductKey/i.test(parameterBlock), "Product Key must not be accepted as a PowerShell command-line parameter");
 assert(!/Write-(?:Host|Output|Verbose|Debug|Warning)[^\n]*\$productKey/i.test(launcher), "Product Key must not be written to PowerShell output");
 assert(!/Set-Content[^\n]*productKey/i.test(launcher), "Product Key must not be persisted to a file");
 assert(!/Add-Content[^\n]*productKey/i.test(launcher), "Product Key must not be appended to a file");
