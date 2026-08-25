@@ -81,20 +81,11 @@ async function readHealth(gatewayUrl, guidanceChargeAllowed) {
   return body;
 }
 
-function appConfig() {
-  return JSON.parse(fs.readFileSync(path.resolve("src-tauri", "tauri.conf.json"), "utf8"));
-}
-
-function ephemeralLocalDataDir(identifier) {
-  const localAppData = process.env.LOCALAPPDATA?.trim() || "";
-  assert(localAppData, "LOCALAPPDATA is required on the disposable Windows profile");
-  return path.join(localAppData, identifier);
-}
-
-function resetEphemeralLocalState(identifier) {
-  const target = ephemeralLocalDataDir(identifier);
-  fs.rmSync(target, { recursive: true, force: true });
-  return target;
+function prepareEphemeralAppDataDir() {
+  const root = path.join(process.env.RUNNER_TEMP?.trim() || os.tmpdir(), `masterv-lic1-sandbox-appdata-${process.pid}`);
+  fs.rmSync(root, { recursive: true, force: true });
+  fs.mkdirSync(root, { recursive: true });
+  return root;
 }
 
 async function invokeJson(runtime, command, args = {}) {
@@ -280,6 +271,7 @@ async function main() {
   let first = null;
   let second = null;
   let localDataDir = null;
+  let completed = false;
   try {
     const sourceSha = git("rev-parse", "HEAD").toLowerCase();
     assert(sourceSha === requestedSourceSha, `Exact-head mismatch: requested ${requestedSourceSha}, actual ${sourceSha}`);
@@ -296,14 +288,12 @@ async function main() {
     assert(trackedWorkingTreeState() === "", "Desktop Sandbox build mutated tracked repository state");
     assert(fs.existsSync(APP_BINARY), `Desktop candidate binary missing after build: ${APP_BINARY}`);
 
-    const config = appConfig();
-    const identifier = String(config.identifier || "").trim();
-    assert(identifier, "Tauri identifier is required for ephemeral local-state cleanup");
-    localDataDir = resetEphemeralLocalState(identifier);
+    localDataDir = prepareEphemeralAppDataDir();
 
     const webviewDataDir = path.join(process.env.RUNNER_TEMP?.trim() || os.tmpdir(), `masterv-lic1-sandbox-webview-${process.pid}`);
     first = await attachMasterV(APP_BINARY, EVIDENCE_DIR, "masterv-lic1-sandbox-activation", {
       dataDir: webviewDataDir,
+      appDataDir: localDataDir,
       reuseDataDir: false,
       driverVerbose: false,
       recordDriverLog: false
@@ -367,6 +357,7 @@ async function main() {
 
     second = await attachMasterV(APP_BINARY, EVIDENCE_DIR, "masterv-lic1-sandbox-resume", {
       dataDir: webviewDataDir,
+      appDataDir: localDataDir,
       reuseDataDir: true,
       driverVerbose: false,
       recordDriverLog: false
@@ -409,6 +400,7 @@ async function main() {
       gateway_stateless: health.architecture.stateless === true,
       gateway_db_less: health.architecture.db_less === true,
       local_sqlite_pre_activation_access: true,
+      desktop_app_data_isolated: true,
       desktop_gateway_build_binding: true,
       runtime_gateway_env_injected: false,
       product_key_activation_verified: true,
@@ -436,6 +428,7 @@ async function main() {
     });
     fs.writeFileSync(path.join(EVIDENCE_DIR, "evidence.json"), `${JSON.stringify(evidence, null, 2)}\n`, "utf8");
     assertSecretAbsent(EVIDENCE_DIR, productKey);
+    completed = true;
     console.log(JSON.stringify(evidence));
   } catch (error) {
     throw redactedError(error, productKey);
@@ -444,7 +437,15 @@ async function main() {
     if (second) await second.close().catch(() => undefined);
     delete process.env.MASTERV_SANDBOX_PRODUCT_KEY;
     delete process.env.MASTERV_GATEWAY_BASE_URL;
-    if (localDataDir) fs.rmSync(localDataDir, { recursive: true, force: true });
+    if (localDataDir) {
+      const deviceIdentityPath = path.join(localDataDir, "device-identity.dpapi");
+      const preserveRecoveryState = !completed && fs.existsSync(deviceIdentityPath);
+      if (preserveRecoveryState) {
+        console.error(`MASTERV_DESKTOP_LIC_1_SANDBOX_E2E_LOCAL_STATE_PRESERVED=${localDataDir}`);
+      } else {
+        fs.rmSync(localDataDir, { recursive: true, force: true });
+      }
+    }
     assertSecretAbsent(EVIDENCE_DIR, productKey);
   }
 }
