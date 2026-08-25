@@ -61,8 +61,7 @@ function isCleanCutNativePath(path) {
     || path.startsWith("desktop/backend/local/")
     || path === "desktop/backend/bridge/transition-provider.js"
     || path === "scripts/desktop-local-persistence-contract.mjs"
-    || path === "scripts/desktop-supabase-clean-cut-contract.mjs"
-    || path === ".github/workflows/mv-exit-3-clean-cut.yml";
+    || path === "scripts/desktop-supabase-clean-cut-contract.mjs";
 }
 
 export function classifyChangedFiles(paths) {
@@ -130,11 +129,13 @@ function selfTest() {
   assert.equal(localAuthority.desktop_native_required, true);
   assert.equal(localAuthority.clean_cut_native_required, true);
 
-  const workflowOnly = classifyChangedFiles([".github/workflows/ci.yml"]);
-  assert.equal(workflowOnly.desktop_native_required, false);
-  assert.equal(workflowOnly.desktop_installer_required, false);
-  assert.equal(workflowOnly.desktop_release_required, false);
-  assert.equal(workflowOnly.clean_cut_native_required, false);
+  for (const workflow of [".github/workflows/ci.yml", ".github/workflows/mv-exit-3-clean-cut.yml"]) {
+    const workflowOnly = classifyChangedFiles([workflow]);
+    assert.equal(workflowOnly.desktop_native_required, false);
+    assert.equal(workflowOnly.desktop_installer_required, false);
+    assert.equal(workflowOnly.desktop_release_required, false);
+    assert.equal(workflowOnly.clean_cut_native_required, false);
+  }
 
   const unknown = classifyChangedFiles(["README.md"]);
   assert.equal(unknown.server_only, false);
