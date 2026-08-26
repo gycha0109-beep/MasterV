@@ -13,6 +13,7 @@ function isDesktopNativePath(path) {
     || path.startsWith("src-tauri/src/")
     || path === "src-tauri/Cargo.toml"
     || path === "src-tauri/Cargo.lock"
+    || path === ".node-version"
     || path === "package.json"
     || path === "package-lock.json"
     || path === "scripts/build-desktop-static.mjs"
@@ -114,7 +115,17 @@ function selfTest() {
 
   const harness = classifyChangedFiles(["scripts/desktop-lic-1-sandbox-e2e-windows.mjs"]);
   assert.equal(harness.desktop_native_required, true);
+  assert.equal(harness.desktop_installer_required, false);
   assert.equal(harness.desktop_release_required, false);
+  assert.equal(harness.signing_readiness_required, false);
+  assert.equal(harness.clean_cut_native_required, false);
+
+  const nodeAuthority = classifyChangedFiles([".node-version"]);
+  assert.equal(nodeAuthority.desktop_native_required, true);
+  assert.equal(nodeAuthority.desktop_installer_required, false);
+  assert.equal(nodeAuthority.desktop_release_required, false);
+  assert.equal(nodeAuthority.signing_readiness_required, false);
+  assert.equal(nodeAuthority.clean_cut_native_required, false);
 
   const installer = classifyChangedFiles(["src-tauri/tauri.windows-smoke.conf.json"]);
   assert.equal(installer.desktop_native_required, false);

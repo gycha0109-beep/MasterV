@@ -43,17 +43,6 @@ function trackedWorkingTreeState() {
   return git("status", "--porcelain", "--untracked-files=no");
 }
 
-function runNpm(args, env, timeout = 900_000) {
-  const result = spawnSync("npm.cmd", args, {
-    cwd: process.cwd(),
-    env,
-    stdio: "inherit",
-    timeout,
-    windowsHide: true
-  });
-  assert(result.status === 0, `npm ${args.join(" ")} failed with status ${result.status}`);
-}
-
 function validateSandboxGateway(value) {
   const parsed = new URL(value);
   assert(parsed.protocol === "https:", "Sandbox Gateway must use HTTPS");
@@ -275,18 +264,16 @@ async function main() {
   try {
     const sourceSha = git("rev-parse", "HEAD").toLowerCase();
     assert(sourceSha === requestedSourceSha, `Exact-head mismatch: requested ${requestedSourceSha}, actual ${sourceSha}`);
-    assert(trackedWorkingTreeState() === "", "Sandbox E2E requires a clean tracked working tree before build");
+    assert(trackedWorkingTreeState() === "", "Sandbox E2E requires a clean tracked working tree");
 
     const health = await readHealth(gatewayUrl, guidanceChargeAllowed);
+    delete process.env.MASTERV_GATEWAY_BASE_URL;
 
     fs.rmSync(EVIDENCE_DIR, { recursive: true, force: true });
     fs.mkdirSync(EVIDENCE_DIR, { recursive: true });
 
-    const buildEnv = { ...process.env, MASTERV_GATEWAY_BASE_URL: gatewayUrl };
-    runNpm(["run", "desktop:build"], buildEnv);
-    delete process.env.MASTERV_GATEWAY_BASE_URL;
-    assert(trackedWorkingTreeState() === "", "Desktop Sandbox build mutated tracked repository state");
-    assert(fs.existsSync(APP_BINARY), `Desktop candidate binary missing after build: ${APP_BINARY}`);
+    assert(fs.existsSync(APP_BINARY), `Prebuilt Desktop candidate binary missing: ${APP_BINARY}`);
+    assert(trackedWorkingTreeState() === "", "Prebuilt Desktop candidate source tree is not clean");
 
     localDataDir = prepareEphemeralAppDataDir();
 

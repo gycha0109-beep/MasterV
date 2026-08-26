@@ -244,15 +244,22 @@ The harness rejects production/custom Gateway hosts and accepts only HTTPS `*.de
 Credential handling:
 
 ```text
+PowerShell launcher
+→ verifies exact Node 24.19.0, locked npm/Tauri dependencies, Rust/Cargo 1.97.1, and MSVC/SDK
+→ prepares missing Node and Rust runtimes in an isolated user-scope cache
+→ builds the exact-head Sandbox-bound Desktop candidate with no Product Key in memory/environment
+
 Product Key
-→ read once from process environment
-→ remove from process.env before build/app launch
+→ prompted only after the Desktop candidate build succeeds
+→ read once from process environment by the lifecycle harness
+→ remove from process.env before app launch
 → pass only to the visible Desktop activation form through WebDriver
 → clear Desktop input after normal app activation handling
 → never write raw value to evidence
 
 Gateway URL
-→ supplied only to the exact-head candidate build
+→ supplied to the exact-head candidate build before Product Key input
+→ reused by the lifecycle harness only for Sandbox health verification
 → removed from runtime process environment
 → candidate must report configured=true from build-time binding
 ```
@@ -272,10 +279,18 @@ The launcher:
 ```text
 validates Windows + exact git HEAD + clean tracked tree
 → accepts only an HTTPS *.deno.net root
+→ reads exact Node authority from .node-version (24.19.0, matching CI)
+→ reuses or checksum-verifies an isolated official Node runtime
+→ materializes missing locked project dependencies with npm ci
+→ verifies project-local Tauri CLI 2.11.4
+→ verifies or installs Rust/Cargo 1.97.1 through rustup in user scope
+→ fails before secret input if MSVC/Windows SDK is unavailable
+→ builds the Sandbox-bound Desktop candidate with MASTERV_SANDBOX_PRODUCT_KEY absent
+→ verifies the build left the tracked tree clean and emitted the candidate EXE
 → prompts for Product Key with Read-Host -AsSecureString
 → converts it only in process memory for the child test
 → injects exact source SHA and explicit Sandbox activation flags
-→ invokes npm run test:desktop-lic-1-sandbox-e2e
+→ invokes the Node lifecycle harness without a nested build
 → removes all managed environment variables in finally
 ```
 
@@ -294,9 +309,12 @@ The harness does not receive a Polar access token and therefore does not deactiv
 ## 11. Live sequence
 
 ```text
-GET /v1/health
+validate exact HEAD / clean tracked tree / Sandbox URL
+→ validate or safely prepare Node / npm / Tauri / Rust / Cargo / MSVC prerequisites
+→ exact-head unsigned Desktop build with Sandbox Gateway binding and no Product Key
+→ hidden Product Key prompt only after build success
+→ GET /v1/health
 → verify stateless / DB-less Sandbox providers
-→ exact-head unsigned Desktop build with Sandbox Gateway binding
 → fresh disposable Local SQLite + DPAPI state
 → prove Local SQLite access before activation
 → Product Key activation
