@@ -208,11 +208,11 @@ export class PolarHttpClient {
     );
   }
 
-  async getCustomerState(customerId: string): Promise<PolarCustomerState> {
+  async getCustomerState(customerId: string, redactions: ReadonlyArray<string> = []): Promise<PolarCustomerState> {
     return await this.request<PolarCustomerState>(
       `/v1/customers/${encodeURIComponent(customerId)}/state`,
       {},
-      { phase: "customer_state" }
+      { phase: "customer_state", redactions }
     );
   }
 
