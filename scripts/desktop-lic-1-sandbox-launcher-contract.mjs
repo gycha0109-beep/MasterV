@@ -30,6 +30,9 @@ for (const marker of [
   "Assert-ProductKeyAbsent",
   "Assert-ServerSecretsAbsent",
   "Assert-WindowsNativeBuildTools",
+  "Get-MasterVWindowsArchitecture",
+  "PROCESSOR_ARCHITEW6432",
+  "PROCESSOR_ARCHITECTURE",
   "SHASUMS256.txt",
   "expectedRustupChecksum",
   "Get-FileHash",
@@ -71,12 +74,18 @@ assert(!/Add-Content[^\n]*productKey/i.test(launcher), "Product Key must not be 
 const buildIndex = launcher.indexOf("@('run', 'desktop:build')");
 const promptIndex = launcher.indexOf("Read-Host 'Sandbox Product Key' -AsSecureString");
 const productKeyEnvironmentIndex = launcher.indexOf("$env:MASTERV_SANDBOX_PRODUCT_KEY = $productKey");
+const nodePreflightIndex = launcher.indexOf("$nodeRuntime = Get-NodeRuntime");
+const rustPreflightIndex = launcher.indexOf("$rustSource = Ensure-RustToolchain");
 assert(buildIndex >= 0 && promptIndex > buildIndex, "Product Key prompt must execute only after the Desktop candidate build");
+assert(nodePreflightIndex >= 0 && rustPreflightIndex > nodePreflightIndex && buildIndex > rustPreflightIndex, "Architecture-dependent Node/Rust preflight must execute before the Desktop build and Product Key prompt");
 assert(productKeyEnvironmentIndex > promptIndex, "Product Key environment handoff must execute only after the hidden prompt");
 assert(/Assert-ProductKeyAbsent\s*\n\s*Assert-ServerSecretsAbsent\s*\n\s*\$env:MASTERV_GATEWAY_BASE_URL[\s\S]*?@\('run', 'desktop:build'\)/.test(launcher), "Desktop build must be immediately guarded against Product Key and server-secret inheritance");
 assert(!harness.includes('"desktop:build"'), "Node Sandbox E2E harness must not perform a nested Desktop build");
 assert(!harness.includes('spawnSync("npm.cmd"'), "Node Sandbox E2E harness must not spawn a nested npm build process");
 assert(harness.includes("Prebuilt Desktop candidate binary missing"), "Sandbox E2E must require the launcher's prebuilt candidate");
+assert(!launcher.includes("RuntimeInformation"), "Windows PowerShell 5.1-incompatible RuntimeInformation API must not return");
+assert(!launcher.includes("OSArchitecture"), "Windows PowerShell 5.1-incompatible OSArchitecture property must not return");
+assert.equal((launcher.match(/Get-MasterVWindowsArchitecture/g) || []).length, 3, "Node and Rust architecture selection must share exactly one launcher authority helper");
 
 assert.equal(nodeVersion, "24.19.0", "Repository Node authority must remain exact Node 24.19.0");
 assert(launcher.includes("Get-Content -Raw -LiteralPath (Join-Path $repoRoot '.node-version')"), "Launcher must consume the repository Node authority");
@@ -109,6 +118,7 @@ console.log(JSON.stringify({
   nested_node_build: false,
   product_key_prompt_after_build: true,
   isolated_runtime_bootstrap: true,
+  powershell_5_1_architecture_authority: true,
   rust_toolchain: "1.97.1",
   tauri_cli: "2.11.4",
   guidance_charge_explicit_opt_in: true,

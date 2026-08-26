@@ -71,6 +71,25 @@ function Invoke-ExternalChecked {
   }
 }
 
+function Get-MasterVWindowsArchitecture {
+  $raw = if (-not [string]::IsNullOrWhiteSpace($env:PROCESSOR_ARCHITEW6432)) {
+    $env:PROCESSOR_ARCHITEW6432
+  }
+  else {
+    $env:PROCESSOR_ARCHITECTURE
+  }
+
+  if ([string]::IsNullOrWhiteSpace($raw)) {
+    throw 'Unsupported Windows architecture: <empty>'
+  }
+
+  switch ($raw.Trim().ToUpperInvariant()) {
+    'AMD64' { return 'X64' }
+    'ARM64' { return 'Arm64' }
+    default { throw "Unsupported Windows architecture: $raw" }
+  }
+}
+
 function Assert-WindowsNativeBuildTools {
   $vswhere = Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio\Installer\vswhere.exe'
   if (-not (Test-Path -LiteralPath $vswhere -PathType Leaf)) {
@@ -113,7 +132,7 @@ function Get-NodeRuntime {
     }
   }
 
-  $architecture = [Runtime.InteropServices.RuntimeInformation]::OSArchitecture.ToString()
+  $architecture = Get-MasterVWindowsArchitecture
   $nodeArchitecture = switch ($architecture) {
     'X64' { 'x64' }
     'Arm64' { 'arm64' }
@@ -228,10 +247,11 @@ function Ensure-RustToolchain {
       $rustupInit = Join-Path $rustupBootstrapRoot 'rustup-init.exe'
       $rustupChecksum = "$rustupInit.sha256"
       try {
-        $rustupTarget = switch ([Runtime.InteropServices.RuntimeInformation]::OSArchitecture.ToString()) {
+        $architecture = Get-MasterVWindowsArchitecture
+        $rustupTarget = switch ($architecture) {
           'X64' { 'x86_64-pc-windows-msvc' }
           'Arm64' { 'aarch64-pc-windows-msvc' }
-          default { throw 'Unsupported Windows architecture for rustup bootstrap.' }
+          default { throw "Unsupported Windows architecture for rustup bootstrap: $architecture" }
         }
         $rustupUri = "https://static.rust-lang.org/rustup/dist/$rustupTarget/rustup-init.exe"
         Invoke-WebRequest -UseBasicParsing -Uri $rustupUri -OutFile $rustupInit
