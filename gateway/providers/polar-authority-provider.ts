@@ -229,7 +229,7 @@ export class PolarGatewayAuthorityProvider implements
         license_id: license.id,
         activation_id: rollbackActivationId
       };
-      const state = await this.client.getCustomerState(license.customer_id);
+      const state = await this.client.getCustomerState(license.customer_id, [normalized.product_key]);
       const entitlement = this.deriveEntitlement(license, state);
       this.assertUsable(entitlement);
 
