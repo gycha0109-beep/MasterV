@@ -18,6 +18,10 @@ const JSON_HEADERS = Object.freeze({
 });
 
 const GATEWAY_CONTRACT_VERSION = "mv-gateway-v1";
+const GATEWAY_ACTIVATION_SAFETY = Object.freeze({
+  polar_failure_diagnostics: "phase-status-v1",
+  post_activation_rollback: "compensating-deactivate-v1"
+});
 
 function json(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), { status, headers: JSON_HEADERS });
@@ -112,6 +116,7 @@ export function createGateway(dependencies: GatewayDependencies = {}) {
           service: "masterv-gateway",
           contract_version: GATEWAY_CONTRACT_VERSION,
           architecture: { stateless: true, db_less: true, user_work_data_storage: false },
+          activation_safety: GATEWAY_ACTIVATION_SAFETY,
           routes: {
             license_activate: "/v1/license/activate",
             session: "/v1/session",
