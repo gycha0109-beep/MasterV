@@ -19,7 +19,8 @@
     GATEWAY_DEVICE_MISMATCH: "이 기기와 저장된 라이선스 activation 정보가 일치하지 않습니다.",
     GATEWAY_PLAN_NOT_CONFIGURED: "라이선스 플랜 정보가 아직 구성되지 않았습니다.",
     GATEWAY_USAGE_METER_NOT_CONFIGURED: "AI 사용량 Meter가 아직 구성되지 않았습니다.",
-    POLAR_UPSTREAM_ERROR: "라이선스 서비스 요청에 실패했습니다. 제품키, 기존 기기 activation, 기기 제한 상태를 확인해 주세요."
+    POLAR_UPSTREAM_ERROR: "라이선스 서비스 요청에 실패했습니다. 진단된 Polar 단계와 상태를 확인해 주세요.",
+    POLAR_ACTIVATION_ROLLBACK_FAILED: "새 activation 초기화 실패 후 보상 해제를 확인하지 못했습니다. activation slot 상태를 확인하기 전에는 제품키 활성화를 다시 시도하지 마세요."
   });
 
   function assertProvider(label, provider, requiredMethods) {
@@ -37,10 +38,25 @@
     return match?.[1] || null;
   }
 
+  function safePolarDiagnostic(error) {
+    const raw = rawErrorMessage(error);
+    const parts = [];
+    const upstream = raw.match(/\[phase=(?:activate|deactivate|license|activation|customer_state|usage_ingest) upstream_status=(?:network|\d{3})\]/);
+    if (upstream) parts.push(upstream[0]);
+    if (raw.includes("[activation_rollback=completed]")) parts.push("[activation_rollback=completed]");
+    const rollbackFailure = raw.match(/\[root_code=[A-Z][A-Z0-9_]+ rollback_code=[A-Z][A-Z0-9_]+\]/);
+    if (rollbackFailure) parts.push(rollbackFailure[0]);
+    return parts.join(" ");
+  }
+
   function formatGatewayError(error) {
     const code = gatewayErrorCode(error);
     const friendly = code ? GATEWAY_ERROR_MESSAGES[code] : null;
-    return friendly ? `[${code}] ${friendly}` : rawErrorMessage(error);
+    if (!friendly) return rawErrorMessage(error);
+    const diagnostic = code === "POLAR_UPSTREAM_ERROR" || code === "POLAR_ACTIVATION_ROLLBACK_FAILED"
+      ? safePolarDiagnostic(error)
+      : "";
+    return `[${code}] ${friendly}${diagnostic ? ` ${diagnostic}` : ""}`;
   }
 
   function surfaceError(error) {
