@@ -83,7 +83,7 @@ function assertSecretSafe(value: string) {
 async function activateRejectedContract() {
   let activateCalls = 0;
   let deactivateCalls = 0;
-  const fetcher: PolarFetch = async (input, init = {}) => {
+  const fetcher: PolarFetch = async (input) => {
     const url = String(input);
     if (url.endsWith("/v1/license-keys/activate")) {
       activateCalls += 1;
@@ -219,16 +219,16 @@ function desktopSafeDiagnosticContract() {
     }
   });
 
-  const upstream = provider.formatError(new Error(
+  const upstream = provider.formatError(
     `POLAR_UPSTREAM_ERROR: Polar request failed [phase=activate upstream_status=422]: Activation limit for ${rawProductKey}`
-  ));
+  );
   assert.match(upstream, /\[phase=activate upstream_status=422\]/);
   assert.equal(upstream.includes("Activation limit"), false, "Desktop must not surface arbitrary upstream detail");
   assertSecretSafe(upstream);
 
-  const rollback = provider.formatError(new Error(
+  const rollback = provider.formatError(
     "POLAR_ACTIVATION_ROLLBACK_FAILED: Polar activation initialization failed and rollback could not be confirmed [root_code=POLAR_UPSTREAM_ERROR rollback_code=POLAR_UPSTREAM_ERROR]."
-  ));
+  );
   assert.match(rollback, /POLAR_ACTIVATION_ROLLBACK_FAILED/);
   assert.match(rollback, /root_code=POLAR_UPSTREAM_ERROR rollback_code=POLAR_UPSTREAM_ERROR/);
   assert.match(rollback, /다시 시도하지 마세요/);
