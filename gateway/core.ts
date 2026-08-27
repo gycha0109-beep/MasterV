@@ -19,7 +19,7 @@ const JSON_HEADERS = Object.freeze({
 
 const GATEWAY_CONTRACT_VERSION = "mv-gateway-v1";
 const GATEWAY_ACTIVATION_SAFETY = Object.freeze({
-  polar_failure_diagnostics: "phase-status-reason-v2",
+  polar_failure_diagnostics: "phase-status-scope-v3",
   post_activation_rollback: "compensating-deactivate-v1"
 });
 
@@ -112,6 +112,20 @@ export function createGateway(dependencies: GatewayDependencies = {}) {
       const url = new URL(request.url);
 
       if (request.method === "GET" && url.pathname === "/v1/health") {
+        if (url.searchParams.get("probe") === "polar-customer-read") {
+          if (!frozenDependencies.diagnostics) {
+            throw new GatewayError(501, "GATEWAY_DIAGNOSTICS_PROVIDER_NOT_ACTIVE", "Polar diagnostics provider is not active.");
+          }
+          await frozenDependencies.diagnostics.probeCustomerReadAuthorization();
+          return json({
+            service: "masterv-gateway",
+            contract_version: GATEWAY_CONTRACT_VERSION,
+            probe: "polar-customer-read",
+            authorized: true,
+            data_returned: false,
+            mutation_executed: false
+          });
+        }
         return json({
           service: "masterv-gateway",
           contract_version: GATEWAY_CONTRACT_VERSION,

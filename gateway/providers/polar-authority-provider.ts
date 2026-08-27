@@ -1,6 +1,7 @@
 import type {
   GatewayCapability,
   GatewayCredentialProvider,
+  GatewayDiagnosticsProvider,
   GatewayEntitlement,
   GatewayEntitlementProvider,
   GatewayLicenseProvider,
@@ -133,6 +134,7 @@ function withRollbackCompleted(error: unknown) {
 export class PolarGatewayAuthorityProvider implements
   GatewayLicenseProvider,
   GatewayCredentialProvider,
+  GatewayDiagnosticsProvider,
   GatewayEntitlementProvider,
   GatewayUsageProvider {
   private readonly client: PolarHttpClient;
@@ -147,6 +149,10 @@ export class PolarGatewayAuthorityProvider implements
     this.aiMeterId = options.ai_meter_id?.trim() || "";
     this.usageEventName = options.usage_event_name?.trim() || "masterv_ai_usage";
     this.planMetadataKey = options.plan_metadata_key?.trim() || "masterv_plan";
+  }
+
+  async probeCustomerReadAuthorization() {
+    await this.client.probeCustomerReadAuthorization();
   }
 
   private async loadAuthority(principal: Pick<GatewayPrincipal, "device_id" | "customer_id" | "license_id" | "activation_id">) {

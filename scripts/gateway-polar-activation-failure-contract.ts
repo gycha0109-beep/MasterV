@@ -109,6 +109,33 @@ async function activateRejectedContract() {
   assert.equal(deactivateCalls, 0, "a rejected activation must not trigger compensation");
 }
 
+async function customerReadScopeDiagnosticContract() {
+  let probeCalls = 0;
+  const fetcher: PolarFetch = async (input, init = {}) => {
+    const url = String(input);
+    const method = String(init.method || "GET").toUpperCase();
+    if (url.endsWith("/v1/customers/?organization_id=org-polar-failure-001&limit=1") && method === "GET") {
+      probeCalls += 1;
+      return Response.json(
+        {
+          error: "insufficient_scope",
+          error_description: "The request requires higher privileges than provided by the access token."
+        },
+        { status: 403 }
+      );
+    }
+    return Response.json({ detail: "unexpected request" }, { status: 500 });
+  };
+
+  const error = await capturedFailure(() => authority(fetcher).probeCustomerReadAuthorization());
+  assert.equal(error.code, "POLAR_UPSTREAM_ERROR");
+  assert.equal(error.status, 503);
+  assert.match(error.message, /\[phase=customer_state upstream_status=403\]/);
+  assert.match(error.message, /\[upstream_reason=insufficient_scope\]/);
+  assertSecretSafe(error.message);
+  assert.equal(probeCalls, 1, "customer read authorization probe must execute exactly once");
+}
+
 async function readbackFailureRollbackSuccessContract() {
   let activateCalls = 0;
   let stateCalls = 0;
@@ -227,6 +254,14 @@ function desktopSafeDiagnosticContract() {
   assert.equal(upstream.includes("Activation limit"), false, "Desktop must not surface arbitrary upstream detail");
   assertSecretSafe(upstream);
 
+  const customerScope = provider.formatError(
+    "POLAR_UPSTREAM_ERROR: Polar request failed [phase=customer_state upstream_status=403] [upstream_reason=insufficient_scope]: insufficient_scope"
+  );
+  assert.match(customerScope, /\[phase=customer_state upstream_status=403\]/);
+  assert.match(customerScope, /\[upstream_reason=insufficient_scope\]/);
+  assert.equal(customerScope.includes(": insufficient_scope"), false, "Desktop must surface only the allow-listed scope marker");
+  assertSecretSafe(customerScope);
+
   const rollback = provider.formatError(
     "POLAR_ACTIVATION_ROLLBACK_FAILED: Polar activation initialization failed and rollback could not be confirmed [root_code=POLAR_UPSTREAM_ERROR rollback_code=POLAR_UPSTREAM_ERROR]."
   );
@@ -237,6 +272,7 @@ function desktopSafeDiagnosticContract() {
 
 async function main() {
   await activateRejectedContract();
+  await customerReadScopeDiagnosticContract();
   await readbackFailureRollbackSuccessContract();
   await readbackFailureRollbackFailureContract();
   desktopSafeDiagnosticContract();
@@ -244,6 +280,7 @@ async function main() {
     status: "MASTERV_GATEWAY_POLAR_ACTIVATION_FAILURE_CONTRACT_PASS",
     activate_rejection_phase_status: true,
     activation_retry_disabled: true,
+    customer_read_scope_probe: true,
     post_activation_rollback_verified: true,
     rollback_failure_fail_closed: true,
     product_key_diagnostics_redacted: true,

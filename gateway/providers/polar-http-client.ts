@@ -56,6 +56,7 @@ type PolarClientOptions = Readonly<{
 type PolarRequestDiagnostics = Readonly<{
   phase: "activate" | "deactivate" | "license" | "activation" | "customer_state" | "usage_ingest";
   redactions?: ReadonlyArray<string>;
+  discard_response_body?: boolean;
 }>;
 
 function normalizedBaseUrl(value: string | undefined) {
@@ -97,6 +98,9 @@ function sanitizeDiagnostic(value: unknown, redactions: ReadonlyArray<string>) {
 
 function polarFailureReason(status: number, detail: string) {
   const normalized = detail.toLowerCase();
+  if (normalized.includes("insufficient_scope") || normalized.includes("higher privileges than provided by the access token")) {
+    return "insufficient_scope";
+  }
   if (normalized.includes("license key activation limit already reached")) return "activation_limit_reached";
   if (normalized.includes("license key is no longer active")) return "license_inactive";
   if (normalized.includes("license key has expired")) return "license_expired";
@@ -168,7 +172,7 @@ export class PolarHttpClient {
         `Polar request failed [phase=${diagnostics.phase} upstream_status=${response.status}]${reason ? ` [upstream_reason=${reason}]` : ""}: ${detail}`
       );
     }
-    if (response.status === 204) return undefined as T;
+    if (response.status === 204 || diagnostics.discard_response_body) return undefined as T;
     return await response.json() as T;
   }
 
@@ -225,6 +229,14 @@ export class PolarHttpClient {
       `/v1/customers/${encodeURIComponent(customerId)}/state`,
       {},
       { phase: "customer_state", redactions }
+    );
+  }
+
+  async probeCustomerReadAuthorization(): Promise<void> {
+    await this.request<void>(
+      `/v1/customers/?organization_id=${encodeURIComponent(this.organizationId)}&limit=1`,
+      {},
+      { phase: "customer_state", discard_response_body: true }
     );
   }
 

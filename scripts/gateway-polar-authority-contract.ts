@@ -93,6 +93,10 @@ const fetcher: PolarFetch = async (input, init = {}) => {
     return Response.json(customerState());
   }
 
+  if (url.endsWith("/v1/customers/?organization_id=org-test-001&limit=1") && method === "GET") {
+    return Response.json({ items: [], pagination: { total_count: 0, max_page: 1 } });
+  }
+
   if (url.endsWith("/v1/events/ingest") && method === "POST") {
     usageEvents.push(...body.events);
     return Response.json({ inserted: 1, duplicates: 0 });
@@ -185,6 +189,7 @@ const gateway = createGateway({
   credential: authority,
   entitlement: authority,
   usage: authority,
+  diagnostics: authority,
   discovery: {
     async discoverYouTube(query) {
       return {
@@ -222,6 +227,19 @@ async function json(response: Response) {
 }
 
 async function main() {
+  const customerReadProbe = await gateway.handle(new Request(
+    "https://api.masterv.example/v1/health?probe=polar-customer-read"
+  ));
+  assert.equal(customerReadProbe.status, 200);
+  assert.deepEqual(await json(customerReadProbe), {
+    service: "masterv-gateway",
+    contract_version: "mv-gateway-v1",
+    probe: "polar-customer-read",
+    authorized: true,
+    data_returned: false,
+    mutation_executed: false
+  });
+
   const activationResponse = await gateway.handle(new Request("https://api.masterv.example/v1/license/activate", {
     method: "POST",
     headers: { "content-type": "application/json" },
@@ -384,6 +402,7 @@ async function main() {
   assert.ok(configuredRuntime.credential);
   assert.ok(configuredRuntime.entitlement);
   assert.ok(configuredRuntime.usage);
+  assert.ok(configuredRuntime.diagnostics);
   assert.strictEqual(configuredRuntime.license, configuredRuntime.credential, "one stateless Polar authority must back license and credential boundaries");
   assert.strictEqual(configuredRuntime.entitlement, configuredRuntime.usage, "one stateless Polar authority must back entitlement and usage boundaries");
 

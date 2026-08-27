@@ -111,6 +111,10 @@ export interface GatewayDiscoveryProvider {
   discoverYouTube(query: string, options: SearchOptions): Promise<YouTubeDiscoveryResult>;
 }
 
+export interface GatewayDiagnosticsProvider {
+  probeCustomerReadAuthorization(): Promise<void>;
+}
+
 export type GatewayDependencies = Readonly<{
   credential?: GatewayCredentialProvider;
   entitlement?: GatewayEntitlementProvider;
@@ -119,4 +123,5 @@ export type GatewayDependencies = Readonly<{
   billing?: GatewayBillingProvider;
   ai?: GatewayAiProvider;
   discovery?: GatewayDiscoveryProvider;
+  diagnostics?: GatewayDiagnosticsProvider;
 }>;

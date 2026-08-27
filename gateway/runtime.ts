@@ -53,7 +53,8 @@ export function createGatewayProviderRuntime(env: GatewayRuntimeEnv = process.en
       billing: polarAuthority,
       credential: polarAuthority,
       entitlement: polarAuthority,
-      usage: polarAuthority
+      usage: polarAuthority,
+      diagnostics: polarAuthority
     } : {}),
     ...(geminiKey ? {
       ai: new GeminiAiProvider({

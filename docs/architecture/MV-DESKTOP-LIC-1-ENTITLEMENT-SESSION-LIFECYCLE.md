@@ -316,6 +316,18 @@ When enabled, the harness executes one Guidance operation, requires `charged_uni
 
 The harness does not receive a Polar access token and therefore does not deactivate the server-side Sandbox activation. It records `server_activation_cleanup_performed=false`. If the Sandbox Product Key has `device_limit=1`, activation cleanup/reuse must be handled as a separate authorized external operation rather than hidden inside this Desktop test.
 
+### Secret-safe Polar customer-read diagnostic
+
+The live Sandbox sequence proved that license activation can succeed while the immediately following Polar Customer State read returns `403`. The Gateway must therefore distinguish an OAuth `insufficient_scope` response from a generic business-rule `not_permitted` response.
+
+While this incident remains open, the Sandbox Gateway exposes a bounded read-only probe at:
+
+```text
+GET /v1/health?probe=polar-customer-read
+```
+
+The probe uses the configured Polar OAT and organization against the same `CustomerRead` authority required by Customer State. It returns only authorization status and fixed safety markers. It does not return customer data, accept a Product Key, create an activation, write usage, or perform any Polar mutation. The probe is diagnostic-only and must be removed after the live authorization incident is closed.
+
 ## 11. Live sequence
 
 ```text
