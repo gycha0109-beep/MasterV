@@ -19,7 +19,7 @@ const JSON_HEADERS = Object.freeze({
 
 const GATEWAY_CONTRACT_VERSION = "mv-gateway-v1";
 const GATEWAY_ACTIVATION_SAFETY = Object.freeze({
-  polar_failure_diagnostics: "phase-status-v1",
+  polar_failure_diagnostics: "phase-status-reason-v2",
   post_activation_rollback: "compensating-deactivate-v1"
 });
 

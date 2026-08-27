@@ -43,6 +43,8 @@
     const parts = [];
     const upstream = raw.match(/\[phase=(?:activate|deactivate|license|activation|customer_state|usage_ingest) upstream_status=(?:network|\d{3})\]/);
     if (upstream) parts.push(upstream[0]);
+    const upstreamReason = raw.match(/\[upstream_reason=(?:activation_limit_reached|license_inactive|license_expired|activation_not_supported|organization_token_unauthorized|not_permitted)\]/);
+    if (upstreamReason) parts.push(upstreamReason[0]);
     if (raw.includes("[activation_rollback=completed]")) parts.push("[activation_rollback=completed]");
     const rollbackFailure = raw.match(/\[root_code=[A-Z][A-Z0-9_]+ rollback_code=[A-Z][A-Z0-9_]+\]/);
     if (rollbackFailure) parts.push(rollbackFailure[0]);

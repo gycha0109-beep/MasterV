@@ -143,6 +143,16 @@ Covered codes include:
 - `GATEWAY_USAGE_METER_NOT_CONFIGURED`
 - `POLAR_UPSTREAM_ERROR`
 
+Polar activation failures retain only a bounded, secret-safe diagnostic tuple at the Desktop boundary:
+
+```text
+phase
+upstream_status
+upstream_reason
+```
+
+`upstream_reason` is a closed allow-list derived from Polar's known license activation failures. Arbitrary upstream detail, Product Keys, OAT values, and request bodies are never surfaced by the Desktop UI.
+
 The error projection explicitly preserves Local SQLite availability for licensing/usage denial cases.
 
 ## 8. Deterministic verification

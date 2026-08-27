@@ -95,6 +95,17 @@ function sanitizeDiagnostic(value: unknown, redactions: ReadonlyArray<string>) {
   return text.slice(0, 480);
 }
 
+function polarFailureReason(status: number, detail: string) {
+  const normalized = detail.toLowerCase();
+  if (normalized.includes("license key activation limit already reached")) return "activation_limit_reached";
+  if (normalized.includes("license key is no longer active")) return "license_inactive";
+  if (normalized.includes("license key has expired")) return "license_expired";
+  if (normalized.includes("license key does not support activations")) return "activation_not_supported";
+  if (status === 401) return "organization_token_unauthorized";
+  if (status === 403) return "not_permitted";
+  return null;
+}
+
 function errorMessage(error: unknown) {
   return error instanceof Error ? error.message : String(error ?? "Unknown Polar transport error");
 }
@@ -150,10 +161,11 @@ export class PolarHttpClient {
     }
     if (!response.ok) {
       const detail = sanitizeDiagnostic(await responseDetail(response), redactions) || "upstream request failed";
+      const reason = polarFailureReason(response.status, detail);
       throw new GatewayError(
         polarStatus(response.status),
         "POLAR_UPSTREAM_ERROR",
-        `Polar request failed [phase=${diagnostics.phase} upstream_status=${response.status}]: ${detail}`
+        `Polar request failed [phase=${diagnostics.phase} upstream_status=${response.status}]${reason ? ` [upstream_reason=${reason}]` : ""}: ${detail}`
       );
     }
     if (response.status === 204) return undefined as T;

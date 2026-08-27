@@ -88,8 +88,8 @@ async function activateRejectedContract() {
     if (url.endsWith("/v1/license-keys/activate")) {
       activateCalls += 1;
       return Response.json(
-        { detail: `Activation limit reached for ${rawProductKey}` },
-        { status: 422 }
+        { detail: "License key activation limit already reached" },
+        { status: 403 }
       );
     }
     if (url.endsWith("/v1/license-keys/deactivate")) {
@@ -101,9 +101,9 @@ async function activateRejectedContract() {
 
   const error = await capturedFailure(() => authority(fetcher).activate(activationInput));
   assert.equal(error.code, "POLAR_UPSTREAM_ERROR");
-  assert.equal(error.status, 400);
-  assert.match(error.message, /\[phase=activate upstream_status=422\]/);
-  assert.match(error.message, /\[REDACTED\]/);
+  assert.equal(error.status, 503);
+  assert.match(error.message, /\[phase=activate upstream_status=403\]/);
+  assert.match(error.message, /\[upstream_reason=activation_limit_reached\]/);
   assertSecretSafe(error.message);
   assert.equal(activateCalls, 1, "failed activation must not be retried automatically");
   assert.equal(deactivateCalls, 0, "a rejected activation must not trigger compensation");
@@ -220,9 +220,10 @@ function desktopSafeDiagnosticContract() {
   });
 
   const upstream = provider.formatError(
-    `POLAR_UPSTREAM_ERROR: Polar request failed [phase=activate upstream_status=422]: Activation limit for ${rawProductKey}`
+    `POLAR_UPSTREAM_ERROR: Polar request failed [phase=activate upstream_status=403] [upstream_reason=activation_limit_reached]: Activation limit for ${rawProductKey}`
   );
-  assert.match(upstream, /\[phase=activate upstream_status=422\]/);
+  assert.match(upstream, /\[phase=activate upstream_status=403\]/);
+  assert.match(upstream, /\[upstream_reason=activation_limit_reached\]/);
   assert.equal(upstream.includes("Activation limit"), false, "Desktop must not surface arbitrary upstream detail");
   assertSecretSafe(upstream);
 
