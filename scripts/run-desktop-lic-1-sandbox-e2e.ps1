@@ -58,6 +58,72 @@ function Assert-ServerSecretsAbsent {
   }
 }
 
+function Read-MasterVProductKeySecure {
+  Add-Type -AssemblyName System.Windows.Forms
+  Add-Type -AssemblyName System.Drawing
+
+  $form = New-Object System.Windows.Forms.Form
+  $label = New-Object System.Windows.Forms.Label
+  $passwordBox = New-Object System.Windows.Forms.TextBox
+  $okButton = New-Object System.Windows.Forms.Button
+  $cancelButton = New-Object System.Windows.Forms.Button
+
+  try {
+    $form.Text = 'MasterV Sandbox Product Key'
+    $form.ClientSize = New-Object System.Drawing.Size(480, 142)
+    $form.FormBorderStyle = [System.Windows.Forms.FormBorderStyle]::FixedDialog
+    $form.StartPosition = [System.Windows.Forms.FormStartPosition]::CenterScreen
+    $form.MaximizeBox = $false
+    $form.MinimizeBox = $false
+    $form.TopMost = $true
+
+    $label.AutoSize = $true
+    $label.Location = New-Object System.Drawing.Point(18, 18)
+    $label.Text = 'Sandbox Product Key (Ctrl+V supported)'
+
+    $passwordBox.Location = New-Object System.Drawing.Point(20, 45)
+    $passwordBox.Size = New-Object System.Drawing.Size(438, 23)
+    $passwordBox.UseSystemPasswordChar = $true
+    $passwordBox.ShortcutsEnabled = $true
+    $passwordBox.MaxLength = 256
+
+    $okButton.Location = New-Object System.Drawing.Point(302, 91)
+    $okButton.Size = New-Object System.Drawing.Size(75, 30)
+    $okButton.Text = 'OK'
+    $okButton.DialogResult = [System.Windows.Forms.DialogResult]::OK
+
+    $cancelButton.Location = New-Object System.Drawing.Point(383, 91)
+    $cancelButton.Size = New-Object System.Drawing.Size(75, 30)
+    $cancelButton.Text = 'Cancel'
+    $cancelButton.DialogResult = [System.Windows.Forms.DialogResult]::Cancel
+
+    $form.Controls.Add($label)
+    $form.Controls.Add($passwordBox)
+    $form.Controls.Add($okButton)
+    $form.Controls.Add($cancelButton)
+    $form.AcceptButton = $okButton
+    $form.CancelButton = $cancelButton
+    $form.Add_Shown({ $passwordBox.Select() })
+
+    $dialogResult = $form.ShowDialog()
+    if ($dialogResult -ne [System.Windows.Forms.DialogResult]::OK -or $passwordBox.TextLength -eq 0) {
+      throw 'Sandbox Product Key input was cancelled or empty.'
+    }
+
+    $secureProductKey = New-Object System.Security.SecureString
+    foreach ($character in $passwordBox.Text.ToCharArray()) {
+      $secureProductKey.AppendChar($character)
+    }
+    $secureProductKey.MakeReadOnly()
+    $passwordBox.Clear()
+    return $secureProductKey
+  }
+  finally {
+    $passwordBox.Clear()
+    $form.Dispose()
+  }
+}
+
 function Invoke-ExternalChecked {
   param(
     [Parameter(Mandatory = $true)][string]$Command,
@@ -374,12 +440,12 @@ try {
   }
 
   Write-Host 'Desktop candidate build completed.'
-  Write-Host 'Product Key input is hidden and is not placed in the command line or shell history.'
+  Write-Host 'Product Key input is hidden, supports Ctrl+V, and is not placed in the command line or shell history.'
   if ($AllowGuidanceCharge) {
     Write-Warning 'Guidance charge is enabled: the live Sandbox run is expected to consume exactly 1 BASIC credit.'
   }
 
-  $secureProductKey = Read-Host 'Sandbox Product Key' -AsSecureString
+  $secureProductKey = Read-MasterVProductKeySecure
   if ($secureProductKey.Length -eq 0) {
     throw 'Sandbox Product Key is required.'
   }

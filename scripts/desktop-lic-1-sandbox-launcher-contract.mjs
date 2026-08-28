@@ -16,7 +16,11 @@ const harness = fs.readFileSync(harnessPath, "utf8").replace(/\r\n?/g, "\n");
 const nodeVersion = fs.readFileSync(nodeVersionPath, "utf8").trim();
 
 for (const marker of [
-  "Read-Host 'Sandbox Product Key' -AsSecureString",
+  "Read-MasterVProductKeySecure",
+  "System.Windows.Forms.TextBox",
+  "$passwordBox.UseSystemPasswordChar = $true",
+  "$passwordBox.ShortcutsEnabled = $true",
+  "Sandbox Product Key (Ctrl+V supported)",
   "SecureStringToBSTR",
   "ZeroFreeBSTR",
   "Clear-MasterVSandboxEnvironment",
@@ -72,13 +76,14 @@ assert(!/Set-Content[^\n]*productKey/i.test(launcher), "Product Key must not be 
 assert(!/Add-Content[^\n]*productKey/i.test(launcher), "Product Key must not be appended to a file");
 
 const buildIndex = launcher.indexOf("@('run', 'desktop:build')");
-const promptIndex = launcher.indexOf("Read-Host 'Sandbox Product Key' -AsSecureString");
+const promptIndex = launcher.indexOf("$secureProductKey = Read-MasterVProductKeySecure");
 const productKeyEnvironmentIndex = launcher.indexOf("$env:MASTERV_SANDBOX_PRODUCT_KEY = $productKey");
 const nodePreflightIndex = launcher.indexOf("$nodeRuntime = Get-NodeRuntime");
 const rustPreflightIndex = launcher.indexOf("$rustSource = Ensure-RustToolchain");
 assert(buildIndex >= 0 && promptIndex > buildIndex, "Product Key prompt must execute only after the Desktop candidate build");
 assert(nodePreflightIndex >= 0 && rustPreflightIndex > nodePreflightIndex && buildIndex > rustPreflightIndex, "Architecture-dependent Node/Rust preflight must execute before the Desktop build and Product Key prompt");
 assert(productKeyEnvironmentIndex > promptIndex, "Product Key environment handoff must execute only after the hidden prompt");
+assert(!launcher.includes("Read-Host 'Sandbox Product Key' -AsSecureString"), "Paste-hostile console SecureString input must not return");
 assert(/Assert-ProductKeyAbsent\s*\n\s*Assert-ServerSecretsAbsent\s*\n\s*\$env:MASTERV_GATEWAY_BASE_URL[\s\S]*?@\('run', 'desktop:build'\)/.test(launcher), "Desktop build must be immediately guarded against Product Key and server-secret inheritance");
 assert(!harness.includes('"desktop:build"'), "Node Sandbox E2E harness must not perform a nested Desktop build");
 assert(!harness.includes('spawnSync("npm.cmd"'), "Node Sandbox E2E harness must not spawn a nested npm build process");
@@ -109,6 +114,7 @@ console.log(JSON.stringify({
   status: "MASTERV_DESKTOP_LIC_1_SANDBOX_LAUNCHER_CONTRACT_PASS",
   product_key_command_line_parameter: false,
   product_key_hidden_prompt: true,
+  product_key_ctrl_v_paste: true,
   product_key_shell_history_exposure: false,
   product_key_environment_cleanup: true,
   exact_head_required: true,

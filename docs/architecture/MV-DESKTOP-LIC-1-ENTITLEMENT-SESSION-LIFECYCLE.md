@@ -297,14 +297,14 @@ validates Windows + exact git HEAD + clean tracked tree
 → fails before secret input if MSVC/Windows SDK is unavailable
 → builds the Sandbox-bound Desktop candidate with MASTERV_SANDBOX_PRODUCT_KEY absent
 → verifies the build left the tracked tree clean and emitted the candidate EXE
-→ prompts for Product Key with Read-Host -AsSecureString
+→ prompts for Product Key in a masked Windows dialog with Ctrl+V support
 → converts it only in process memory for the child test
 → injects exact source SHA and explicit Sandbox activation flags
 → invokes the Node lifecycle harness without a nested build
 → removes all managed environment variables in finally
 ```
 
-The Product Key is deliberately **not** a PowerShell parameter. This avoids placing the raw value in command history/process command lines.
+The Product Key is deliberately **not** a PowerShell parameter. The launcher opens a masked Windows input dialog with Ctrl+V enabled only after the candidate build succeeds, avoiding command history/process command-line exposure and manual transcription errors.
 
 A real Guidance usage charge remains a separate explicit action:
 
