@@ -37,6 +37,53 @@ async function freePort() {
   });
 }
 
+function childExited(child) {
+  return !child || child.exitCode !== null || child.signalCode !== null;
+}
+
+async function waitForChildExit(child, timeoutMs = 2_000) {
+  if (childExited(child)) return true;
+  return await new Promise((resolve) => {
+    let settled = false;
+    let timer = null;
+    const finish = (value) => {
+      if (settled) return;
+      settled = true;
+      if (timer) clearTimeout(timer);
+      child.off("exit", onExit);
+      child.off("close", onClose);
+      resolve(value);
+    };
+    const onExit = () => finish(true);
+    const onClose = () => finish(true);
+    child.once("exit", onExit);
+    child.once("close", onClose);
+    timer = setTimeout(() => finish(childExited(child)), timeoutMs);
+  });
+}
+
+function forceTerminateWindowsProcess(child) {
+  if (childExited(child) || !child?.pid) return;
+  spawnSync("taskkill.exe", ["/PID", String(child.pid), "/T", "/F"], {
+    encoding: "utf8",
+    windowsHide: true,
+    timeout: 10_000
+  });
+}
+
+async function stopChildProcess(child, graceMs = 1_500) {
+  if (childExited(child)) return;
+  if (await waitForChildExit(child, graceMs)) return;
+  forceTerminateWindowsProcess(child);
+  await waitForChildExit(child, 3_000);
+}
+
+function closeFileDescriptorOnce(state, key, fd) {
+  if (fd === null || fd === undefined || state[key]) return;
+  state[key] = true;
+  try { fs.closeSync(fd); } catch {}
+}
+
 function detectWebView2Version() {
   const paths = [
     "HKLM\\SOFTWARE\\WOW6432Node\\Microsoft\\EdgeUpdate\\Clients\\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}",
@@ -126,8 +173,10 @@ export async function attachMasterV(appBinaryPath, evidenceDir, runtimeLabel, op
   assert(fs.existsSync(resolvedBinary), `MasterV binary missing: ${resolvedBinary}`);
   const runtimeRoot = path.join(process.env.RUNNER_TEMP?.trim() || os.tmpdir(), `${runtimeLabel}-${process.pid}`);
   const dataDir = options.dataDir ? path.resolve(options.dataDir) : path.join(runtimeRoot, "webview2");
+  const appDataDir = options.appDataDir ? path.resolve(options.appDataDir) : null;
   if (!options.reuseDataDir) fs.rmSync(dataDir, { recursive: true, force: true });
   fs.mkdirSync(dataDir, { recursive: true });
+  if (appDataDir) fs.mkdirSync(appDataDir, { recursive: true });
   fs.mkdirSync(runtimeRoot, { recursive: true });
   fs.mkdirSync(evidenceDir, { recursive: true });
   const webviewVersion = detectWebView2Version();
@@ -135,28 +184,53 @@ export async function attachMasterV(appBinaryPath, evidenceDir, runtimeLabel, op
   const debugPort = await freePort();
   const driverPort = await freePort();
   const appLog = fs.openSync(path.join(evidenceDir, `${runtimeLabel}-masterv-process.log`), "w");
-  const driverLog = fs.openSync(path.join(evidenceDir, `${runtimeLabel}-msedgedriver.log`), "w");
+  const recordDriverLog = options.recordDriverLog !== false;
+  const driverLog = recordDriverLog ? fs.openSync(path.join(evidenceDir, `${runtimeLabel}-msedgedriver.log`), "w") : null;
+  const appEnv = {
+    ...process.env,
+    MASTERV_DESKTOP_TEST_REMOTE_DEBUGGING_PORT: String(debugPort),
+    MASTERV_DESKTOP_TEST_WEBVIEW_DATA_DIR: dataDir,
+    ...(appDataDir ? { MASTERV_DESKTOP_TEST_APP_DATA_DIR: appDataDir } : {})
+  };
   const appProcess = spawn(resolvedBinary, [], {
     cwd: path.dirname(resolvedBinary),
-    env: { ...process.env, MASTERV_DESKTOP_TEST_REMOTE_DEBUGGING_PORT: String(debugPort), MASTERV_DESKTOP_TEST_WEBVIEW_DATA_DIR: dataDir },
+    env: appEnv,
     stdio: ["ignore", appLog, appLog], windowsHide: false
   });
   const cdp = await (await waitHttp(`http://127.0.0.1:${debugPort}/json/version`, "WebView2 CDP", 60_000, appProcess)).json();
-  const driverProcess = spawn(driverPath, [`--port=${driverPort}`, "--verbose"], { cwd: path.dirname(driverPath), stdio: ["ignore", driverLog, driverLog], windowsHide: true });
+  const driverArgs = [`--port=${driverPort}`];
+  if (options.driverVerbose !== false) driverArgs.push("--verbose");
+  const driverProcess = spawn(driverPath, driverArgs, {
+    cwd: path.dirname(driverPath),
+    stdio: recordDriverLog ? ["ignore", driverLog, driverLog] : ["ignore", "ignore", "ignore"],
+    windowsHide: true
+  });
   await waitHttp(`http://127.0.0.1:${driverPort}/status`, "msedgedriver", 30_000, driverProcess);
   const created = await webdriverRequest(driverPort, "POST", "/session", { capabilities: { alwaysMatch: { browserName: "webview2", "ms:edgeChromium": true, "ms:edgeOptions": { debuggerAddress: `127.0.0.1:${debugPort}` } } } });
   const sessionId = created.value?.sessionId || created.sessionId;
   assert(sessionId, "WebDriver session id missing");
   await waitForMasterVDom(driverPort, sessionId, appProcess);
+
+  let closePromise = null;
+  const descriptorState = { appLogClosed: false, driverLogClosed: false };
+  const closeRuntime = async () => {
+    if (closePromise) return await closePromise;
+    closePromise = (async () => {
+      await webdriverRequest(driverPort, "DELETE", `/session/${sessionId}`).catch(() => undefined);
+      await stopChildProcess(driverProcess, 1_500);
+      await stopChildProcess(appProcess, 1_500);
+    })().finally(() => {
+      closeFileDescriptorOnce(descriptorState, "appLogClosed", appLog);
+      closeFileDescriptorOnce(descriptorState, "driverLogClosed", driverLog);
+    });
+    return await closePromise;
+  };
+
   return {
     appBinaryPath: resolvedBinary,
     dataDir,
+    appDataDir,
     driverPort, sessionId, webviewVersion, cdpBrowser: cdp.Browser || null,
-    async close() {
-      await webdriverRequest(driverPort, "DELETE", `/session/${sessionId}`).catch(() => undefined);
-      if (driverProcess.exitCode === null) driverProcess.kill();
-      if (appProcess.exitCode === null) appProcess.kill();
-      fs.closeSync(appLog); fs.closeSync(driverLog);
-    }
+    close: closeRuntime
   };
 }

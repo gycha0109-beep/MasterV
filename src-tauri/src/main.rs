@@ -9,6 +9,7 @@ mod local_persistence;
 mod updater;
 
 use std::io;
+use std::path::PathBuf;
 use tauri::{Manager, WebviewUrl, WebviewWindowBuilder};
 
 fn main() {
@@ -77,7 +78,17 @@ fn main() {
 
     builder
         .setup(|app| {
-            let app_local_data_dir = app.path().app_local_data_dir()?;
+            let remote_debugging_enabled = std::env::var("MASTERV_DESKTOP_TEST_REMOTE_DEBUGGING_PORT").is_ok();
+            let test_app_data_dir = std::env::var("MASTERV_DESKTOP_TEST_APP_DATA_DIR")
+                .ok()
+                .filter(|value| !value.trim().is_empty());
+            if test_app_data_dir.is_some() && !remote_debugging_enabled {
+                return Err("MASTERV_DESKTOP_TEST_APP_DATA_DIR requires MASTERV_DESKTOP_TEST_REMOTE_DEBUGGING_PORT".into());
+            }
+            let app_local_data_dir = match test_app_data_dir {
+                Some(value) => PathBuf::from(value),
+                None => app.path().app_local_data_dir()?
+            };
             let persistence = local_persistence::LocalPersistence::initialize(&app_local_data_dir)
                 .map_err(|error| io::Error::new(io::ErrorKind::Other, error))?;
             let secure_store = device_secure_store::DeviceSecureStore::initialize(&app_local_data_dir)

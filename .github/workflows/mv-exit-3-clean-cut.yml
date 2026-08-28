@@ -12,7 +12,7 @@ jobs:
     runs-on: ubuntu-22.04
     outputs:
       server_only: ${{ steps.classify.outputs.server_only }}
-      desktop_heavy_required: ${{ steps.classify.outputs.desktop_heavy_required }}
+      clean_cut_native_required: ${{ steps.classify.outputs.clean_cut_native_required }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
@@ -56,7 +56,7 @@ jobs:
 
   native-clean-cut:
     needs: change-scope
-    if: ${{ needs.change-scope.outputs.desktop_heavy_required == 'true' }}
+    if: ${{ needs.change-scope.outputs.clean_cut_native_required == 'true' }}
     strategy:
       fail-fast: false
       matrix:

@@ -1,6 +1,7 @@
 import type {
   GatewayCapability,
   GatewayCredentialProvider,
+  GatewayDiagnosticsProvider,
   GatewayEntitlement,
   GatewayEntitlementProvider,
   GatewayLicenseProvider,
@@ -111,9 +112,29 @@ function mapSubscription(subscription: ReturnType<typeof selectSubscription>, ow
   return { status: "inactive" as const, grace_active: false, current_period_end: subscription.current_period_end };
 }
 
+function failureCode(error: unknown) {
+  return error instanceof GatewayError ? error.code : "GATEWAY_INTERNAL_ERROR";
+}
+
+function withRollbackCompleted(error: unknown) {
+  if (error instanceof GatewayError) {
+    return new GatewayError(
+      error.status,
+      error.code,
+      `${error.message} [activation_rollback=completed]`
+    );
+  }
+  return new GatewayError(
+    500,
+    "GATEWAY_INTERNAL_ERROR",
+    "Gateway activation initialization failed [activation_rollback=completed]."
+  );
+}
+
 export class PolarGatewayAuthorityProvider implements
   GatewayLicenseProvider,
   GatewayCredentialProvider,
+  GatewayDiagnosticsProvider,
   GatewayEntitlementProvider,
   GatewayUsageProvider {
   private readonly client: PolarHttpClient;
@@ -128,6 +149,10 @@ export class PolarGatewayAuthorityProvider implements
     this.aiMeterId = options.ai_meter_id?.trim() || "";
     this.usageEventName = options.usage_event_name?.trim() || "masterv_ai_usage";
     this.planMetadataKey = options.plan_metadata_key?.trim() || "masterv_plan";
+  }
+
+  async probeCustomerReadAuthorization() {
+    await this.client.probeCustomerReadAuthorization();
   }
 
   private async loadAuthority(principal: Pick<GatewayPrincipal, "device_id" | "customer_id" | "license_id" | "activation_id">) {
@@ -195,33 +220,52 @@ export class PolarGatewayAuthorityProvider implements
   async activate(input: unknown) {
     const normalized = activationInput(input);
     const activation = await this.client.activateLicense(normalized);
-    const license = activation.license_key;
-    if (!license?.id || !license.customer_id || !activation.id) {
-      throw new GatewayError(502, "POLAR_ACTIVATION_INVALID", "Polar activation response is incomplete.");
+    const rollbackActivationId = typeof activation.id === "string" ? activation.id.trim() : "";
+
+    try {
+      const license = activation.license_key;
+      if (!license?.id || !license.customer_id || !rollbackActivationId) {
+        throw new GatewayError(502, "POLAR_ACTIVATION_INVALID", "Polar activation response is incomplete.");
+      }
+
+      const principalBase = {
+        subject: `polar:${license.customer_id}`,
+        device_id: normalized.install_id,
+        customer_id: license.customer_id,
+        license_id: license.id,
+        activation_id: rollbackActivationId
+      };
+      const state = await this.client.getCustomerState(license.customer_id, [normalized.product_key]);
+      const entitlement = this.deriveEntitlement(license, state);
+      this.assertUsable(entitlement);
+
+      const device = this.credentials.issueDevice(principalBase);
+      const session = this.credentials.issueSession(principalBase);
+      return Object.freeze({
+        activation_id: rollbackActivationId,
+        device_id: normalized.install_id,
+        device_credential: device.credential,
+        device_credential_expires_at: device.expires_at,
+        session_credential: session.credential,
+        session_credential_expires_at: session.expires_at,
+        entitlement
+      });
+    } catch (error) {
+      if (!rollbackActivationId) throw error;
+      try {
+        await this.client.deactivateLicense({
+          product_key: normalized.product_key,
+          activation_id: rollbackActivationId
+        });
+      } catch (rollbackError) {
+        throw new GatewayError(
+          502,
+          "POLAR_ACTIVATION_ROLLBACK_FAILED",
+          `Polar activation initialization failed and rollback could not be confirmed [root_code=${failureCode(error)} rollback_code=${failureCode(rollbackError)}].`
+        );
+      }
+      throw withRollbackCompleted(error);
     }
-
-    const principalBase = {
-      subject: `polar:${license.customer_id}`,
-      device_id: normalized.install_id,
-      customer_id: license.customer_id,
-      license_id: license.id,
-      activation_id: activation.id
-    };
-    const state = await this.client.getCustomerState(license.customer_id);
-    const entitlement = this.deriveEntitlement(license, state);
-    this.assertUsable(entitlement);
-
-    const device = this.credentials.issueDevice(principalBase);
-    const session = this.credentials.issueSession(principalBase);
-    return Object.freeze({
-      activation_id: activation.id,
-      device_id: normalized.install_id,
-      device_credential: device.credential,
-      device_credential_expires_at: device.expires_at,
-      session_credential: session.credential,
-      session_credential_expires_at: session.expires_at,
-      entitlement
-    });
   }
 
   async createSession(input: unknown, deviceCredential: string) {

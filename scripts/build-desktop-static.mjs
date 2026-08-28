@@ -31,7 +31,7 @@ await fs.mkdir(path.dirname(tauriIconPath), { recursive: true });
 const tauriPng = Buffer.from(TAURI_ICON_PNG_BASE64, "base64");
 await fs.writeFile(tauriIconPath, tauriPng);
 await fs.writeFile(tauriWindowsIconPath, singlePngIco(tauriPng, 128, 128));
-for (const filename of ["index.html", "styles.css", "app.js", "production-guidance-renderer.js"]) await fs.copyFile(path.join(sourceDir, filename), path.join(outputDir, filename));
+for (const filename of ["index.html", "styles.css", "app.js", "entitlement.js", "production-guidance-renderer.js"]) await fs.copyFile(path.join(sourceDir, filename), path.join(outputDir, filename));
 await fs.cp(path.join(sourceDir, "backend"), path.join(outputDir, "backend"), { recursive: true, filter: (source) => !source.includes(`${path.sep}legacy${path.sep}`) && !source.endsWith(`${path.sep}legacy`) });
 await buildReferenceCompiler();
 
