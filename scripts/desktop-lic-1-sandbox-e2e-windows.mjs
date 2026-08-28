@@ -259,8 +259,8 @@ async function main() {
 
   let first = null;
   let second = null;
+  let third = null;
   let localDataDir = null;
-  let completed = false;
   try {
     const sourceSha = git("rev-parse", "HEAD").toLowerCase();
     assert(sourceSha === requestedSourceSha, `Exact-head mismatch: requested ${requestedSourceSha}, actual ${sourceSha}`);
@@ -365,18 +365,48 @@ async function main() {
     assert(resumedCredits === activatedCredits, `Restart resume unexpectedly changed usage balance: ${activatedCredits} → ${resumedCredits}`);
 
     let finalCredits = resumedCredits;
+    let postGuidanceRestartCredits = resumedCredits;
     let chargedUnits = 0;
     if (guidanceChargeAllowed) {
+      assert(resumedCredits === 29, `Guidance safety requires authoritative pre-charge BASIC credits=29, got ${resumedCredits}`);
       const receipt = await invokeGuidance(second, fixtureAnalysis, fixtureProductTruth);
       assert(receipt?.charged_units === 1, `Sandbox Guidance expected 1 charged unit, got ${receipt?.charged_units}`);
       const afterCharge = await waitState(second, (value) => Number(value.credits) === resumedCredits - 1, "Sandbox post-Guidance entitlement readback", 90_000);
       finalCredits = numericCredits(afterCharge.credits, "Post-Guidance BASIC credits");
       chargedUnits = 1;
-      assert(finalCredits === resumedCredits - 1, `Guidance readback expected ${resumedCredits - 1}, got ${finalCredits}`);
-    }
+      assert(finalCredits === 28, `Guidance authoritative readback expected BASIC credits=28, got ${finalCredits}`);
 
-    await second.close();
-    second = null;
+      await second.close();
+      second = null;
+
+      third = await attachMasterV(APP_BINARY, EVIDENCE_DIR, "masterv-lic1-sandbox-post-guidance-resume", {
+        dataDir: webviewDataDir,
+        appDataDir: localDataDir,
+        reuseDataDir: true,
+        driverVerbose: false,
+        recordDriverLog: false
+      });
+      const postGuidanceResumed = await waitState(third, (value) =>
+        value.auth === "DEVICE RESUMED" &&
+        value.api === "CONNECTED" &&
+        value.entitlementHidden === false &&
+        value.entitlementStatus === "ENTITLED" &&
+        value.plan === "BASIC" &&
+        value.license === "ACTIVE" &&
+        value.deviceLimit === "1" &&
+        value.productKeyValue === "",
+        "Sandbox post-Guidance DPAPI device-session resume",
+        90_000
+      );
+      postGuidanceRestartCredits = numericCredits(postGuidanceResumed.credits, "Post-Guidance restart BASIC credits");
+      assert(postGuidanceRestartCredits === finalCredits, `Post-Guidance restart must not charge again: ${finalCredits} → ${postGuidanceRestartCredits}`);
+
+      await third.close();
+      third = null;
+    } else {
+      await second.close();
+      second = null;
+    }
 
     const evidence = Object.freeze({
       status: "MASTERV_DESKTOP_LIC_1_SANDBOX_E2E_PASS",
@@ -396,6 +426,7 @@ async function main() {
       device_credential_persisted: true,
       session_credential_persisted: false,
       restart_device_resume_verified: true,
+      post_guidance_restart_verified: guidanceChargeAllowed,
       entitlement_projection_authority: "gateway-polar-readback",
       desktop_entitlement_authority: "projection-only",
       plan: resumed.plan,
@@ -406,8 +437,11 @@ async function main() {
       credits_after_restart: resumedCredits,
       guidance_charge_authorized: guidanceChargeAllowed,
       guidance_charged_units: chargedUnits,
+      credits_before_guidance: guidanceChargeAllowed ? resumedCredits : null,
       credits_after_guidance: finalCredits,
+      credits_after_guidance_restart: guidanceChargeAllowed ? postGuidanceRestartCredits : null,
       server_activation_cleanup_performed: false,
+      local_activation_state_preserved: true,
       production_polar_mutation: false,
       production_signing_mutation: false,
       release_publication: false,
@@ -415,19 +449,19 @@ async function main() {
     });
     fs.writeFileSync(path.join(EVIDENCE_DIR, "evidence.json"), `${JSON.stringify(evidence, null, 2)}\n`, "utf8");
     assertSecretAbsent(EVIDENCE_DIR, productKey);
-    completed = true;
     console.log(JSON.stringify(evidence));
   } catch (error) {
     throw redactedError(error, productKey);
   } finally {
     if (first) await first.close().catch(() => undefined);
     if (second) await second.close().catch(() => undefined);
+    if (third) await third.close().catch(() => undefined);
     delete process.env.MASTERV_SANDBOX_PRODUCT_KEY;
     delete process.env.MASTERV_GATEWAY_BASE_URL;
     if (localDataDir) {
       const deviceIdentityPath = path.join(localDataDir, "device-identity.dpapi");
-      const preserveRecoveryState = !completed && fs.existsSync(deviceIdentityPath);
-      if (preserveRecoveryState) {
+      const preserveActivationState = fs.existsSync(deviceIdentityPath);
+      if (preserveActivationState) {
         console.error(`MASTERV_DESKTOP_LIC_1_SANDBOX_E2E_LOCAL_STATE_PRESERVED=${localDataDir}`);
       } else {
         fs.rmSync(localDataDir, { recursive: true, force: true });
